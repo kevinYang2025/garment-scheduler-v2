@@ -744,6 +744,10 @@ app.post('/api/actual', (req, res) => {
       [r.schedule_type, r.style_id, r.style_no, r.color, r.size_spec, r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '', r.line_team || '', r.remark || '']);
 
     syncActualToDaily(r);
+    // 自动重算任务状态
+    if (r.style_id) {
+      db.recalcTaskStatus(r.style_id);
+    }
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {

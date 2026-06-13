@@ -584,6 +584,35 @@ function getFullData() {
 }
 
 // ============================================================
+// 任务状态计算
+// ============================================================
+function recalcTaskStatus(masterId) {
+  try {
+    const master = db.prepare('SELECT * FROM schedule_master WHERE id = ?').get(masterId);
+    if (!master) return;
+
+    // 计算实际总完成量
+    const actual = db.prepare(
+      "SELECT COALESCE(SUM(qty), 0) as total FROM schedule_daily WHERE master_id = ? AND row_type = 'ACTUAL'"
+    ).get(masterId);
+
+    const planQty = master.plan_qty || 0;
+    const actualQty = actual.total || 0;
+    const progressPct = planQty > 0 ? Math.min(Math.round(actualQty * 100 / planQty), 100) : 0;
+
+    let taskStatus = 'PENDING';
+    if (actualQty > 0 && progressPct >= 100) {
+      taskStatus = 'COMPLETED';
+    } else if (actualQty > 0) {
+      taskStatus = 'IN_PROGRESS';
+    }
+
+    db.prepare('UPDATE schedule_master SET task_status = ?, progress_pct = ? WHERE id = ?')
+      .run(taskStatus, progressPct, masterId);
+  } catch (e) { console.error('recalcTaskStatus error:', e.message); }
+}
+
+// ============================================================
 // 工作日历辅助函数
 // ============================================================
 function isWorkday(dateStr) {
@@ -635,4 +664,5 @@ module.exports = {
   getFullData,
   logOperation,
   isWorkday, addWorkdays,
+  recalcTaskStatus,
 };

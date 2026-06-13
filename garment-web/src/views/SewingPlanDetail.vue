@@ -1,6 +1,6 @@
 <script setup>
 // Excel列映射严格按照用户提供的《缝制排程模板.xlsx》调整
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import DateFilter from '../components/DateFilter.vue'
@@ -416,6 +416,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
               </div>
             </th>
             <!-- 款号 -->
+            <th class="fix" style="width:80px"><span>状态</span></th>
             <th class="fix" style="min-width:100px">
               <div class="col-header"><span>款号</span>
                 <TextFilter :data="masters" field="style_no" @filter="f => onTextFilter('style_no', f)"
@@ -501,6 +502,14 @@ onMounted(async () => { await load(); await loadAllDaily() })
               <td class="fix">
                 <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.line_team" /></template>
                 <template v-else>{{ g.master.line_team || '' }}</template>
+              </td>
+              <td class="fix" style="width:80px">
+                <el-tag v-if="g.master.task_status === 'COMPLETED'" type="success" size="small">已完成</el-tag>
+                <el-tag v-else-if="g.master.task_status === 'IN_PROGRESS'" type="primary" size="small">进行中</el-tag>
+                <el-tag v-else type="info" size="small">待生产</el-tag>
+                <div v-if="g.master.progress_pct > 0" class="progress-mini">
+                  <div class="progress-bar" :style="{ width: g.master.progress_pct + '%' }"></div>
+                </div>
               </td>
               <td class="fix">{{ g.master.style_no }}</td>
               <td class="fix">{{ g.master.product_name }}</td>
@@ -810,5 +819,18 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 .today-btn:hover {
   background: var(--primary);
   color: white;
+}
+.progress-mini {
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width .3s ease;
 }
 </style>
