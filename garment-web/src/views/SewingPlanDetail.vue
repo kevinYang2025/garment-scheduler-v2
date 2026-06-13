@@ -371,7 +371,41 @@ async function confirmImport() {
   importing.value = false
 }
 
-onMounted(async () => { await load(); await loadAllDaily() })
+// Drag-to-scroll on empty td areas
+const bodyRef = ref(null)
+let dragging = false, dragX = 0, dragY = 0, dragSL = 0, dragST = 0, dragWrap = null
+function onDragStart(e) {
+  if (e.target.tagName !== 'TD' && e.target.tagName !== 'TH') return
+  dragWrap = e.currentTarget
+  dragging = true
+  dragX = e.pageX
+  dragY = e.pageY
+  dragSL = dragWrap.scrollLeft
+  dragST = dragWrap.scrollTop
+  e.preventDefault()
+}
+function onDragMove(e) {
+  if (!dragging || !dragWrap) return
+  dragWrap.scrollLeft = dragSL - (e.pageX - dragX)
+  dragWrap.scrollTop = dragST - (e.pageY - dragY)
+}
+function onDragEnd() { dragging = false; dragWrap = null }
+
+onMounted(async () => {
+  await load()
+  await loadAllDaily()
+  // Drag-to-scroll on body
+  const body = bodyRef.value
+  if (body) {
+    body.addEventListener('mousedown', onDragStart)
+    document.addEventListener('mousemove', onDragMove)
+    document.addEventListener('mouseup', onDragEnd)
+  }
+})
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
+})
 </script>
 
 <template>
@@ -393,7 +427,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
     </div>
 
     <!-- Excel-style table -->
-    <div v-else class="excel-wrap">
+    <div v-else ref="bodyRef" class="excel-wrap">
       <table class="excel-table">
         <thead>
           <tr>
@@ -655,7 +689,9 @@ onMounted(async () => { await load(); await loadAllDaily() })
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
+  cursor: grab;
 }
+.excel-wrap:active { cursor: grabbing; }
 
 .excel-table {
   border-collapse: collapse;

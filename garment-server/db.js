@@ -332,6 +332,20 @@ function migrateStyles() {
     }
   } catch (e) { console.log('schedule_master task_status migration skip:', e.message); }
 
+  // 迁移：扩展 actual_production 表
+  try {
+    const apCols = db.prepare("PRAGMA table_info(actual_production)").all().map(c => c.name);
+    if (!apCols.includes('worker_name')) {
+      db.prepare("ALTER TABLE actual_production ADD COLUMN worker_name TEXT DEFAULT ''").run();
+    }
+    if (!apCols.includes('start_time')) {
+      db.prepare("ALTER TABLE actual_production ADD COLUMN start_time TEXT DEFAULT ''").run();
+    }
+    if (!apCols.includes('end_time')) {
+      db.prepare("ALTER TABLE actual_production ADD COLUMN end_time TEXT DEFAULT ''").run();
+    }
+  } catch (e) { console.log('actual_production migration skip:', e.message); }
+
   try {
     const stcols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
     if (!stcols.includes('priority')) {

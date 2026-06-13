@@ -110,6 +110,9 @@ export default {
   deleteCalendarException: (calId, exId) => api.delete(`/work-calendars/${calId}/exceptions/${exId}`),
   checkWorkday: (date) => api.get('/workday-check', { params: { date } }),
 
+  // 报工汇总
+  getDispatchSummary: (params) => api.get('/dispatch-summary', { params }),
+
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
 }

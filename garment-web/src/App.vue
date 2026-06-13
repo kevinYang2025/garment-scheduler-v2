@@ -16,6 +16,7 @@ import CapacityConfig from './views/CapacityConfig.vue'
 import VisualSchedule from './views/VisualSchedule.vue'
 import OperationLogs from './views/OperationLogs.vue'
 import WorkCalendar from './views/WorkCalendar.vue'
+import DispatchReport from './views/DispatchReport.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
@@ -68,6 +69,7 @@ const navSections = [
     items: [
       { key: 'config', label: '设置', icon: 'settings' },
       { key: 'work-calendar', label: '工作日历', icon: 'calendar' },
+      { key: 'dispatch', label: '报工汇总', icon: 'data-analysis' },
       { key: 'logs', label: '操作日志', icon: 'list' },
     ]
   },
@@ -300,6 +302,7 @@ function getIcon(name) {
           <CapacityConfig v-else-if="currentModule === 'config' && DB" :db="DB" key="capacityConfig" />
           <OperationLogs v-else-if="currentModule === 'logs' && DB" key="logs" />
           <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />
+          <DispatchReport v-else-if="currentModule === 'dispatch' && DB" key="dispatch" />
         </KeepAlive>
 
         <div v-if="!DB" class="loading-state">

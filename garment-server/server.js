@@ -739,9 +739,9 @@ app.post('/api/actual', (req, res) => {
     if (!r.style_no) return res.status(400).json({ error: '款号不能为空' });
     if (!r.production_date) return res.status(400).json({ error: '日期不能为空' });
 
-    const result = db.run(`INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [r.schedule_type, r.style_id, r.style_no, r.color, r.size_spec, r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '', r.line_team || '', r.remark || '']);
+    const result = db.run(`INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [r.schedule_type, r.style_id, r.style_no, r.color, r.size_spec, r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '', r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '']);
 
     syncActualToDaily(r);
     // 自动重算任务状态
@@ -752,6 +752,33 @@ app.post('/api/actual', (req, res) => {
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/actual error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 报工汇总 ----------
+app.get('/api/dispatch-summary', (req, res) => {
+  try {
+    const { schedule_type, style_no, date_from, date_to, group_by = 'date' } = req.query;
+    let sql = `SELECT
+      production_date,
+      style_no,
+      workshop,
+      line_team,
+      COUNT(*) as record_count,
+      SUM(completed_qty) as total_completed,
+      SUM(defect_qty) as total_defects,
+      ROUND(CAST(SUM(completed_qty) AS REAL) * 100.0 / NULLIF(SUM(completed_qty) + SUM(defect_qty), 0), 1) as quality_rate
+    FROM actual_production WHERE 1=1`;
+    const params = [];
+    if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
+    if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
+    sql += ' GROUP BY production_date, style_no, workshop, line_team ORDER BY production_date DESC LIMIT 200';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/dispatch-summary error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
