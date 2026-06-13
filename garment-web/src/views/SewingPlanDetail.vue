@@ -149,7 +149,7 @@ const dateCols = computed(() => {
   const sd = new Date(min + 'T00:00:00'), ed = new Date(max + 'T00:00:00')
   const days = Math.floor((ed - sd) / 86400000) + 1
   const cols = []
-  for (let i = 0; i < Math.min(days, 60); i++) {
+  for (let i = 0; i < days; i++) {
     const dt = new Date(sd); dt.setDate(dt.getDate() + i)
     const y = dt.getFullYear()
     const mo = String(dt.getMonth() + 1).padStart(2, '0')
@@ -220,6 +220,19 @@ function colorFor(v) { if (v > 0) return 'var(--success)'; if (v < 0) return 'va
 // 今天日期（本地时间）
 const _td = new Date()
 const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`
+
+// 日期窗口：默认显示 today-7 到 today+21，箭头滚动切换
+const viewOffset = ref(0)
+function shiftWeek(dir) { viewOffset.value += dir * 7 }
+
+const visibleDateCols = computed(() => {
+  const d = new Date(today + 'T00:00:00')
+  const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
+  const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
+  const wsStr = `${ws.getFullYear()}-${String(ws.getMonth()+1).padStart(2,'0')}-${String(ws.getDate()).padStart(2,'0')}`
+  const weStr = `${we.getFullYear()}-${String(we.getMonth()+1).padStart(2,'0')}-${String(we.getDate()).padStart(2,'0')}`
+  return dateCols.value.filter(c => c >= wsStr && c <= weStr)
+})
 
 // 日差异：当天实际-当天计划，仅<=今天有效
 function dailyDiffVal(masterId, date) {
@@ -470,11 +483,11 @@ onMounted(async () => { await load(); await loadAllDaily() })
             <!-- 合计 -->
             <th class="fix" style="min-width:80px"><div class="col-header"><span>合计</span></div></th>
             <!-- 类型标签 -->
-            <th class="fix" style="min-width:80px"><div class="col-header"><span></span></div></th>
+            <th class="fix" style="min-width:80px"><div class="col-header"><span class="arrow-btn" @click="shiftWeek(-1)" title="往前一周">‹</span><span class="arrow-btn today-btn" @click="viewOffset=0" title="回到今天">◎</span></div></th>
             <!-- 日期列 -->
-            <th v-for="d in dateCols" :key="d" class="date-th">{{ dateLabel(d) }}</th>
+            <th v-for="d in visibleDateCols" :key="d" class="date-th" :class="{ 'today-col': d === today }">{{ dateLabel(d) }}</th>
             <!-- 操作 -->
-            <th class="fix" style="min-width:60px"><div class="col-header"><span>操作</span></div></th>
+            <th class="fix" style="min-width:60px"><div class="col-header"><span>操作</span><span class="arrow-btn" @click="shiftWeek(1)" title="往后一周">›</span></div></th>
           </tr>
         </thead>
         <tbody>
@@ -513,7 +526,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
               </td>
               <td class="fix num sum-cell">{{ formatQty(g.planSum) }}</td>
               <td class="fix type-label plan-label">计划</td>
-              <td v-for="d in dateCols" :key="'p'+d" class="cell-num">
+              <td v-for="d in visibleDateCols" :key="'p'+d" class="cell-num" :class="{ 'today-col': d === today }">
                 {{ formatQty(dailyQty(g.master.id, d, 'plan')) }}
               </td>
               <td class="fix">
@@ -533,7 +546,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
               <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
               <td class="fix num sum-cell">{{ formatQty(g.actualSum) }}</td>
               <td class="fix type-label" style="color:var(--success)">实际QC1</td>
-              <td v-for="d in dateCols" :key="'a'+d" class="cell-num cell-edit">
+              <td v-for="d in visibleDateCols" :key="'a'+d" class="cell-num cell-edit" :class="{ 'today-col': d === today }">
                 <input type="number" class="inp-qty" :value="dailyQty(g.master.id, d, 'actual')"
                   :disabled="d > today"
                   @change="e => updateDailyActual(g.master.id, d, e.target.value)" min="0" />
@@ -548,7 +561,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
                 {{ dailyDiffSum(g.master.id) > 0 ? '+' : '' }}{{ formatQty(dailyDiffSum(g.master.id)) }}
               </td>
               <td class="fix type-label" style="color:var(--warning)">日差异</td>
-              <td v-for="d in dateCols" :key="'dd'+d" class="cell-num"
+              <td v-for="d in visibleDateCols" :key="'dd'+d" class="cell-num" :class="{ 'today-col': d === today }"
                 :style="{color: colorFor(dailyDiffVal(g.master.id, d))}">
                 <template v-if="dailyDiffVal(g.master.id, d) != null">{{ dailyDiffVal(g.master.id, d) > 0 ? '+' : '' }}{{ formatQty(dailyDiffVal(g.master.id, d)) }}</template>
                 <template v-else>—</template>
@@ -685,8 +698,9 @@ onMounted(async () => { await load(); await loadAllDaily() })
 .row-actual { background: var(--bg); }
 .row-diff { background: var(--card); }
 
-tbody tr:hover td { background: var(--primary-light) !important; }
+tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 .editing-row td { background: var(--primary-light) !important; box-shadow: inset 3px 0 0 var(--primary); }
+.editing-row td.fix:not(:first-child) { background: var(--primary-light) !important; }
 
 .fix {
   position: sticky;
@@ -701,6 +715,11 @@ tbody tr:hover td { background: var(--primary-light) !important; }
 .excel-table thead .fix { z-index: 4; background: var(--card); }
 
 .date-th { min-width: 54px; width: 54px; }
+/* 今天列高亮 */
+.today-col {
+  background: var(--primary-light) !important;
+  box-shadow: inset 2px 0 0 var(--primary);
+}
 
 .num {
   text-align: right;
@@ -756,5 +775,34 @@ tbody tr:hover td { background: var(--primary-light) !important; }
   color: var(--text-tertiary);
   cursor: not-allowed;
   opacity: 0.4;
+}
+
+.arrow-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  transition: all .15s;
+  user-select: none;
+  flex-shrink: 0;
+}
+.arrow-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.today-btn {
+  font-size: 12px;
+  color: var(--primary);
+  font-weight: 800;
+}
+.today-btn:hover {
+  background: var(--primary);
+  color: white;
 }
 </style>

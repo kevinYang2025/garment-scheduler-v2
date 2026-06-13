@@ -84,7 +84,8 @@
       "Bash(gh repo *)",
       "Bash(git checkout *)",
       "Bash(git push *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(findstr /i \"node\")"
     ]
   }
 }

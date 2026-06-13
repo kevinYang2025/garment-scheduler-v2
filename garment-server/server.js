@@ -165,6 +165,7 @@ app.get('/api/styles/export', async (req, res) => {
       { header: '目标日产量', key: 'target_daily_output', width: 12 },
       { header: '几条线生产', key: 'production_lines', width: 12 },
       { header: '备注', key: 'remarks', width: 20 },
+      { header: '优先级', key: 'priority', width: 10 },
     ];
     ws.getRow(1).font = { bold: true };
     for (const s of styles) {
@@ -202,7 +203,7 @@ app.post('/api/styles/import', async (req, res) => {
       '面料代号': 'fabric_code', '成衣计划数量': 'plan_qty', '交期': 'due_date',
       '是否刺绣': 'embroidery', '是否印花': 'printing', '是否烫标': 'ironing_label',
       '是否用模板': 'template', 'TT时间': 'tt_time', '目标日产量': 'target_daily_output',
-      '几条线生产': 'production_lines', '备注': 'remarks',
+      '几条线生产': 'production_lines', '备注': 'remarks', '优先级': 'priority',
     };
     const colMap = {};
     ws.getRow(1).eachCell((cell, colNumber) => {
@@ -227,17 +228,19 @@ app.post('/api/styles/import', async (req, res) => {
         data.plan_qty = parseInt(data.plan_qty) || 0;
         data.target_daily_output = parseInt(data.target_daily_output) || 0;
         data.production_lines = parseInt(data.production_lines) || 0;
+        data.priority = parseInt(data.priority) || 3;
         db.run(`INSERT INTO styles (style_no, product_name, fabric_code, plan_qty, due_date, order_date,
-          embroidery, printing, ironing_label, template, tt_time, target_daily_output, production_lines, remarks)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          embroidery, printing, ironing_label, template, tt_time, target_daily_output, production_lines, remarks, priority)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           [data.style_no, data.product_name, data.fabric_code, data.plan_qty, data.due_date,
            data.order_date, data.embroidery, data.printing, data.ironing_label, data.template,
-           data.tt_time, data.target_daily_output, data.production_lines, data.remarks]);
+           data.tt_time, data.target_daily_output, data.production_lines, data.remarks, data.priority]);
         imported++;
       }
     });
     txn();
     broadcastSection('styles', db.all('SELECT * FROM styles ORDER BY id'));
+    db.logOperation('styles', 'import', null, `导入${imported}条`);
     res.json({ ok: true, imported, skipped });
   } catch (e) {
     console.error('POST /api/styles/import error:', e);
@@ -265,15 +268,17 @@ app.post('/api/styles', (req, res) => {
     if (s.id) {
       const existing = db.get('SELECT id FROM styles WHERE id = ?', [s.id]);
       if (!existing) return res.status(404).json({ error: '款式不存在' });
-      db.run(`UPDATE styles SET style_no=?,product_name=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,printing=?,ironing_label=?,template=?,tt_time=?,target_daily_output=?,production_lines=?,remarks=? WHERE id=?`,
-        [s.style_no, s.product_name, s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.printing||'', s.ironing_label||'', s.template||'', s.tt_time||'', s.target_daily_output||0, s.production_lines||0, s.remarks||'', s.id]);
+      db.run(`UPDATE styles SET style_no=?,product_name=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,printing=?,ironing_label=?,template=?,tt_time=?,target_daily_output=?,production_lines=?,remarks=?,priority=? WHERE id=?`,
+        [s.style_no, s.product_name, s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.printing||'', s.ironing_label||'', s.template||'', s.tt_time||'', s.target_daily_output||0, s.production_lines||0, s.remarks||'', s.priority||3, s.id]);
       broadcastSection('styles', db.searchStyles(''));
+      db.logOperation('styles', 'update', s.id, s.style_no);
       return res.json({ ok: true, id: s.id });
     }
-    const result = db.run(`INSERT INTO styles (style_no, product_name, fabric_code, plan_qty, due_date, order_date, embroidery, printing, ironing_label, template, tt_time, target_daily_output, production_lines, remarks)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [s.style_no, s.product_name, s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.printing||'', s.ironing_label||'', s.template||'', s.tt_time||'', s.target_daily_output||0, s.production_lines||0, s.remarks||'']);
+    const result = db.run(`INSERT INTO styles (style_no, product_name, fabric_code, plan_qty, due_date, order_date, embroidery, printing, ironing_label, template, tt_time, target_daily_output, production_lines, remarks, priority)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [s.style_no, s.product_name, s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.printing||'', s.ironing_label||'', s.template||'', s.tt_time||'', s.target_daily_output||0, s.production_lines||0, s.remarks||'', s.priority||3]);
     broadcastSection('styles', db.searchStyles(''));
+    db.logOperation('styles', 'create', result.lastInsertRowid, s.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/styles error:', e);
@@ -287,6 +292,7 @@ app.delete('/api/styles/:id', (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Not found' });
     db.run('DELETE FROM styles WHERE id = ?', [req.params.id]);
     broadcastSection('styles', db.searchStyles(''));
+    db.logOperation('styles', 'delete', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/styles error:', e);
@@ -362,12 +368,14 @@ app.post('/api/main-plan', (req, res) => {
       db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
         [p.style_id, p.style_no, p.product_name, p.plan_qty, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.sewing_remind_date, p.sewing_start, p.sewing_end, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.id]);
       broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
+      db.logOperation('main_plan', 'update', p.id, p.style_no);
       return res.json({ ok: true, id: p.id });
     }
     const result = db.run(`INSERT INTO main_plan (style_id,style_no,product_name,plan_qty,due_date,cutting_start,cutting_end,secondary_start,secondary_end,sewing_remind_date,sewing_start,sewing_end,pipeline_count,is_scheduled,workshop,line_team)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [p.style_id, p.style_no, p.product_name, p.plan_qty || 0, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.sewing_remind_date, p.sewing_start, p.sewing_end, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '']);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
+    db.logOperation('main_plan', 'create', result.lastInsertRowid, p.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/main-plan error:', e);
@@ -381,6 +389,7 @@ app.delete('/api/main-plan/:id', (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Not found' });
     db.run('DELETE FROM main_plan WHERE id = ?', [req.params.id]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
+    db.logOperation('main_plan', 'delete', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/main-plan error:', e);
@@ -434,6 +443,7 @@ app.post('/api/schedule/:scheduleType', (req, res) => {
     }
 
     broadcastSection(`schedule_${req.params.scheduleType}`, db.all('SELECT * FROM schedule_master WHERE schedule_type = ?', [req.params.scheduleType]));
+    db.logOperation(`schedule_${req.params.scheduleType}`, 'create', masterId, m.style_no);
     res.json({ ok: true, id: masterId });
   } catch (e) {
     console.error('POST /api/schedule error:', e);
@@ -452,6 +462,7 @@ app.put('/api/schedule/:scheduleType/:id', (req, res) => {
       [m.plan_start || '', m.plan_end || '', m.workshop || '', m.line_team || '', m.secondary_type || '', m.cutting_plan_qty || 0, m.daily_target || 0, m.due_date || '', req.params.id]);
     console.log('UPDATE result:', info);
     broadcastSection(`schedule_${req.params.scheduleType}`, db.all('SELECT * FROM schedule_master WHERE schedule_type = ?', [req.params.scheduleType]));
+    db.logOperation(`schedule_${req.params.scheduleType}`, 'update', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('PUT /api/schedule error:', e);
@@ -466,6 +477,7 @@ app.delete('/api/schedule/:scheduleType/:id', (req, res) => {
     db.run('DELETE FROM schedule_daily WHERE master_id = ?', [req.params.id]);
     db.run('DELETE FROM schedule_master WHERE id = ?', [req.params.id]);
     broadcastSection(`schedule_${req.params.scheduleType}`, db.all('SELECT * FROM schedule_master WHERE schedule_type = ?', [req.params.scheduleType]));
+    db.logOperation(`schedule_${req.params.scheduleType}`, 'delete', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/schedule error:', e);
@@ -761,6 +773,7 @@ app.post('/api/warehouse/:type/inbound', (req, res) => {
       [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.inbound_date, r.operator || '']);
     updateInventory(req.params.type, r.style_no, r.color, r.size_spec, r.qty);
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
+    db.logOperation('warehouse', 'inbound', null, `${req.params.type} 入库${r.qty}件`);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/warehouse/inbound error:', e);
@@ -797,6 +810,7 @@ app.post('/api/warehouse/:type/outbound', (req, res) => {
     });
     const result = txn();
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
+    db.logOperation('warehouse', 'outbound', null, `${req.params.type} 出库${r.qty}件`);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/warehouse/outbound error:', e);
@@ -974,6 +988,29 @@ app.put('/api/config/system/:key', (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('PUT /api/config/system error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// 操作日志
+// ============================================================
+app.get('/api/logs', (req, res) => {
+  try {
+    const { module: mod, action, operator, page = 1, pageSize = 50 } = req.query;
+    let sql = 'SELECT * FROM operation_logs WHERE 1=1';
+    const params = [];
+    if (mod) { sql += ' AND module = ?'; params.push(mod); }
+    if (action) { sql += ' AND action = ?'; params.push(action); }
+    if (operator) { sql += ' AND operator = ?'; params.push(operator); }
+    const countSql = sql.replace('SELECT *', 'SELECT COUNT(*) as total');
+    const total = db.get(countSql, params).total;
+    sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+    params.push(Number(pageSize), (Number(page) - 1) * Number(pageSize));
+    const rows = db.all(sql, params);
+    res.json({ rows, total, page: Number(page), pageSize: Number(pageSize) });
+  } catch (e) {
+    console.error('GET /api/logs error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

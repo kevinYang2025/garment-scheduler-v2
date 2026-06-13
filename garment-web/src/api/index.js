@@ -92,4 +92,7 @@ export default {
   updateCapacityConfig: (id, data) => api.put(`/config/capacity/${id}`, data),
   getSystemConfig: () => api.get('/config/system'),
   updateSystemConfig: (key, data) => api.put(`/config/system/${key}`, data),
+
+  // 操作日志
+  getLogs: (params) => api.get('/logs', { params }),
 }

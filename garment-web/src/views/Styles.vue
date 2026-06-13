@@ -23,6 +23,12 @@ const columns = [
   { field: 'target_daily_output', label: '日产量', width: 80, type: 'number' },
   { field: 'production_lines', label: '线数', width: 80, type: 'number' },
   { field: 'remarks', label: '备注', width: 120, type: 'text' },
+  { field: 'priority', label: '优先级', width: 90, type: 'select', options: [
+    { value: 1, label: '🔴 紧急' },
+    { value: 2, label: '🟠 高' },
+    { value: 3, label: '🔵 普通' },
+    { value: 4, label: '⚪ 低' },
+  ]},
 ]
 
 const bodyRef = ref(null)
@@ -235,7 +241,7 @@ function openCreate() {
     style_no: '', product_name: '', fabric_code: '',
     plan_qty: 0, due_date: '', order_date: '',
     embroidery: '', printing: '', ironing_label: '', template: '',
-    tt_time: '', target_daily_output: 0, production_lines: 0, remarks: ''
+    tt_time: '', target_daily_output: 0, production_lines: 0, remarks: '', priority: 3
   }
   createDialogVisible.value = true
 }
@@ -441,6 +447,22 @@ onUnmounted(() => {
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.remarks" /></template>
               <template v-else><span>{{ row.remarks }}</span></template>
             </td>
+            <td :style="{ width: columns[14].width + 'px' }">
+              <template v-if="editingId === row.id">
+                <select class="inp" v-model.number="editForm.priority" style="width:100%">
+                  <option :value="1">🔴 紧急</option>
+                  <option :value="2">🟠 高</option>
+                  <option :value="3">🔵 普通</option>
+                  <option :value="4">⚪ 低</option>
+                </select>
+              </template>
+              <template v-else>
+                <span v-if="row.priority === 1" style="color:#ef4444;font-weight:600">🔴 紧急</span>
+                <span v-else-if="row.priority === 2" style="color:#f97316;font-weight:600">🟠 高</span>
+                <span v-else-if="row.priority === 4" style="color:#a1a1aa">⚪ 低</span>
+                <span v-else style="color:#6e3ff3">🔵 普通</span>
+              </template>
+            </td>
             <td class="action-cell" style="width:120px">
               <template v-if="editingId === row.id">
                 <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
@@ -489,6 +511,14 @@ onUnmounted(() => {
           <el-col :span="8"><el-form-item label="几条线生产"><el-input-number v-model="createForm.production_lines" :min="0" style="width:100%" /></el-form-item></el-col>
         </el-row>
         <el-form-item label="备注"><el-input v-model="createForm.remarks" type="textarea" :rows="2" placeholder="请输入备注" /></el-form-item>
+        <el-form-item label="优先级">
+          <el-select v-model="createForm.priority" style="width:100%">
+            <el-option :value="1" label="🔴 紧急" />
+            <el-option :value="2" label="🟠 高" />
+            <el-option :value="3" label="🔵 普通" />
+            <el-option :value="4" label="⚪ 低" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createDialogVisible = false">取消</el-button>

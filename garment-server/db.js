@@ -232,6 +232,18 @@ function createTables() {
       remark TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    -- 操作日志
+    CREATE TABLE IF NOT EXISTS operation_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      module TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_id INTEGER,
+      target_name TEXT DEFAULT '',
+      detail TEXT DEFAULT '',
+      operator TEXT DEFAULT 'YC',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 
@@ -253,6 +265,31 @@ function migrateStyles() {
       db.prepare("ALTER TABLE schedule_master ADD COLUMN updated_at TEXT DEFAULT ''").run();
     }
   } catch (e) { console.log('schedule_master migration skip:', e.message); }
+
+  // 迁移：添加 priority 字段
+  try {
+    const scols2 = db.prepare("PRAGMA table_info(schedule_master)").all().map(c => c.name);
+    if (!scols2.includes('task_status')) {
+      db.prepare("ALTER TABLE schedule_master ADD COLUMN task_status TEXT DEFAULT 'PENDING'").run();
+    }
+    if (!scols2.includes('progress_pct')) {
+      db.prepare("ALTER TABLE schedule_master ADD COLUMN progress_pct REAL DEFAULT 0").run();
+    }
+  } catch (e) { console.log('schedule_master task_status migration skip:', e.message); }
+
+  try {
+    const stcols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
+    if (!stcols.includes('priority')) {
+      db.prepare("ALTER TABLE styles ADD COLUMN priority INTEGER DEFAULT 3").run();
+    }
+  } catch (e) { console.log('styles priority migration skip:', e.message); }
+
+  try {
+    const mpcols = db.prepare("PRAGMA table_info(main_plan)").all().map(c => c.name);
+    if (!mpcols.includes('priority')) {
+      db.prepare("ALTER TABLE main_plan ADD COLUMN priority INTEGER DEFAULT 3").run();
+    }
+  } catch (e) { console.log('main_plan priority migration skip:', e.message); }
 
   const cols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
   if (!cols.includes('embroidery')) {
@@ -473,9 +510,20 @@ function getFullData() {
   };
 }
 
+// ============================================================
+// 操作日志
+// ============================================================
+function logOperation(module, action, targetId, targetName, detail) {
+  try {
+    db.prepare('INSERT INTO operation_logs (module, action, target_id, target_name, detail) VALUES (?,?,?,?,?)')
+      .run(module, action, targetId || null, targetName || '', detail || '');
+  } catch (e) { console.error('logOperation error:', e.message); }
+}
+
 module.exports = {
   init, getDb,
   all, get, run,
   searchStyles, getDistinctStyleNos,
   getFullData,
+  logOperation,
 };
