@@ -208,10 +208,14 @@ onMounted(loadGantt)
               v-for="line in workshop.lines"
               :key="line.id"
               class="gantt-row"
+              :class="{ 'fault-line': line.status === '故障' }"
               @dragover.prevent
-              @drop="onDrop(workshop, line)"
+              @drop="line.status !== '故障' && onDrop(workshop, line)"
             >
-              <div class="line-label">{{ line.name }}</div>
+              <div class="line-label">
+                {{ line.name }}
+                <span v-if="line.status === '故障'" class="fault-badge">故障</span>
+              </div>
               <div class="tasks-area">
                 <div
                   v-for="task in line.tasks"
@@ -444,6 +448,27 @@ onMounted(loadGantt)
 
 .gantt-row:hover {
   background: var(--bg);
+}
+
+.fault-line {
+  background: #fef2f2 !important;
+  opacity: 0.7;
+  cursor: not-allowed !important;
+}
+
+.fault-line .gantt-bar {
+  filter: grayscale(100%);
+}
+
+.fault-badge {
+  font-size: 10px;
+  color: #ef4444;
+  font-weight: 600;
+  margin-left: 4px;
+  background: #fef2f2;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid #fecaca;
 }
 
 .tasks-area {

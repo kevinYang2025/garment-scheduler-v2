@@ -352,6 +352,16 @@ app.put('/api/production-lines/:id', (req, res) => {
   }
 });
 
+// ---------- 产线事件历史 ----------
+app.get('/api/production-lines/:id/events', (req, res) => {
+  try {
+    res.json(db.all('SELECT * FROM production_line_events WHERE line_id = ? ORDER BY created_at DESC', [req.params.id]));
+  } catch (e) {
+    console.error('GET /api/production-lines/:id/events error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ---------- 主计划 ----------
 app.get('/api/main-plan', (req, res) => {
   try {
