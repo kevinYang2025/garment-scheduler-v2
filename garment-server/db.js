@@ -286,6 +286,19 @@ function createTables() {
       remark TEXT DEFAULT '',
       UNIQUE(calendar_id, exception_date)
     );
+
+    -- 产线状态事件记录
+    CREATE TABLE IF NOT EXISTS production_line_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      line_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      old_status TEXT,
+      new_status TEXT,
+      start_time TEXT,
+      end_time TEXT,
+      remark TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 

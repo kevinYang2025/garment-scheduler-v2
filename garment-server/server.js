@@ -335,9 +335,15 @@ app.put('/api/production-lines/:id', (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: '无效状态' });
     }
-    const existing = db.get('SELECT id FROM production_lines WHERE id = ?', [req.params.id]);
+    const existing = db.get('SELECT * FROM production_lines WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
-    db.run('UPDATE production_lines SET status = ? WHERE id = ?', [status, req.params.id]);
+    const oldStatus = existing.status;
+    if (oldStatus !== status) {
+      db.run('UPDATE production_lines SET status = ? WHERE id = ?', [status, req.params.id]);
+      db.run('INSERT INTO production_line_events (line_id, event_type, old_status, new_status, remark) VALUES (?,?,?,?,?)',
+        [req.params.id, 'status_change', oldStatus, status, req.body.remark || '']);
+      db.logOperation('production_lines', 'status_change', req.params.id, existing.line_name, `${oldStatus}→${status}`);
+    }
     broadcastSection('productionLines', db.all('SELECT * FROM production_lines ORDER BY sort_order'));
     res.json({ ok: true });
   } catch (e) {

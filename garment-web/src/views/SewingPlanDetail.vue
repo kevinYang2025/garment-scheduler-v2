@@ -664,7 +664,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
   font-weight: 500;
   letter-spacing: 0.3px;
   border-bottom: 1px solid var(--border);
-  text-align: left;
+  text-align: center;
   white-space: nowrap;
   position: sticky;
   top: 0;
@@ -675,7 +675,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-light);
   white-space: nowrap;
-  text-align: left;
+  text-align: center;
 }
 
 .col-header {
