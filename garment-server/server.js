@@ -993,6 +993,45 @@ app.put('/api/config/system/:key', (req, res) => {
 });
 
 // ============================================================
+// 甘特图字段配置
+// ============================================================
+app.get('/api/config/gantt', (req, res) => {
+  try {
+    const rows = db.all('SELECT * FROM gantt_field_config');
+    const result = {};
+    for (const r of rows) {
+      result[r.schedule_type] = {
+        barFields: JSON.parse(r.bar_fields || '[]'),
+        tooltipFields: JSON.parse(r.tooltip_fields || '[]'),
+        leftFields: JSON.parse(r.left_fields || '[]'),
+      };
+    }
+    res.json(result);
+  } catch (e) {
+    console.error('GET /api/config/gantt error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/config/gantt/:type', (req, res) => {
+  try {
+    const { barFields, tooltipFields, leftFields } = req.body;
+    const existing = db.get('SELECT id FROM gantt_field_config WHERE schedule_type = ?', [req.params.type]);
+    if (!existing) {
+      db.run('INSERT INTO gantt_field_config (schedule_type, bar_fields, tooltip_fields, left_fields) VALUES (?,?,?,?)',
+        [req.params.type, JSON.stringify(barFields || []), JSON.stringify(tooltipFields || []), JSON.stringify(leftFields || [])]);
+    } else {
+      db.run('UPDATE gantt_field_config SET bar_fields=?, tooltip_fields=?, left_fields=?, updated_at=datetime("now","localtime") WHERE schedule_type=?',
+        [JSON.stringify(barFields || []), JSON.stringify(tooltipFields || []), JSON.stringify(leftFields || []), req.params.type]);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('PUT /api/config/gantt error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
 // 操作日志
 // ============================================================
 app.get('/api/logs', (req, res) => {

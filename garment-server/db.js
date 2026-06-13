@@ -244,6 +244,16 @@ function createTables() {
       operator TEXT DEFAULT 'YC',
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    -- 甘特图字段配置
+    CREATE TABLE IF NOT EXISTS gantt_field_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      schedule_type TEXT NOT NULL UNIQUE,
+      bar_fields TEXT DEFAULT '["styleNo","planQty"]',
+      tooltip_fields TEXT DEFAULT '["styleNo","productName","planQty","sewingStart","sewingEnd"]',
+      left_fields TEXT DEFAULT '["workshop","lineTeam"]',
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 
@@ -387,6 +397,16 @@ function seedDefaultData() {
     }
   });
   seed();
+
+  // 甘特图字段配置种子数据
+  const ganttCount = db.prepare('SELECT COUNT(*) as c FROM gantt_field_config').get().c;
+  if (ganttCount === 0) {
+    const insGantt = db.prepare('INSERT OR IGNORE INTO gantt_field_config (schedule_type, bar_fields, tooltip_fields, left_fields) VALUES (?,?,?,?)');
+    insGantt.run('sewing', '["styleNo","planQty"]', '["styleNo","productName","planQty","sewingStart","sewingEnd"]', '["workshop","lineTeam"]');
+    insGantt.run('cutting', '["styleNo","planQty"]', '["styleNo","productName","planQty","cuttingStart","cuttingEnd"]', '["workshop"]');
+    insGantt.run('secondary', '["styleNo","planQty"]', '["styleNo","productName","planQty","secondaryType"]', '["workshop"]');
+  }
+
   console.log('✅ 数据库初始化完成：5个车间、50条产线、20条款式');
 }
 

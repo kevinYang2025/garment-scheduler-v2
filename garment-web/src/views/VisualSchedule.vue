@@ -11,6 +11,39 @@ const unscheduled = ref([])
 const dateRange = ref({ start: '', end: '' })
 const loading = ref(false)
 const draggedItem = ref(null)
+const ganttConfig = ref({
+  barFields: ['styleNo', 'planQty'],
+  tooltipFields: ['styleNo', 'productName', 'planQty', 'sewingStart', 'sewingEnd'],
+  leftFields: ['workshop', 'lineTeam'],
+})
+
+// 字段显示名称映射
+const fieldLabels = {
+  styleNo: '款号', productName: '品名', planQty: '计划数量',
+  sewingStart: '缝制开始', sewingEnd: '缝制结束',
+  cuttingStart: '裁剪开始', cuttingEnd: '裁剪结束',
+  secondaryType: '二次加工类型',
+  workshop: '车间', lineTeam: '班组',
+  color: '颜色', sizeSpec: '规格', dueDate: '交期',
+  priority: '优先级',
+}
+
+function getFieldValue(task, field) {
+  const val = task[field]
+  if (val === undefined || val === null || val === '') return '-'
+  if (field === 'planQty') return val + '件'
+  return val
+}
+
+function buildBarText(task) {
+  return ganttConfig.value.barFields.map(f => getFieldValue(task, f)).join(' ')
+}
+
+function buildTooltip(task) {
+  return ganttConfig.value.tooltipFields
+    .map(f => `${fieldLabels[f] || f}: ${getFieldValue(task, f)}`)
+    .join('\n')
+}
 
 // 日期列表（甘特图横轴）
 const dates = computed(() => {
@@ -32,13 +65,17 @@ const dates = computed(() => {
 async function loadGantt() {
   loading.value = true
   try {
-    const [ganttRes, rangeRes] = await Promise.all([
+    const [ganttRes, rangeRes, configRes] = await Promise.all([
       api.getVisualGantt(),
-      api.getVisualDateRange()
+      api.getVisualDateRange(),
+      api.getGanttConfig(),
     ])
     workshops.value = ganttRes.data.workshops || []
     unscheduled.value = ganttRes.data.unscheduled || []
     dateRange.value = rangeRes.data
+    if (configRes.data?.sewing) {
+      ganttConfig.value = configRes.data.sewing
+    }
   } catch (e) {
     console.error('加载甘特图失败:', e)
   }
@@ -181,10 +218,10 @@ onMounted(loadGantt)
                   :key="task.planId"
                   class="gantt-bar"
                   :style="getTaskStyle(task)"
-                  :title="`${task.styleNo} ${task.productName}\n${task.sewingStart} ~ ${task.sewingEnd}\n${task.planQty}件`"
+                  :title="buildTooltip(task)"
                   @dblclick="unassign(task.planId)"
                 >
-                  <span class="bar-text">{{ task.styleNo }}</span>
+                  <span class="bar-text">{{ buildBarText(task) }}</span>
                 </div>
               </div>
             </div>

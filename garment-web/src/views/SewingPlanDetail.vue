@@ -716,9 +716,15 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 
 .date-th { min-width: 54px; width: 54px; }
 /* 今天列高亮 */
-.today-col {
-  background: var(--primary-light) !important;
-  box-shadow: inset 2px 0 0 var(--primary);
+.excel-table .today-col {
+  background: #e0d4ff !important;
+  box-shadow: inset 3px 0 0 var(--primary);
+  text-align: center !important;
+}
+.excel-table thead .today-col {
+  background: #e0d4ff !important;
+  color: var(--primary) !important;
+  font-weight: 700 !important;
 }
 
 .num {

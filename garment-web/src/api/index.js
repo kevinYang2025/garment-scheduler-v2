@@ -93,6 +93,10 @@ export default {
   getSystemConfig: () => api.get('/config/system'),
   updateSystemConfig: (key, data) => api.put(`/config/system/${key}`, data),
 
+  // 甘特图字段配置
+  getGanttConfig: () => api.get('/config/gantt'),
+  updateGanttConfig: (type, data) => api.put(`/config/gantt/${type}`, data),
+
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
 }
