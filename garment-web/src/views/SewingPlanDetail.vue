@@ -728,7 +728,7 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 }
 
 .num {
-  text-align: right;
+  text-align: center !important;
   font-variant-numeric: tabular-nums;
   font-family: 'Helvetica Neue', Arial, sans-serif;
 }
@@ -737,7 +737,7 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 .plan-label { color: var(--primary); }
 
 .cell-num {
-  text-align: right;
+  text-align: center !important;
   font-variant-numeric: tabular-nums;
   font-family: 'Helvetica Neue', Arial, sans-serif;
 }

@@ -254,6 +254,38 @@ function createTables() {
       left_fields TEXT DEFAULT '["workshop","lineTeam"]',
       updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    -- 工作模式
+    CREATE TABLE IF NOT EXISTS work_modes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      working_hours REAL DEFAULT 8,
+      shifts TEXT DEFAULT '["08:00-17:00"]',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- 工作日历
+    CREATE TABLE IF NOT EXISTS work_calendars (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      work_mode_id INTEGER,
+      work_days TEXT DEFAULT '1111100',
+      start_date TEXT,
+      end_date TEXT,
+      priority INTEGER DEFAULT 0,
+      enabled INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- 日历例外（节假日/调休）
+    CREATE TABLE IF NOT EXISTS calendar_exceptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      calendar_id INTEGER NOT NULL,
+      exception_date TEXT NOT NULL,
+      is_workday INTEGER DEFAULT 0,
+      remark TEXT DEFAULT '',
+      UNIQUE(calendar_id, exception_date)
+    );
   `);
 }
 
@@ -398,6 +430,14 @@ function seedDefaultData() {
   });
   seed();
 
+  // 工作日历种子数据
+  const calCount = db.prepare('SELECT COUNT(*) as c FROM work_calendars').get().c;
+  if (calCount === 0) {
+    const modeResult = db.prepare("INSERT INTO work_modes (name, working_hours, shifts) VALUES ('常白班', 8, '[\"08:00-12:00\",\"13:00-17:00\"]')").run();
+    db.prepare("INSERT INTO work_calendars (name, work_mode_id, work_days, start_date, end_date, priority, enabled) VALUES ('默认工作日历', ?, '1111100', '2025-01-01', '2027-12-31', 0, 1)").run(modeResult.lastInsertRowid);
+    console.log('✅ 工作日历种子数据已生成');
+  }
+
   // 甘特图字段配置种子数据
   const ganttCount = db.prepare('SELECT COUNT(*) as c FROM gantt_field_config').get().c;
   if (ganttCount === 0) {
@@ -531,6 +571,41 @@ function getFullData() {
 }
 
 // ============================================================
+// 工作日历辅助函数
+// ============================================================
+function isWorkday(dateStr) {
+  // 获取当前启用的日历
+  const cal = db.prepare('SELECT * FROM work_calendars WHERE enabled = 1 ORDER BY priority DESC LIMIT 1').get();
+  if (!cal) return true; // 无日历配置，默认每天都是工作日
+
+  // 检查例外日期
+  const exception = db.prepare('SELECT is_workday FROM calendar_exceptions WHERE calendar_id = ? AND exception_date = ?').get(cal.id, dateStr);
+  if (exception) return exception.is_workday === 1;
+
+  // 检查工作日位（周一~周日）
+  const d = new Date(dateStr + 'T00:00:00');
+  const dayOfWeek = d.getDay(); // 0=周日, 1=周一, ..., 6=周六
+  const idx = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // 转为 0=周一, ..., 6=周日
+  return cal.work_days[idx] === '1';
+}
+
+function addWorkdays(startDate, days) {
+  let current = new Date(startDate + 'T00:00:00');
+  let remaining = days;
+  while (remaining > 0) {
+    current.setDate(current.getDate() + 1);
+    const y = current.getFullYear();
+    const m = String(current.getMonth() + 1).padStart(2, '0');
+    const d = String(current.getDate()).padStart(2, '0');
+    if (isWorkday(`${y}-${m}-${d}`)) remaining--;
+  }
+  const y = current.getFullYear();
+  const m = String(current.getMonth() + 1).padStart(2, '0');
+  const d = String(current.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// ============================================================
 // 操作日志
 // ============================================================
 function logOperation(module, action, targetId, targetName, detail) {
@@ -546,4 +621,5 @@ module.exports = {
   searchStyles, getDistinctStyleNos,
   getFullData,
   logOperation,
+  isWorkday, addWorkdays,
 };

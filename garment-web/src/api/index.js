@@ -97,6 +97,19 @@ export default {
   getGanttConfig: () => api.get('/config/gantt'),
   updateGanttConfig: (type, data) => api.put(`/config/gantt/${type}`, data),
 
+  // 工作日历
+  getWorkModes: () => api.get('/work-modes'),
+  createWorkMode: (data) => api.post('/work-modes', data),
+  deleteWorkMode: (id) => api.delete(`/work-modes/${id}`),
+  getWorkCalendars: () => api.get('/work-calendars'),
+  createWorkCalendar: (data) => api.post('/work-calendars', data),
+  updateWorkCalendar: (id, data) => api.put(`/work-calendars/${id}`, data),
+  deleteWorkCalendar: (id) => api.delete(`/work-calendars/${id}`),
+  getCalendarExceptions: (calId) => api.get(`/work-calendars/${calId}/exceptions`),
+  addCalendarException: (calId, data) => api.post(`/work-calendars/${calId}/exceptions`, data),
+  deleteCalendarException: (calId, exId) => api.delete(`/work-calendars/${calId}/exceptions/${exId}`),
+  checkWorkday: (date) => api.get('/workday-check', { params: { date } }),
+
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
 }

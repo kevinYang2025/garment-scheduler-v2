@@ -15,6 +15,7 @@ import SewingPlanDetail from './views/SewingPlanDetail.vue'
 import CapacityConfig from './views/CapacityConfig.vue'
 import VisualSchedule from './views/VisualSchedule.vue'
 import OperationLogs from './views/OperationLogs.vue'
+import WorkCalendar from './views/WorkCalendar.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
@@ -66,6 +67,7 @@ const navSections = [
     label: '系统',
     items: [
       { key: 'config', label: '设置', icon: 'settings' },
+      { key: 'work-calendar', label: '工作日历', icon: 'calendar' },
       { key: 'logs', label: '操作日志', icon: 'list' },
     ]
   },
@@ -297,6 +299,7 @@ function getIcon(name) {
           <WarehouseDetail v-else-if="currentModule === 'warehouse' && warehouseActiveType && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" key="warehouseDetail" />
           <CapacityConfig v-else-if="currentModule === 'config' && DB" :db="DB" key="capacityConfig" />
           <OperationLogs v-else-if="currentModule === 'logs' && DB" key="logs" />
+          <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />
         </KeepAlive>
 
         <div v-if="!DB" class="loading-state">

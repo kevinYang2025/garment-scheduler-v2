@@ -993,6 +993,90 @@ app.put('/api/config/system/:key', (req, res) => {
 });
 
 // ============================================================
+// 工作日历
+// ============================================================
+app.get('/api/work-modes', (req, res) => {
+  try { res.json(db.all('SELECT * FROM work_modes ORDER BY id')); }
+  catch (e) { console.error('GET /api/work-modes error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/work-modes', (req, res) => {
+  try {
+    const { name, working_hours, shifts } = req.body;
+    if (!name) return res.status(400).json({ error: '名称不能为空' });
+    const result = db.run('INSERT INTO work_modes (name, working_hours, shifts) VALUES (?,?,?)',
+      [name, working_hours || 8, JSON.stringify(shifts || ['08:00-17:00'])]);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) { console.error('POST /api/work-modes error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.delete('/api/work-modes/:id', (req, res) => {
+  try { db.run('DELETE FROM work_modes WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { console.error('DELETE /api/work-modes error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.get('/api/work-calendars', (req, res) => {
+  try { res.json(db.all('SELECT * FROM work_calendars ORDER BY priority DESC')); }
+  catch (e) { console.error('GET /api/work-calendars error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/work-calendars', (req, res) => {
+  try {
+    const { name, work_mode_id, work_days, start_date, end_date, priority } = req.body;
+    if (!name) return res.status(400).json({ error: '名称不能为空' });
+    const result = db.run('INSERT INTO work_calendars (name, work_mode_id, work_days, start_date, end_date, priority, enabled) VALUES (?,?,?,?,?,?,1)',
+      [name, work_mode_id, work_days || '1111100', start_date, end_date, priority || 0]);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) { console.error('POST /api/work-calendars error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.put('/api/work-calendars/:id', (req, res) => {
+  try {
+    const { name, work_mode_id, work_days, start_date, end_date, priority, enabled } = req.body;
+    db.run('UPDATE work_calendars SET name=?, work_mode_id=?, work_days=?, start_date=?, end_date=?, priority=?, enabled=? WHERE id=?',
+      [name, work_mode_id, work_days, start_date, end_date, priority || 0, enabled !== undefined ? enabled : 1, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error('PUT /api/work-calendars error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.delete('/api/work-calendars/:id', (req, res) => {
+  try {
+    db.run('DELETE FROM calendar_exceptions WHERE calendar_id = ?', [req.params.id]);
+    db.run('DELETE FROM work_calendars WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error('DELETE /api/work-calendars error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.get('/api/work-calendars/:id/exceptions', (req, res) => {
+  try { res.json(db.all('SELECT * FROM calendar_exceptions WHERE calendar_id = ? ORDER BY exception_date', [req.params.id])); }
+  catch (e) { console.error('GET /api/exceptions error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/work-calendars/:id/exceptions', (req, res) => {
+  try {
+    const { exception_date, is_workday, remark } = req.body;
+    if (!exception_date) return res.status(400).json({ error: '日期不能为空' });
+    db.run('INSERT OR REPLACE INTO calendar_exceptions (calendar_id, exception_date, is_workday, remark) VALUES (?,?,?,?)',
+      [req.params.id, exception_date, is_workday ? 1 : 0, remark || '']);
+    res.json({ ok: true });
+  } catch (e) { console.error('POST /api/exceptions error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.delete('/api/work-calendars/:calendarId/exceptions/:exceptionId', (req, res) => {
+  try { db.run('DELETE FROM calendar_exceptions WHERE id = ? AND calendar_id = ?', [req.params.exceptionId, req.params.calendarId]); res.json({ ok: true }); }
+  catch (e) { console.error('DELETE /api/exceptions error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// 判断某天是否工作日（前端可用）
+app.get('/api/workday-check', (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: '日期不能为空' });
+    res.json({ date, isWorkday: db.isWorkday(date) });
+  } catch (e) { console.error('GET /api/workday-check error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ============================================================
 // 甘特图字段配置
 // ============================================================
 app.get('/api/config/gantt', (req, res) => {
