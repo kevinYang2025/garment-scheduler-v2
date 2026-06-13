@@ -1,0 +1,535 @@
+<script setup>
+import { ref, watch, onMounted, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '../api'
+
+const props = defineProps({
+  warehouseType: { type: String, required: true },
+})
+
+const emit = defineEmits(['back'])
+
+// TODO: 权限判断接口，后续对接实际权限系统
+function hasPermission(perm) {
+  // eslint-disable-next-line no-unused-vars
+  const _p = perm
+  return true
+}
+
+const warehouseMeta = {
+  raw_material: { label: '面料库', unit: '米' },
+  auxiliary: { label: '辅料库', unit: '个/卷' },
+  cutting_piece: { label: '裁片库', unit: '片' },
+  finished: { label: '成品库', unit: '件' },
+}
+
+const meta = computed(() => warehouseMeta[props.warehouseType] || { label: '', unit: '' })
+
+const currentTab = ref('inventory')
+const inbound = ref([])
+const outbound = ref([])
+const inventory = ref([])
+
+const inboundDialogVisible = ref(false)
+const outboundDialogVisible = ref(false)
+const inboundForm = ref({})
+const outboundForm = ref({})
+
+// Import/export
+const importDialogVisible = ref(false)
+const importFile = ref(null)
+const importPreview = ref(null)
+const importing = ref(false)
+const importSheetFilter = ref('') // ''=全部, 'inventory'|'inbound'|'outbound'
+
+function fmtLocal(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// 款式下拉数据（远程搜索）
+const styleOptions = ref([])
+const styleLoading = ref(false)
+let styleSearchTimer = null
+
+async function searchStyles(keyword) {
+  clearTimeout(styleSearchTimer)
+  styleSearchTimer = setTimeout(async () => {
+    styleLoading.value = true
+    try {
+      const { data } = await api.getStyles(keyword || '')
+      styleOptions.value = Array.isArray(data) ? data : []
+    } catch {
+      styleOptions.value = []
+    }
+    styleLoading.value = false
+  }, 250)
+}
+
+async function loadInbound() {
+  try {
+    const { data } = await api.getWarehouseInbound(props.warehouseType)
+    inbound.value = Array.isArray(data) ? data : []
+  } catch {
+    ElMessage.error('加载入库记录失败')
+  }
+}
+
+async function loadOutbound() {
+  try {
+    const { data } = await api.getWarehouseOutbound(props.warehouseType)
+    outbound.value = Array.isArray(data) ? data : []
+  } catch {
+    ElMessage.error('加载出库记录失败')
+  }
+}
+
+async function loadInventory() {
+  try {
+    const { data } = await api.getWarehouseInventory(props.warehouseType)
+    inventory.value = Array.isArray(data) ? data : []
+  } catch {
+    ElMessage.error('加载库存失败')
+  }
+}
+
+function loadAll() {
+  loadInbound()
+  loadOutbound()
+  loadInventory()
+}
+
+function openInbound() {
+  inboundForm.value = {
+    style_no: '',
+    color: '',
+    size_spec: '',
+    qty: null,
+    inbound_date: fmtLocal(new Date()),
+    operator: '',
+  }
+  styleOptions.value = []
+  searchStyles('')
+  inboundDialogVisible.value = true
+}
+
+function openOutbound() {
+  outboundForm.value = {
+    style_no: '',
+    color: '',
+    size_spec: '',
+    qty: null,
+    outbound_date: fmtLocal(new Date()),
+    operator: '',
+  }
+  styleOptions.value = []
+  searchStyles('')
+  outboundDialogVisible.value = true
+}
+
+async function saveInbound() {
+  if (!inboundForm.value.style_no) {
+    ElMessage.warning('请选择款号')
+    return
+  }
+  if (!inboundForm.value.qty || inboundForm.value.qty <= 0) {
+    ElMessage.warning('请输入有效数量')
+    return
+  }
+  try {
+    await api.addWarehouseInbound(props.warehouseType, {
+      ...inboundForm.value,
+      ref_type: '',
+    })
+    ElMessage.success('入库成功')
+    inboundDialogVisible.value = false
+    loadAll()
+  } catch (e) {
+    ElMessage.error('入库失败：' + (e.response?.data?.error || e.message))
+  }
+}
+
+async function saveOutbound() {
+  if (!outboundForm.value.style_no) {
+    ElMessage.warning('请选择款号')
+    return
+  }
+  if (!outboundForm.value.qty || outboundForm.value.qty <= 0) {
+    ElMessage.warning('请输入有效数量')
+    return
+  }
+  try {
+    await api.addWarehouseOutbound(props.warehouseType, {
+      ...outboundForm.value,
+      ref_type: '',
+    })
+    ElMessage.success('出库成功')
+    outboundDialogVisible.value = false
+    loadAll()
+  } catch (e) {
+    ElMessage.error('出库失败：' + (e.response?.data?.error || e.message))
+  }
+}
+
+// 款号选择后自动填充颜色/规格
+function onStyleChange(form, val) {
+  const s = styleOptions.value.find(item => item.style_no === val)
+  if (s) {
+    form.color = s.color || form.color || ''
+    form.size_spec = s.size_spec || form.size_spec || ''
+  }
+}
+
+// Export
+function doExport(sheet) {
+  const params = sheet ? `?sheet=${sheet}` : ''
+  window.open(`/api/warehouse/${props.warehouseType}/export${params}`, '_blank')
+}
+
+// Import
+function onImportFileChange(e) {
+  importFile.value = e.target.files[0]
+}
+
+async function doImport() {
+  if (!importFile.value) return
+  importing.value = true
+  try {
+    const XLSX = await import('xlsx')
+    const data = await importFile.value.arrayBuffer()
+    const wb = XLSX.read(data, { type: 'array' })
+    const records = []
+    for (const sn of wb.SheetNames) {
+      // 如果指定了只导入某个类型，跳过其他Sheet
+      const sheetTypeMap = { '库存': 'inventory', '入库记录': 'inbound', '出库记录': 'outbound' }
+      if (importSheetFilter.value && sheetTypeMap[sn] !== importSheetFilter.value) continue
+      const ws = wb.Sheets[sn]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
+      if (rows.length < 2) continue
+      const headers = rows[0]
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i]
+        if (!row || row.every(c => c == null || c === '')) continue
+        const rec = { _sheet: sn }
+        for (let j = 0; j < Math.min(headers.length, row.length); j++) {
+          if (headers[j]) rec[String(headers[j]).trim()] = row[j]
+        }
+        records.push(rec)
+      }
+    }
+    importPreview.value = records
+  } catch (e) {
+    ElMessage.error('解析Excel失败: ' + e.message)
+  }
+  importing.value = false
+}
+
+function openImport(filter) {
+  importSheetFilter.value = filter
+  importFile.value = null
+  importPreview.value = null
+  importDialogVisible.value = true
+}
+
+async function confirmImport() {
+  if (!importPreview.value?.length) return
+  importing.value = true
+  try {
+    const { data } = await api.importWarehouse(props.warehouseType, importPreview.value)
+    ElMessage.success(`导入完成: ${data.imported} 条`)
+    importDialogVisible.value = false
+    importPreview.value = null
+    importFile.value = null
+    loadAll()
+  } catch (e) {
+    ElMessage.error('导入失败: ' + (e.response?.data?.error || e.message))
+  }
+  importing.value = false
+}
+
+watch(() => props.warehouseType, loadAll)
+onMounted(loadAll)
+</script>
+
+<template>
+  <div class="warehouse-detail">
+    <!-- 顶部操作栏 -->
+    <div class="detail-header">
+      <div class="header-left">
+        <el-button text @click="emit('back')">
+          <span style="margin-right:4px">←</span> 返回
+        </el-button>
+        <h2>{{ meta.label }}</h2>
+      </div>
+      <div class="header-actions">
+        <el-button
+          v-if="hasPermission(`warehouse:${warehouseType}:inbound`)"
+          type="primary"
+          size="large"
+          @click="openInbound"
+        >
+          入库
+        </el-button>
+        <el-button
+          v-if="hasPermission(`warehouse:${warehouseType}:outbound`)"
+          type="warning"
+          size="large"
+          @click="openOutbound"
+        >
+          出库
+        </el-button>
+        <el-divider direction="vertical" />
+        <el-dropdown @command="doExport" style="margin-right:0">
+          <el-button>导出Excel<el-icon class="el-icon--right"><i class="arrow-down" /></el-icon></el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="inventory">导当前 — 库存</el-dropdown-item>
+              <el-dropdown-item command="inbound">导当前 — 入库记录</el-dropdown-item>
+              <el-dropdown-item command="outbound">导当前 — 出库记录</el-dropdown-item>
+              <el-dropdown-item divided command="">全部导出（3个Sheet）</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-dropdown @command="openImport">
+          <el-button>导入Excel<el-icon class="el-icon--right"><i class="arrow-down" /></el-icon></el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="inventory">导当前 — 库存</el-dropdown-item>
+              <el-dropdown-item command="inbound">导当前 — 入库记录</el-dropdown-item>
+              <el-dropdown-item command="outbound">导当前 — 出库记录</el-dropdown-item>
+              <el-dropdown-item divided command="">全部导入（自动识别）</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+    </div>
+
+    <!-- 标签页 -->
+    <el-tabs v-model="currentTab" class="detail-tabs">
+      <el-tab-pane label="动态库存" name="inventory">
+        <el-table :data="inventory" size="small" border stripe>
+          <el-table-column prop="style_no" label="款号" width="120" />
+          <el-table-column prop="color" label="颜色" width="100" />
+          <el-table-column prop="size_spec" label="规格" width="100" />
+          <el-table-column prop="current_qty" label="当前库存" width="120" />
+          <el-table-column prop="updated_at" label="更新时间" width="180" />
+        </el-table>
+      </el-tab-pane>
+
+      <el-tab-pane label="入库记录" name="inbound">
+        <el-table :data="inbound" size="small" border stripe>
+          <el-table-column prop="inbound_date" label="日期" width="120" />
+          <el-table-column prop="style_no" label="款号" width="120" />
+          <el-table-column prop="color" label="颜色" width="100" />
+          <el-table-column prop="size_spec" label="规格" width="100" />
+          <el-table-column prop="qty" label="数量" width="100" />
+          <el-table-column prop="operator" label="操作人" width="100" />
+        </el-table>
+      </el-tab-pane>
+
+      <el-tab-pane label="出库记录" name="outbound">
+        <el-table :data="outbound" size="small" border stripe>
+          <el-table-column prop="outbound_date" label="日期" width="120" />
+          <el-table-column prop="style_no" label="款号" width="120" />
+          <el-table-column prop="color" label="颜色" width="100" />
+          <el-table-column prop="size_spec" label="规格" width="100" />
+          <el-table-column prop="qty" label="数量" width="100" />
+          <el-table-column prop="operator" label="操作人" width="100" />
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 入库弹窗 -->
+    <el-dialog v-model="inboundDialogVisible" title="入库" width="480px">
+      <el-form :model="inboundForm" label-width="80px" size="default">
+        <el-form-item label="款号" required>
+          <el-select
+            v-model="inboundForm.style_no"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="输入款号或品名搜索..."
+            :remote-method="searchStyles"
+            :loading="styleLoading"
+            style="width:100%"
+            @change="onStyleChange(inboundForm, $event)"
+          >
+            <el-option
+              v-for="s in styleOptions"
+              :key="s.id"
+              :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`"
+              :value="s.style_no"
+            />
+          </el-select>
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="颜色">
+              <el-input v-model="inboundForm.color" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="规格">
+              <el-input v-model="inboundForm.size_spec" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="数量" required>
+              <el-input-number
+                v-model="inboundForm.qty"
+                :min="1"
+                :precision="0"
+                style="width:100%"
+              />
+              <span class="unit-suffix">{{ meta.unit }}</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="日期">
+              <el-input v-model="inboundForm.inbound_date" type="date" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="操作人">
+          <el-input v-model="inboundForm.operator" placeholder="可选" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="inboundDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveInbound">确认入库</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 出库弹窗 -->
+    <el-dialog v-model="outboundDialogVisible" title="出库" width="480px">
+      <el-form :model="outboundForm" label-width="80px" size="default">
+        <el-form-item label="款号" required>
+          <el-select
+            v-model="outboundForm.style_no"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="输入款号或品名搜索..."
+            :remote-method="searchStyles"
+            :loading="styleLoading"
+            style="width:100%"
+            @change="onStyleChange(outboundForm, $event)"
+          >
+            <el-option
+              v-for="s in styleOptions"
+              :key="s.id"
+              :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`"
+              :value="s.style_no"
+            />
+          </el-select>
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="颜色">
+              <el-input v-model="outboundForm.color" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="规格">
+              <el-input v-model="outboundForm.size_spec" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="数量" required>
+              <el-input-number
+                v-model="outboundForm.qty"
+                :min="1"
+                :precision="0"
+                style="width:100%"
+              />
+              <span class="unit-suffix">{{ meta.unit }}</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="日期">
+              <el-input v-model="outboundForm.outbound_date" type="date" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="操作人">
+          <el-input v-model="outboundForm.operator" placeholder="可选" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="outboundDialogVisible = false">取消</el-button>
+        <el-button type="warning" @click="saveOutbound">确认出库</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入弹窗 -->
+    <el-dialog v-model="importDialogVisible" :title="importSheetFilter ? '导入' + {inventory:'库存',inbound:'入库记录',outbound:'出库记录'}[importSheetFilter] : '导入Excel（全部）'" width="600px">
+      <div v-if="importSheetFilter" style="margin-bottom:8px;font-size:12px;color:var(--primary-dark)">
+        仅导入 Excel 中"{{ {inventory:'库存',inbound:'入库记录',outbound:'出库记录'}[importSheetFilter] }}"Sheet，其他 Sheet 自动跳过
+      </div>
+      <div style="margin-bottom:12px">
+        <input type="file" accept=".xlsx,.xls" @change="onImportFileChange" />
+        <span v-if="importFile" style="margin-left:8px;color:var(--primary-dark)">{{ importFile.name }}</span>
+      </div>
+      <div v-if="importFile" style="margin-bottom:12px">
+        <el-button @click="doImport" type="primary" :loading="importing">解析预览</el-button>
+      </div>
+      <div v-if="importPreview?.length" style="max-height:300px;overflow:auto">
+        <div style="margin-bottom:4px;font-size:12px;color:var(--text-secondary)">共 {{ importPreview.length }} 条记录</div>
+        <el-table :data="importPreview" size="small" border max-height="220">
+          <el-table-column label="Sheet" width="80"><template #default="{row}">{{ row._sheet }}</template></el-table-column>
+          <el-table-column label="款号" width="100"><template #default="{row}">{{ row['款号'] || row.style_no }}</template></el-table-column>
+          <el-table-column label="颜色/规格" width="120"><template #default="{row}">{{ row['颜色'] || row.color }}/{{ row['规格'] || row.size_spec }}</template></el-table-column>
+          <el-table-column label="数量" width="80"><template #default="{row}">{{ row['数量'] || row['当前库存'] || row.qty }}</template></el-table-column>
+          <el-table-column label="日期" width="110"><template #default="{row}">{{ row['入库日期'] || row['出库日期'] || '' }}</template></el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmImport" :loading="importing" :disabled="!importPreview?.length">确认导入</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style scoped>
+.warehouse-detail {
+  max-width: 1200px;
+}
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-left h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+.detail-tabs {
+  margin-top: 8px;
+}
+.unit-suffix {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+</style>

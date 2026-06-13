@@ -1,0 +1,55 @@
+server:
+  port: 3001
+
+spring:
+  application:
+    name: garment-scheduler
+
+  # H2 数据库配置（开发环境）
+  datasource:
+    url: jdbc:h2:file:./data/garment;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  # H2 控制台（开发调试用）
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # SQL 初始化
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+  # PostgreSQL 配置（生产环境，切换时取消注释）
+  # datasource:
+  #   url: jdbc:postgresql://localhost:5432/garment_scheduler
+  #   driver-class-name: org.postgresql.Driver
+  #   username: garment
+  #   password: garment123
+
+  jackson:
+    default-property-inclusion: non_null
+    date-format: yyyy-MM-dd
+    time-zone: Asia/Shanghai
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: AUTO
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# 日志配置
+logging:
+  level:
+    com.garment.scheduler: DEBUG
+    org.springframework.web.socket: DEBUG

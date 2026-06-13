@@ -1,0 +1,468 @@
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '../api'
+
+const props = defineProps({ db: Object })
+const emit = defineEmits(['back'])
+
+const workshops = ref([])
+const unscheduled = ref([])
+const dateRange = ref({ start: '', end: '' })
+const loading = ref(false)
+const draggedItem = ref(null)
+
+// 日期列表（甘特图横轴）
+const dates = computed(() => {
+  if (!dateRange.value.start || !dateRange.value.end) return []
+  const result = []
+  let current = new Date(dateRange.value.start)
+  const end = new Date(dateRange.value.end)
+  while (current <= end) {
+    const y = current.getFullYear()
+    const m = String(current.getMonth() + 1).padStart(2, '0')
+    const d = String(current.getDate()).padStart(2, '0')
+    result.push(`${y}-${m}-${d}`)
+    current.setDate(current.getDate() + 1)
+  }
+  return result
+})
+
+// 加载甘特图数据
+async function loadGantt() {
+  loading.value = true
+  try {
+    const [ganttRes, rangeRes] = await Promise.all([
+      api.getVisualGantt(),
+      api.getVisualDateRange()
+    ])
+    workshops.value = ganttRes.data.workshops || []
+    unscheduled.value = ganttRes.data.unscheduled || []
+    dateRange.value = rangeRes.data
+  } catch (e) {
+    console.error('加载甘特图失败:', e)
+  }
+  loading.value = false
+}
+
+// 拖拽开始
+function onDragStart(item) {
+  draggedItem.value = item
+}
+
+// 拖拽到产线
+async function onDrop(workshop, line) {
+  if (!draggedItem.value) return
+  try {
+    const res = await api.assignVisual({
+      planId: draggedItem.value.planId,
+      workshop: workshop.name,
+      lineTeam: line.name
+    })
+    if (res.data.ok) {
+      ElMessage.success('排班成功')
+      await loadGantt()
+    } else {
+      ElMessage.error(res.data.error || '排班失败')
+    }
+  } catch (e) {
+    console.error('排班失败:', e)
+  }
+  draggedItem.value = null
+}
+
+// 取消排班
+async function unassign(planId) {
+  try {
+    await ElMessageBox.confirm('确定取消该排班？', '提示', { type: 'warning' })
+    await api.unassignVisual({ planId })
+    ElMessage.success('已取消排班')
+    await loadGantt()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('取消排班失败')
+  }
+}
+
+// 计算任务在甘特图中的位置和宽度
+function getTaskStyle(task) {
+  if (!task.sewingStart || !task.sewingEnd) return { display: 'none' }
+  const startDate = new Date(task.sewingStart)
+  const endDate = new Date(task.sewingEnd)
+  const rangeStart = new Date(dateRange.value.start)
+  const dayWidth = 28 // 每天宽度像素
+  const left = Math.round((startDate - rangeStart) / (1000 * 60 * 60 * 24)) * dayWidth
+  const width = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24) + 1) * dayWidth
+  return {
+    left: left + 'px',
+    width: Math.max(width, dayWidth) + 'px'
+  }
+}
+
+// 格式化日期
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  return dateStr.slice(5) // 只显示 MM-DD
+}
+
+onMounted(loadGantt)
+</script>
+
+<template>
+  <div class="visual-schedule">
+    <div class="toolbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="back-btn" @click="emit('back')">
+          <span style="margin-right:4px">←</span> 返回
+        </button>
+      </div>
+      <button @click="loadGantt" :disabled="loading">
+        {{ loading ? '加载中...' : '刷新' }}
+      </button>
+    </div>
+
+    <div class="content">
+      <!-- 左侧：未排班款式 -->
+      <div class="sidebar">
+        <h4>待排班款式</h4>
+        <div class="unscheduled-list">
+          <div
+            v-for="item in unscheduled"
+            :key="item.planId"
+            class="unscheduled-item"
+            draggable="true"
+            @dragstart="onDragStart(item)"
+          >
+            <div class="item-no">{{ item.styleNo }}</div>
+            <div class="item-name">{{ item.productName }}</div>
+            <div class="item-info">
+              <span>{{ item.color }} {{ item.sizeSpec }}</span>
+              <span>{{ item.planQty }}件</span>
+            </div>
+            <div class="item-due">交期: {{ formatDate(item.dueDate) }}</div>
+          </div>
+          <div v-if="unscheduled.length === 0" class="empty-hint">
+            暂无待排班款式
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：甘特图 -->
+      <div class="gantt-container">
+        <!-- 日期标题 -->
+        <div class="gantt-header">
+          <div class="line-label">产线</div>
+          <div class="dates-row">
+            <div
+              v-for="date in dates"
+              :key="date"
+              class="date-cell"
+              :class="{ weekend: new Date(date).getDay() === 0 || new Date(date).getDay() === 6 }"
+            >
+              {{ formatDate(date) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 车间/产线行 -->
+        <div class="gantt-body">
+          <template v-for="workshop in workshops" :key="workshop.id">
+            <div class="workshop-header">{{ workshop.name }}</div>
+            <div
+              v-for="line in workshop.lines"
+              :key="line.id"
+              class="gantt-row"
+              @dragover.prevent
+              @drop="onDrop(workshop, line)"
+            >
+              <div class="line-label">{{ line.name }}</div>
+              <div class="tasks-area">
+                <div
+                  v-for="task in line.tasks"
+                  :key="task.planId"
+                  class="gantt-bar"
+                  :style="getTaskStyle(task)"
+                  :title="`${task.styleNo} ${task.productName}\n${task.sewingStart} ~ ${task.sewingEnd}\n${task.planQty}件`"
+                  @dblclick="unassign(task.planId)"
+                >
+                  <span class="bar-text">{{ task.styleNo }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span class="legend-item">
+        <span class="legend-color" style="background: var(--primary)"></span>
+        缝制任务
+      </span>
+      <span class="legend-item">双击任务条可取消排班</span>
+      <span class="legend-item">从左侧拖拽款式到产线完成排班</span>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.visual-schedule {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 140px);
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.toolbar .back-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0;
+  transition: var(--transition);
+}
+.toolbar .back-btn:hover { color: var(--primary); }
+
+.toolbar button {
+  padding: 6px 16px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.toolbar button:hover {
+  background: var(--primary-dark);
+}
+
+.toolbar button:disabled {
+  background: var(--border-hover);
+  cursor: not-allowed;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 220px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.sidebar h4 {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.unscheduled-list {
+  padding: 8px;
+}
+
+.unscheduled-item {
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  transition: var(--transition);
+}
+
+.unscheduled-item:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+
+.unscheduled-item:active {
+  cursor: grabbing;
+}
+
+.item-no {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--primary-dark);
+}
+
+.item-name {
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 2px;
+}
+
+.item-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.item-due {
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 4px;
+}
+
+.empty-hint {
+  text-align: center;
+  color: var(--text-tertiary);
+  padding: 20px;
+  font-size: 13px;
+}
+
+.gantt-container {
+  flex: 1;
+  overflow: auto;
+}
+
+.gantt-header {
+  display: flex;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+  border-bottom: 1px solid var(--border);
+}
+
+.line-label {
+  width: 80px;
+  min-width: 80px;
+  padding: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  text-align: center;
+  border-right: 1px solid var(--border);
+  color: var(--text);
+}
+
+.dates-row {
+  display: flex;
+}
+
+.date-cell {
+  width: 28px;
+  min-width: 28px;
+  padding: 4px 2px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border);
+}
+
+.date-cell.weekend {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.gantt-body {
+  overflow-y: auto;
+}
+
+.workshop-header {
+  padding: 8px 12px;
+  background: var(--primary-light);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--primary-dark);
+  border-bottom: 1px solid var(--border);
+}
+
+.gantt-row {
+  display: flex;
+  min-height: 40px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gantt-row:hover {
+  background: var(--bg);
+}
+
+.tasks-area {
+  position: relative;
+  flex: 1;
+  min-height: 40px;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 8px;
+  height: 24px;
+  background: var(--primary);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+  z-index: 1;
+}
+
+.gantt-bar:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+  transform: translateY(-1px);
+}
+
+.bar-text {
+  font-size: 10px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-color {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+</style>
