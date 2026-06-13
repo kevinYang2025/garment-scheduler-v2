@@ -382,6 +382,7 @@ function onDragStart(e) {
   dragY = e.pageY
   dragSL = dragWrap.scrollLeft
   dragST = dragWrap.scrollTop
+  dragWrap.classList.add('dragging')
   e.preventDefault()
 }
 function onDragMove(e) {
@@ -389,7 +390,11 @@ function onDragMove(e) {
   dragWrap.scrollLeft = dragSL - (e.pageX - dragX)
   dragWrap.scrollTop = dragST - (e.pageY - dragY)
 }
-function onDragEnd() { dragging = false; dragWrap = null }
+function onDragEnd() {
+  if (dragWrap) dragWrap.classList.remove('dragging')
+  dragging = false
+  dragWrap = null
+}
 
 onMounted(async () => {
   await load()
@@ -689,9 +694,8 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
-  cursor: grab;
 }
-.excel-wrap:active { cursor: grabbing; }
+.excel-wrap.dragging { user-select: none; }
 
 .excel-table {
   border-collapse: collapse;

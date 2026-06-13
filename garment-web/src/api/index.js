@@ -113,6 +113,12 @@ export default {
   // 报工汇总
   getDispatchSummary: (params) => api.get('/dispatch-summary', { params }),
 
+  // 交期预估
+  getEstimations: () => api.get('/estimations'),
+  simulateEstimation: (data) => api.post('/estimations/simulate', data),
+  saveEstimation: (data) => api.post('/estimations', data),
+  confirmEstimation: (id) => api.put(`/estimations/${id}/confirm`),
+
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
 }
