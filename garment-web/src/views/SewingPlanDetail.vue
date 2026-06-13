@@ -169,11 +169,20 @@ function dailyQty(masterId, date, rt) {
   const apiRow = dd ? dd.find(d => d.date === date) : null
 
   if (rt === 'plan') {
-    // API数据优先，没有则按目标日产量自动填充
+    // API数据优先
     if (apiRow && apiRow.plan) return apiRow.plan
+    // 按目标日产量自动分配，总数不超过计划数
     const m = masters.value.find(x => x.id === masterId)
-    if (m && m.plan_start && m.plan_end && m.daily_target && date >= m.plan_start && date <= m.plan_end) {
-      return m.daily_target
+    if (m && m.plan_start && m.plan_end && m.daily_target && m.plan_qty && date >= m.plan_start && date <= m.plan_end) {
+      // 计算该款在计划范围内的第几天（从0开始）
+      const sd = new Date(m.plan_start + 'T00:00:00')
+      const cd = new Date(date + 'T00:00:00')
+      const dayIdx = Math.floor((cd - sd) / 86400000)
+      const fullDays = Math.floor(m.plan_qty / m.daily_target)
+      const remainder = m.plan_qty % m.daily_target
+      if (dayIdx < fullDays) return m.daily_target
+      if (dayIdx === fullDays && remainder > 0) return remainder
+      return 0
     }
     return 0
   }

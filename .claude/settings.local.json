@@ -78,7 +78,13 @@
       "Bash(git init *)",
       "Bash(git add *)",
       "Bash(rm -rf garment-scheduler/.git garment-server/.git garment-web/.git)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(gh repo *)",
+      "Bash(git checkout *)",
+      "Bash(git push *)",
+      "Bash(git merge *)"
     ]
   }
 }

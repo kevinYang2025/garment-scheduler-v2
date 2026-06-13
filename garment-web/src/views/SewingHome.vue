@@ -47,13 +47,7 @@ onMounted(loadSummaries)
 
 <template>
   <div class="sewing-home">
-    <div class="page-header">
-      <button class="back-btn" @click="emit('back')">
-        <span class="back-arrow">←</span> 返回工作台
-      </button>
-      <h2>缝制排程管理</h2>
-      <p>选择排程类型进入管理</p>
-    </div>
+
 
     <div v-if="loading" class="loading">
       <div class="loading-spinner"></div>
@@ -95,35 +89,7 @@ onMounted(loadSummaries)
 .sewing-home {
   max-width: 800px;
 }
-.page-header {
-  margin-bottom: 24px;
-}
-.back-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 0;
-  margin-bottom: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transition: var(--transition);
-}
-.back-btn:hover { color: var(--primary); }
-.back-arrow { font-size: 14px; }
-.page-header h2 {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 4px;
-}
-.page-header p {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

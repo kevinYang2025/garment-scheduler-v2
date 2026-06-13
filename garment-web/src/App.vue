@@ -17,7 +17,6 @@ import VisualSchedule from './views/VisualSchedule.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
-const currentSub = ref('')
 const warehouseActiveType = ref('')
 const secondaryActiveType = ref('')
 const sewingActiveType = ref('')
@@ -70,17 +69,6 @@ const navSections = [
   },
 ]
 
-const sewingTabs = [
-  { key: 'plan', label: '班组缝制计划' },
-  { key: 'visual', label: '目视化班组排程' },
-]
-
-const subTabs = computed(() => {
-  if (currentModule.value === 'sewing') return sewingTabs
-  return []
-})
-
-const showSubTabs = computed(() => subTabs.value.length > 0)
 
 const allNavItems = navSections.flatMap(s => s.items)
 const pageTitle = computed(() => {
@@ -115,7 +103,6 @@ function enterModule(key) {
     return
   }
   currentModule.value = key
-  if (key !== 'sewing') currentSub.value = ''
   if (key === 'warehouse') warehouseActiveType.value = ''
   if (key === 'secondary') secondaryActiveType.value = ''
   if (key === 'sewing') sewingActiveType.value = ''
@@ -123,7 +110,6 @@ function enterModule(key) {
 
 function goHome() {
   currentModule.value = 'home'
-  currentSub.value = ''
   warehouseActiveType.value = ''
   secondaryActiveType.value = ''
   sewingActiveType.value = ''
@@ -153,9 +139,7 @@ function backToSewingHome() {
   sewingActiveType.value = ''
 }
 
-function switchSub(key) {
-  currentSub.value = key
-}
+
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -267,22 +251,6 @@ function getIcon(name) {
           <span class="header-date">{{ today }}</span>
         </div>
       </header>
-
-      <!-- Sub nav (for sewing tabs) -->
-      <nav v-if="currentModule !== 'home' && showSubTabs" class="sub-nav">
-        <button class="back-btn" @click="goHome">
-          <span v-html="getIcon('arrowLeft')"></span> 返回
-        </button>
-        <div class="sub-tabs">
-          <div
-            v-for="tab in subTabs"
-            :key="tab.key"
-            class="sub-tab"
-            :class="{ active: currentSub === tab.key }"
-            @click="switchSub(tab.key)"
-          >{{ tab.label }}</div>
-        </div>
-      </nav>
 
       <!-- Content -->
       <main class="main-content">
@@ -735,44 +703,6 @@ body {
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
-
-/* ===== Sub nav ===== */
-.sub-nav {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 24px;
-  height: 44px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.back-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 0;
-  transition: var(--transition);
-}
-.back-btn:hover { color: var(--text); }
-.sub-tabs { display: flex; gap: 0; }
-.sub-tab {
-  padding: 10px 16px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  border-bottom: 2px solid transparent;
-  transition: var(--transition);
-}
-.sub-tab:hover { color: var(--text-secondary); }
-.sub-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
 
 /* ===== Main content ===== */
 .main-content {
