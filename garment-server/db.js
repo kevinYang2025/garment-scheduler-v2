@@ -314,6 +314,31 @@ function createTables() {
       remark TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    -- 出货计划
+    CREATE TABLE IF NOT EXISTS shipping_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_no TEXT NOT NULL,
+      customer TEXT DEFAULT '',
+      style_no TEXT DEFAULT '',
+      product_name TEXT DEFAULT '',
+      plan_qty INTEGER DEFAULT 0,
+      ship_date TEXT,
+      status TEXT DEFAULT 'PLANNED',
+      remark TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- 排产策略
+    CREATE TABLE IF NOT EXISTS scheduling_strategies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      rule_type TEXT DEFAULT 'due_date',
+      description TEXT DEFAULT '',
+      config TEXT DEFAULT '{}',
+      active INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 
@@ -490,6 +515,16 @@ function seedDefaultData() {
   }
 
   console.log('✅ 数据库初始化完成：5个车间、50条产线、20条款式');
+
+  // 排产策略种子数据
+  const stratCount = db.prepare('SELECT COUNT(*) as c FROM scheduling_strategies').get().c;
+  if (stratCount === 0) {
+    const insStrat = db.prepare('INSERT INTO scheduling_strategies (name, rule_type, description, config, active) VALUES (?,?,?,?,?)');
+    insStrat.run('交期优先', 'due_date', '按交期从近到远排序，紧急订单优先排产', '{"sortField":"due_date","sortDir":"asc","prioritizeUrgent":true}', 1);
+    insStrat.run('批量优先', 'batch_size', '大批量订单优先排产，减少换线次数', '{"sortField":"plan_qty","sortDir":"desc","minimizeChangeover":true}', 0);
+    insStrat.run('均衡排产', 'balanced', '综合考虑交期、产能、换线，均衡分配', '{"sortField":"priority","sortDir":"asc","balanceLoad":true}', 0);
+    console.log('✅ 排产策略种子数据已生成');
+  }
 }
 
 // [fix#11] Read from system_config instead of hardcoding
@@ -642,6 +677,105 @@ function recalcTaskStatus(masterId) {
 }
 
 // ============================================================
+// 自动排产算法（贪心）
+// ============================================================
+function autoSchedule(strategyId) {
+  try {
+    const strategy = strategyId
+      ? db.prepare('SELECT * FROM scheduling_strategies WHERE id = ?').get(strategyId)
+      : db.prepare('SELECT * FROM scheduling_strategies WHERE active = 1').get();
+
+    if (!strategy) return { error: '未找到排产策略' };
+
+    const config = JSON.parse(strategy.config || '{}');
+    const sortField = config.sortField || 'due_date';
+
+    let orderBy = sortField === 'priority' ? 'priority ASC, due_date ASC' :
+                  sortField === 'plan_qty' ? 'plan_qty DESC' :
+                  'due_date ASC';
+
+    const unplanned = db.prepare(`SELECT * FROM main_plan WHERE is_scheduled = 0 OR is_scheduled IS NULL ORDER BY ${orderBy}`).all();
+    if (unplanned.length === 0) return { message: '没有待排产的计划', scheduled: 0 };
+
+    const lines = db.prepare("SELECT * FROM production_lines WHERE status != '故障' ORDER BY sort_order").all();
+    const workshops = db.prepare('SELECT * FROM workshops ORDER BY sort_order').all();
+    const sewingCap = db.get("SELECT daily_capacity FROM capacity_config WHERE process_type = 'sewing'");
+    const dailyCapacity = sewingCap?.daily_capacity || 800;
+
+    let scheduled = 0;
+    let lineIdx = 0;
+
+    const txn = db.transaction(() => {
+      for (const plan of unplanned) {
+        if (lines.length === 0) break;
+        if (lineIdx >= lines.length) lineIdx = 0;
+
+        const line = lines[lineIdx];
+        const workshop = workshops.find(w => w.id === line.workshop_id);
+        const sewingDays = Math.ceil((plan.plan_qty || 0) / dailyCapacity);
+        const startDate = plan.sewing_start || plan.cutting_start || fmtLocal(new Date());
+        const endDate = plan.sewing_end || addWorkdays(startDate, sewingDays);
+
+        db.run('UPDATE main_plan SET is_scheduled = 1, workshop = ?, line_team = ? WHERE id = ?',
+          [workshop?.name || '', line.line_name, plan.id]);
+
+        const result = db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, plan_qty, plan_start, plan_end, workshop, line_team, daily_target, due_date)
+          VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [plan.style_id, plan.style_no, plan.product_name, plan.plan_qty, startDate, endDate, workshop?.name || '', line.line_name, dailyCapacity, plan.due_date || '']);
+
+        if (startDate && endDate && plan.plan_qty > 0) {
+          generatePlanRows(result.lastInsertRowid, startDate, endDate, plan.plan_qty);
+        }
+
+        lineIdx++;
+        scheduled++;
+      }
+    });
+    txn();
+
+    broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
+    broadcastSection('schedule_sewing', db.all("SELECT * FROM schedule_master WHERE schedule_type = 'sewing'"));
+    logOperation('scheduling', 'auto_schedule', strategyId, strategy.name, `自动排产${scheduled}条`);
+
+    return { ok: true, scheduled, strategy: strategy.name };
+  } catch (e) {
+    console.error('autoSchedule error:', e);
+    return { error: e.message };
+  }
+}
+
+// ============================================================
+// 产能预排（验证可行性）
+// ============================================================
+function capacityPrecheck() {
+  try {
+    const plans = db.prepare("SELECT * FROM main_plan WHERE is_scheduled = 0 OR is_scheduled IS NULL").all();
+    if (plans.length === 0) return { message: '没有待排产的计划', plans: [] };
+
+    const sewingCap = db.get("SELECT daily_capacity FROM capacity_config WHERE process_type = 'sewing'");
+    const dailyCapacity = sewingCap?.daily_capacity || 800;
+    const lines = db.prepare("SELECT * FROM production_lines WHERE status != '故障'").all();
+    const lineCount = lines.length;
+
+    const results = plans.map(p => {
+      const sewingDays = Math.ceil((p.plan_qty || 0) / dailyCapacity);
+      const parallelDays = Math.ceil(sewingDays / Math.max(lineCount, 1));
+      return {
+        id: p.id, style_no: p.style_no, plan_qty: p.plan_qty,
+        sewing_days: sewingDays, parallel_days: parallelDays,
+        due_date: p.due_date, is_feasible: true,
+        warning: parallelDays > 30 ? '排程周期过长，建议增加产线或分批' : null,
+      };
+    });
+
+    return { ok: true, plans: results, lineCount, dailyCapacity };
+  } catch (e) {
+    console.error('capacityPrecheck error:', e);
+    return { error: e.message };
+  }
+}
+
+// ============================================================
 // 工作日历辅助函数
 // ============================================================
 function isWorkday(dateStr) {
@@ -694,4 +828,5 @@ module.exports = {
   logOperation,
   isWorkday, addWorkdays,
   recalcTaskStatus,
+  autoSchedule, capacityPrecheck,
 };

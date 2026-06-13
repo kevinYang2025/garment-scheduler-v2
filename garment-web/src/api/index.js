@@ -119,6 +119,23 @@ export default {
   saveEstimation: (data) => api.post('/estimations', data),
   confirmEstimation: (id) => api.put(`/estimations/${id}/confirm`),
 
+  // 出货计划
+  getShippingPlans: () => api.get('/shipping-plans'),
+  createShippingPlan: (data) => api.post('/shipping-plans', data),
+  updateShippingPlan: (id, data) => api.put(`/shipping-plans/${id}`, data),
+  deleteShippingPlan: (id) => api.delete(`/shipping-plans/${id}`),
+  generateShippingPlans: () => api.post('/shipping-plans/generate'),
+
+  // 排产策略
+  getStrategies: () => api.get('/strategies'),
+  createStrategy: (data) => api.post('/strategies', data),
+  updateStrategy: (id, data) => api.put(`/strategies/${id}`, data),
+  deleteStrategy: (id) => api.delete(`/strategies/${id}`),
+
+  // 自动排产 & 产能预排
+  autoSchedule: (strategyId) => api.post('/auto-schedule', { strategy_id: strategyId }),
+  capacityPrecheck: () => api.get('/capacity-precheck'),
+
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
 }

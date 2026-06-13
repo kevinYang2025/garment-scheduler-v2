@@ -873,6 +873,103 @@ app.put('/api/estimations/:id/confirm', (req, res) => {
   }
 });
 
+// ---------- 出货计划 ----------
+app.get('/api/shipping-plans', (req, res) => {
+  try { res.json(db.all('SELECT * FROM shipping_plans ORDER BY ship_date')); }
+  catch (e) { console.error('GET /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/shipping-plans', (req, res) => {
+  try {
+    const p = req.body;
+    if (!p.plan_no) return res.status(400).json({ error: '计划编号不能为空' });
+    const result = db.run('INSERT INTO shipping_plans (plan_no, customer, style_no, product_name, plan_qty, ship_date, remark) VALUES (?,?,?,?,?,?,?)',
+      [p.plan_no, p.customer || '', p.style_no || '', p.product_name || '', p.plan_qty || 0, p.ship_date || '', p.remark || '']);
+    db.logOperation('shipping', 'create', result.lastInsertRowid, p.plan_no);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) { console.error('POST /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.put('/api/shipping-plans/:id', (req, res) => {
+  try {
+    const p = req.body;
+    db.run('UPDATE shipping_plans SET customer=?, style_no=?, product_name=?, plan_qty=?, ship_date=?, status=?, remark=? WHERE id=?',
+      [p.customer, p.style_no, p.product_name, p.plan_qty, p.ship_date, p.status, p.remark, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error('PUT /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.delete('/api/shipping-plans/:id', (req, res) => {
+  try { db.run('DELETE FROM shipping_plans WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { console.error('DELETE /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// 从主计划自动生成出货计划
+app.post('/api/shipping-plans/generate', (req, res) => {
+  try {
+    const plans = db.all('SELECT * FROM main_plan WHERE due_date IS NOT NULL ORDER BY due_date');
+    let count = 0;
+    const txn = db.transaction(() => {
+      for (const p of plans) {
+        const existing = db.get('SELECT id FROM shipping_plans WHERE style_no = ? AND ship_date = ?', [p.style_no, p.due_date]);
+        if (existing) continue;
+        const planNo = `SP-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(++count).padStart(3,'0')}`;
+        db.run('INSERT INTO shipping_plans (plan_no, customer, style_no, product_name, plan_qty, ship_date) VALUES (?,?,?,?,?,?)',
+          [planNo, '', p.style_no, p.product_name, p.plan_qty, p.due_date]);
+      }
+    });
+    txn();
+    db.logOperation('shipping', 'generate', null, `自动生成${count}条出货计划`);
+    res.json({ ok: true, count });
+  } catch (e) { console.error('POST /api/shipping-plans/generate error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ---------- 排产策略 ----------
+app.get('/api/strategies', (req, res) => {
+  try { res.json(db.all('SELECT * FROM scheduling_strategies ORDER BY id')); }
+  catch (e) { console.error('GET /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/strategies', (req, res) => {
+  try {
+    const s = req.body;
+    const result = db.run('INSERT INTO scheduling_strategies (name, rule_type, description, config, active) VALUES (?,?,?,?,?)',
+      [s.name, s.rule_type || 'due_date', s.description || '', JSON.stringify(s.config || {}), s.active ? 1 : 0]);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) { console.error('POST /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.put('/api/strategies/:id', (req, res) => {
+  try {
+    const s = req.body;
+    db.run('UPDATE scheduling_strategies SET name=?, rule_type=?, description=?, config=?, active=? WHERE id=?',
+      [s.name, s.rule_type, s.description, JSON.stringify(s.config || {}), s.active ? 1 : 0, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error('PUT /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.delete('/api/strategies/:id', (req, res) => {
+  try { db.run('DELETE FROM scheduling_strategies WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { console.error('DELETE /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// 一键自动排产
+app.post('/api/auto-schedule', (req, res) => {
+  try {
+    const { strategy_id } = req.body;
+    const result = db.autoSchedule(strategy_id);
+    res.json(result);
+  } catch (e) { console.error('POST /api/auto-schedule error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// 产能预排验证
+app.get('/api/capacity-precheck', (req, res) => {
+  try {
+    const result = db.capacityPrecheck();
+    res.json(result);
+  } catch (e) { console.error('GET /api/capacity-precheck error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // [fix#8] Override instead of accumulate
 function syncActualToDaily(record) {
   const masters = db.all('SELECT id FROM schedule_master WHERE style_no = ? AND schedule_type = ?',

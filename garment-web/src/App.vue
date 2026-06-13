@@ -18,6 +18,8 @@ import OperationLogs from './views/OperationLogs.vue'
 import WorkCalendar from './views/WorkCalendar.vue'
 import DispatchReport from './views/DispatchReport.vue'
 import DeliveryEstimation from './views/DeliveryEstimation.vue'
+import ShippingPlan from './views/ShippingPlan.vue'
+import SchedulingStrategy from './views/SchedulingStrategy.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
@@ -72,6 +74,8 @@ const navSections = [
       { key: 'work-calendar', label: '工作日历', icon: 'calendar' },
       { key: 'dispatch', label: '报工汇总', icon: 'data-analysis' },
       { key: 'estimation', label: '交期预估', icon: 'timer' },
+      { key: 'shipping', label: '出货计划', icon: 'van' },
+      { key: 'strategy', label: '排产策略', icon: 'magic-stick' },
       { key: 'logs', label: '操作日志', icon: 'list' },
     ]
   },
@@ -306,6 +310,8 @@ function getIcon(name) {
           <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />
           <DispatchReport v-else-if="currentModule === 'dispatch' && DB" key="dispatch" />
           <DeliveryEstimation v-else-if="currentModule === 'estimation' && DB" key="estimation" />
+          <ShippingPlan v-else-if="currentModule === 'shipping' && DB" key="shipping" />
+          <SchedulingStrategy v-else-if="currentModule === 'strategy' && DB" key="strategy" />
         </KeepAlive>
 
         <div v-if="!DB" class="loading-state">
