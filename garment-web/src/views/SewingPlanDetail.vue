@@ -1,6 +1,6 @@
 <script setup>
 // Excel列映射严格按照用户提供的《缝制排程模板.xlsx》调整
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import DateFilter from '../components/DateFilter.vue'
@@ -28,6 +28,28 @@ function cancelEdit() {
   editingId.value = null
   editForm.value = {}
 }
+
+// 缝制结束 = 缝制开始 + ceil(裁床计划数量 / 目标日产量) 天
+function calcPlanEnd(start, qty, daily) {
+  if (!start || !qty || !daily) return ''
+  const days = Math.ceil(qty / daily)
+  const d = new Date(start + 'T00:00:00')
+  d.setDate(d.getDate() + days - 1)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+// 编辑时自动计算缝制结束
+watch(() => [editForm.value.plan_start, editForm.value.cutting_plan_qty, editForm.value.daily_target], () => {
+  if (!editingId.value) return
+  const v = calcPlanEnd(editForm.value.plan_start, editForm.value.cutting_plan_qty, editForm.value.daily_target)
+  if (v) editForm.value.plan_end = v
+})
+
+// 新增弹窗自动计算缝制结束
+watch(() => [form.value.plan_start, form.value.cutting_plan_qty, form.value.daily_target], () => {
+  const v = calcPlanEnd(form.value.plan_start, form.value.cutting_plan_qty, form.value.daily_target)
+  if (v) form.value.plan_end = v
+})
 async function saveEdit() {
   try {
     console.log('saveEdit sending:', JSON.stringify(editForm.value).slice(0, 300))
@@ -173,13 +195,14 @@ function dailyQty(masterId, date, rt) {
     if (apiRow && apiRow.plan) return apiRow.plan
     // 按目标日产量自动分配，总数不超过计划数
     const m = masters.value.find(x => x.id === masterId)
-    if (m && m.plan_start && m.plan_end && m.daily_target && m.plan_qty && date >= m.plan_start && date <= m.plan_end) {
+    const totalQty = m && (m.cutting_plan_qty || m.plan_qty)
+    if (m && m.plan_start && m.plan_end && m.daily_target && totalQty && date >= m.plan_start && date <= m.plan_end) {
       // 计算该款在计划范围内的第几天（从0开始）
       const sd = new Date(m.plan_start + 'T00:00:00')
       const cd = new Date(date + 'T00:00:00')
       const dayIdx = Math.floor((cd - sd) / 86400000)
-      const fullDays = Math.floor(m.plan_qty / m.daily_target)
-      const remainder = m.plan_qty % m.daily_target
+      const fullDays = Math.floor(totalQty / m.daily_target)
+      const remainder = totalQty % m.daily_target
       if (dayIdx < fullDays) return m.daily_target
       if (dayIdx === fullDays && remainder > 0) return remainder
       return 0
@@ -193,6 +216,26 @@ function dailyQty(masterId, date, rt) {
 
 function formatQty(v) { return v != null ? v.toLocaleString() : '0' }
 function colorFor(v) { if (v > 0) return 'var(--success)'; if (v < 0) return 'var(--danger)'; return 'var(--text-tertiary)' }
+
+// 今天日期（本地时间）
+const _td = new Date()
+const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`
+
+// 日差异：当天实际-当天计划，仅<=今天有效
+function dailyDiffVal(masterId, date) {
+  if (date > today) return null
+  return dailyQty(masterId, date, 'actual') - dailyQty(masterId, date, 'plan')
+}
+
+// 日差异合计：截止今天的所有日差异之和
+function dailyDiffSum(masterId) {
+  let sum = 0
+  for (const d of dateCols.value) {
+    if (d > today) break
+    sum += dailyQty(masterId, d, 'actual') - dailyQty(masterId, d, 'plan')
+  }
+  return sum
+}
 function dateLabel(d) { return d ? d.slice(5) : '' }
 
 function openCreate() {
@@ -235,6 +278,7 @@ async function remove(id) {
 }
 
 async function updateDailyActual(masterId, date, val) {
+  if (date > today) { ElMessage.warning('不能填写未来日期的实际产量'); return }
   try {
     const m = masters.value.find(x => x.id === masterId)
     await api.saveActual({
@@ -464,7 +508,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
                 <template v-else>{{ g.master.plan_start || '' }}</template>
               </td>
               <td class="fix">
-                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.plan_end" type="date" /></template>
+                <template v-if="editingId === g.master.id"><span style="color:var(--text-secondary)">{{ editForm.plan_end || '自动计算' }}</span></template>
                 <template v-else>{{ g.master.plan_end || '' }}</template>
               </td>
               <td class="fix num sum-cell">{{ formatQty(g.planSum) }}</td>
@@ -491,22 +535,23 @@ onMounted(async () => { await load(); await loadAllDaily() })
               <td class="fix type-label" style="color:var(--success)">实际QC1</td>
               <td v-for="d in dateCols" :key="'a'+d" class="cell-num cell-edit">
                 <input type="number" class="inp-qty" :value="dailyQty(g.master.id, d, 'actual')"
+                  :disabled="d > today"
                   @change="e => updateDailyActual(g.master.id, d, e.target.value)" min="0" />
               </td>
               <td class="fix"></td>
             </tr>
-            <!-- 差异行 -->
+            <!-- 日差异行 -->
             <tr class="row-diff">
               <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
               <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
-              <td class="fix num sum-cell" :style="{color: colorFor(g.actualSum - g.planSum)}">
-                {{ (g.actualSum - g.planSum) > 0 ? '+' : '' }}{{ formatQty(g.actualSum - g.planSum) }}
+              <td class="fix num sum-cell" :style="{color: colorFor(dailyDiffSum(g.master.id))}">
+                {{ dailyDiffSum(g.master.id) > 0 ? '+' : '' }}{{ formatQty(dailyDiffSum(g.master.id)) }}
               </td>
-              <td class="fix type-label" style="color:var(--warning)">差异</td>
-              <td v-for="d in dateCols" :key="'d'+d" class="cell-num"
-                :style="{color: colorFor(dailyQty(g.master.id, d, 'actual') - dailyQty(g.master.id, d, 'plan'))}">
-                {{ (dailyQty(g.master.id, d, 'actual') - dailyQty(g.master.id, d, 'plan')) > 0 ? '+' : '' }}
-                {{ formatQty(dailyQty(g.master.id, d, 'actual') - dailyQty(g.master.id, d, 'plan')) }}
+              <td class="fix type-label" style="color:var(--warning)">日差异</td>
+              <td v-for="d in dateCols" :key="'dd'+d" class="cell-num"
+                :style="{color: colorFor(dailyDiffVal(g.master.id, d))}">
+                <template v-if="dailyDiffVal(g.master.id, d) != null">{{ dailyDiffVal(g.master.id, d) > 0 ? '+' : '' }}{{ formatQty(dailyDiffVal(g.master.id, d)) }}</template>
+                <template v-else>—</template>
               </td>
               <td class="fix"></td>
             </tr>
@@ -537,7 +582,7 @@ onMounted(async () => { await load(); await loadAllDaily() })
         <el-form-item label="交期"><el-input v-model="form.due_date" type="date" /></el-form-item>
         <el-row :gutter="12">
           <el-col :span="12"><el-form-item label="缝制上线"><el-input v-model="form.plan_start" type="date" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="缝制下线"><el-input v-model="form.plan_end" type="date" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="缝制下线"><span style="line-height:32px;color:var(--text-secondary)">{{ form.plan_end || '自动计算' }}</span></el-form-item></el-col>
         </el-row>
       </el-form>
       <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" @click="create">创建</el-button></template>
@@ -706,5 +751,10 @@ tbody tr:hover td { background: var(--primary-light) !important; }
   background: var(--card);
   outline: none;
   box-shadow: 0 0 0 2px rgba(0,0,0,.06);
+}
+.inp-qty:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 </style>
