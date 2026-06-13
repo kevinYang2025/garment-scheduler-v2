@@ -81,8 +81,11 @@ app.use((req, res, next) => {
 function validateStyle(s) {
   const errors = [];
   if (!s.style_no || !s.style_no.trim()) errors.push('款号不能为空');
-  if (s.style_no && s.style_no.length > 100) errors.push('款号长度不能超过100');
+  if (s.style_no && s.style_no.length > 50) errors.push('款号长度不能超过50');
   if (s.product_name && s.product_name.length > 100) errors.push('品名长度不能超过100');
+  if (s.color && s.color.length > 30) errors.push('颜色长度不能超过30');
+  if (s.size_spec && s.size_spec.length > 30) errors.push('规格长度不能超过30');
+  if (s.customer && s.customer.length > 100) errors.push('客户名长度不能超过100');
   if (s.plan_qty !== undefined && (isNaN(s.plan_qty) || s.plan_qty < 0)) errors.push('计划数量必须为非负数');
   return errors;
 }
@@ -100,6 +103,9 @@ function validateWarehouseRecord(r, type) {
   const errors = [];
   if (!r.style_no || !r.style_no.trim()) errors.push('款号不能为空');
   if (r.style_no && r.style_no.length > 50) errors.push('款号长度不能超过50');
+  if (r.color && r.color.length > 30) errors.push('颜色长度不能超过30');
+  if (r.size_spec && r.size_spec.length > 30) errors.push('规格长度不能超过30');
+  if (r.operator && r.operator.length > 50) errors.push('操作人长度不能超过50');
   if (!r.qty || isNaN(r.qty) || r.qty <= 0) errors.push('数量必须为正数');
   if (!r.inbound_date && !r.outbound_date) errors.push('日期不能为空');
   return errors;
@@ -470,12 +476,12 @@ app.delete('/api/schedule/:scheduleType/:id', (req, res) => {
 // ---------- 缝制模块汇总 ----------
 app.get('/api/schedule/sewing/summary', (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = fmtLocal(new Date());
     const d = new Date();
     const dow = d.getDay();
     const monday = new Date(d);
     monday.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-    const mondayStr = monday.toISOString().split('T')[0];
+    const mondayStr = fmtLocal(monday);
 
     const planMasters = db.all("SELECT * FROM schedule_master WHERE schedule_type='sewing'");
     const visualMasters = db.all("SELECT * FROM schedule_master WHERE schedule_type='sewing' AND workshop != '' AND line_team !=''");
@@ -516,14 +522,14 @@ app.get('/api/schedule/sewing/export', async (req, res) => {
       }
       masterDailies.push({ master: m, dailyMap });
     }
-    if (!minDate) minDate = new Date().toISOString().split('T')[0];
-    if (!maxDate) maxDate = new Date().toISOString().split('T')[0];
-    const sd = new Date(minDate + 'T00:00:00Z'), ed = new Date(maxDate + 'T00:00:00Z');
+    if (!minDate) minDate = fmtLocal(new Date());
+    if (!maxDate) maxDate = fmtLocal(new Date());
+    const sd = new Date(minDate + 'T00:00:00'), ed = new Date(maxDate + 'T00:00:00');
     const days = Math.floor((ed - sd) / 86400000) + 1;
     const dateCols = [];
     for (let i = 0; i < Math.min(days, 60); i++) {
-      const dt = new Date(sd); dt.setUTCDate(dt.getUTCDate() + i);
-      dateCols.push(dt.toISOString().split('T')[0]);
+      const dt = new Date(sd); dt.setDate(dt.getDate() + i);
+      dateCols.push(fmtLocal(dt));
     }
 
     const wb = new ExcelJS.Workbook();
@@ -581,7 +587,7 @@ app.get('/api/schedule/sewing/export', async (req, res) => {
 
     const buf = await wb.xlsx.writeBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('班组缝制计划_' + new Date().toISOString().split('T')[0].replace(/-/g, '') + '.xlsx')}`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('班组缝制计划_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
     res.send(Buffer.from(buf));
   } catch (e) {
     console.error('Sewing export error:', e);
@@ -856,7 +862,7 @@ app.get('/api/warehouse/:type/export', async (req, res) => {
     const suffix = sheet ? `_${nameMap[sheet]}` : '';
     const buf = await wb.xlsx.writeBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(whNames[whType] + suffix + '_' + new Date().toISOString().split('T')[0].replace(/-/g, '') + '.xlsx')}`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(whNames[whType] + suffix + '_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
     res.send(Buffer.from(buf));
   } catch (e) {
     console.error('Warehouse export error:', e);
@@ -890,12 +896,12 @@ app.post('/api/warehouse/:type/import', (req, res) => {
           } else if (sheet === '入库记录') {
             const qty = parseInt(r['数量'] || r.qty) || 0;
             db.run('INSERT INTO warehouse_inbound (warehouse_type,style_no,color,size_spec,qty,inbound_date,operator) VALUES (?,?,?,?,?,?,?)',
-              [whType, styleNo, color, sizeSpec, qty, r['入库日期'] || r.inbound_date || new Date().toISOString().split('T')[0], r['操作人'] || r.operator || '']);
+              [whType, styleNo, color, sizeSpec, qty, r['入库日期'] || r.inbound_date || fmtLocal(new Date()), r['操作人'] || r.operator || '']);
             updateInventory(whType, styleNo, color, sizeSpec, qty);
           } else if (sheet === '出库记录') {
             const qty = parseInt(r['数量'] || r.qty) || 0;
             db.run('INSERT INTO warehouse_outbound (warehouse_type,style_no,color,size_spec,qty,outbound_date,operator) VALUES (?,?,?,?,?,?,?)',
-              [whType, styleNo, color, sizeSpec, qty, r['出库日期'] || r.outbound_date || new Date().toISOString().split('T')[0], r['操作人'] || r.operator || '']);
+              [whType, styleNo, color, sizeSpec, qty, r['出库日期'] || r.outbound_date || fmtLocal(new Date()), r['操作人'] || r.operator || '']);
             updateInventory(whType, styleNo, color, sizeSpec, -qty);
           }
           imported++;
