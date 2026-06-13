@@ -52,7 +52,6 @@ watch(() => [form.value.plan_start, form.value.cutting_plan_qty, form.value.dail
 })
 async function saveEdit() {
   try {
-    console.log('saveEdit sending:', JSON.stringify(editForm.value).slice(0, 300))
     await api.updateSchedule('sewing', editForm.value.id, editForm.value)
     ElMessage.success('修改成功')
     editingId.value = null
@@ -162,7 +161,10 @@ const dateCols = computed(() => {
 const groups = computed(() => {
   return filteredMasters.value.map(m => {
     const dd = dailyData.value[m.id] || []
-    const planSum = dateCols.value.reduce((s, date) => s + dailyQty(m.id, date, 'plan'), 0)
+    const planSum = dateCols.value.reduce((s, date) => {
+      const apiRow = dd.find(d => d.date === date)
+      return s + calcPlanQty(m, date, apiRow)
+    }, 0)
     const actualSum = dd.reduce((s, r) => s + (r.actual || 0), 0)
     return { master: m, daily: dd, planSum, actualSum }
   })
@@ -182,8 +184,29 @@ async function loadAllDaily() {
     ids.map(id => api.getScheduleDaily('sewing', id).then(r => ({ id, data: r.data })))
   )
   for (const r of results) {
-    if (r.status === 'fulfilled') dailyData.value[r.value.id] = r.value.data || []
+    if (r.status === 'fulfilled') {
+      dailyData.value[r.value.id] = r.value.data || []
+    } else {
+      console.error('loadAllDaily failed:', r.reason)
+    }
   }
+}
+
+// 计算某款某日的计划产量（纯函数，避免重复查找 master）
+function calcPlanQty(master, date, apiRow) {
+  if (apiRow && apiRow.plan) return apiRow.plan
+  const totalQty = master.cutting_plan_qty || master.plan_qty
+  if (master.plan_start && master.plan_end && master.daily_target && totalQty && date >= master.plan_start && date <= master.plan_end) {
+    const sd = new Date(master.plan_start + 'T00:00:00')
+    const cd = new Date(date + 'T00:00:00')
+    const dayIdx = Math.floor((cd - sd) / 86400000)
+    const fullDays = Math.floor(totalQty / master.daily_target)
+    const remainder = totalQty % master.daily_target
+    if (dayIdx < fullDays) return master.daily_target
+    if (dayIdx === fullDays && remainder > 0) return remainder
+    return 0
+  }
+  return 0
 }
 
 function dailyQty(masterId, date, rt) {
@@ -191,23 +214,8 @@ function dailyQty(masterId, date, rt) {
   const apiRow = dd ? dd.find(d => d.date === date) : null
 
   if (rt === 'plan') {
-    // API数据优先
-    if (apiRow && apiRow.plan) return apiRow.plan
-    // 按目标日产量自动分配，总数不超过计划数
     const m = masters.value.find(x => x.id === masterId)
-    const totalQty = m && (m.cutting_plan_qty || m.plan_qty)
-    if (m && m.plan_start && m.plan_end && m.daily_target && totalQty && date >= m.plan_start && date <= m.plan_end) {
-      // 计算该款在计划范围内的第几天（从0开始）
-      const sd = new Date(m.plan_start + 'T00:00:00')
-      const cd = new Date(date + 'T00:00:00')
-      const dayIdx = Math.floor((cd - sd) / 86400000)
-      const fullDays = Math.floor(totalQty / m.daily_target)
-      const remainder = totalQty % m.daily_target
-      if (dayIdx < fullDays) return m.daily_target
-      if (dayIdx === fullDays && remainder > 0) return remainder
-      return 0
-    }
-    return 0
+    return m ? calcPlanQty(m, date, apiRow) : 0
   }
 
   // 实际行只从API数据读取
@@ -217,16 +225,18 @@ function dailyQty(masterId, date, rt) {
 function formatQty(v) { return v != null ? v.toLocaleString() : '0' }
 function colorFor(v) { if (v > 0) return 'var(--success)'; if (v < 0) return 'var(--danger)'; return 'var(--text-tertiary)' }
 
-// 今天日期（本地时间）
-const _td = new Date()
-const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`
+// 今天日期（本地时间，实时计算）
+const today = computed(() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+})
 
 // 日期窗口：默认显示 today-7 到 today+21，箭头滚动切换
 const viewOffset = ref(0)
 function shiftWeek(dir) { viewOffset.value += dir * 7 }
 
 const visibleDateCols = computed(() => {
-  const d = new Date(today + 'T00:00:00')
+  const d = new Date(today.value + 'T00:00:00')
   const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
   const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
   const wsStr = `${ws.getFullYear()}-${String(ws.getMonth()+1).padStart(2,'0')}-${String(ws.getDate()).padStart(2,'0')}`
@@ -236,7 +246,7 @@ const visibleDateCols = computed(() => {
 
 // 日差异：当天实际-当天计划，仅<=今天有效
 function dailyDiffVal(masterId, date) {
-  if (date > today) return null
+  if (date > today.value) return null
   return dailyQty(masterId, date, 'actual') - dailyQty(masterId, date, 'plan')
 }
 
@@ -244,7 +254,7 @@ function dailyDiffVal(masterId, date) {
 function dailyDiffSum(masterId) {
   let sum = 0
   for (const d of dateCols.value) {
-    if (d > today) break
+    if (d > today.value) break
     sum += dailyQty(masterId, d, 'actual') - dailyQty(masterId, d, 'plan')
   }
   return sum
@@ -285,15 +295,16 @@ async function remove(id) {
   try {
     await ElMessageBox.confirm('确定删除？', '提示', { type: 'warning' })
     await api.deleteSchedule('sewing', id)
-    dailyData.value[id] = null
+    delete dailyData.value[id]
     await load()
   } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败') }
 }
 
 async function updateDailyActual(masterId, date, val) {
-  if (date > today) { ElMessage.warning('不能填写未来日期的实际产量'); return }
+  if (date > today.value) { ElMessage.warning('不能填写未来日期的实际产量'); return }
+  const m = masters.value.find(x => x.id === masterId)
+  if (!m) { ElMessage.error('排程不存在'); return }
   try {
-    const m = masters.value.find(x => x.id === masterId)
     await api.saveActual({
       schedule_type: 'sewing', style_id: m?.style_id || 0, style_no: m?.style_no || '',
       color: '', size_spec: '', production_date: date,
@@ -312,6 +323,11 @@ function onImportFileChange(e) { importFile.value = e.target.files[0] }
 async function doImport() {
   if (!importFile.value) return
   if (importing.value) return  // 防止重复提交
+  // 文件大小限制 5MB
+  if (importFile.value.size > 5 * 1024 * 1024) {
+    ElMessage.warning('文件大小不能超过 5MB')
+    return
+  }
   importing.value = true
   try {
     const XLSX = await import('xlsx')
@@ -408,6 +424,8 @@ onMounted(async () => {
   }
 })
 onUnmounted(() => {
+  const body = bodyRef.value
+  if (body) body.removeEventListener('mousedown', onDragStart)
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', onDragEnd)
 })
@@ -591,20 +609,20 @@ onUnmounted(() => {
             <!-- 实际QC1行 -->
             <tr class="row-actual">
               <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
-              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
               <td class="fix num sum-cell">{{ formatQty(g.actualSum) }}</td>
               <td class="fix type-label" style="color:var(--success)">实际QC1</td>
               <td v-for="d in visibleDateCols" :key="'a'+d" class="cell-num cell-edit" :class="{ 'today-col': d === today }">
                 <input type="number" class="inp-qty" :value="dailyQty(g.master.id, d, 'actual')"
                   :disabled="d > today"
-                  @change="e => updateDailyActual(g.master.id, d, e.target.value)" min="0" />
+                  @change="e => updateDailyActual(g.master.id, d, e.target.value)" min="0" max="99999" />
               </td>
               <td class="fix"></td>
             </tr>
             <!-- 日差异行 -->
             <tr class="row-diff">
               <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
-              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
               <td class="fix num sum-cell" :style="{color: colorFor(dailyDiffSum(g.master.id))}">
                 {{ dailyDiffSum(g.master.id) > 0 ? '+' : '' }}{{ formatQty(dailyDiffSum(g.master.id)) }}
               </td>
@@ -695,7 +713,10 @@ onUnmounted(() => {
   border-radius: var(--radius);
   background: var(--card);
 }
-.excel-wrap.dragging { user-select: none; }
+.excel-wrap.dragging,
+.excel-wrap.dragging td,
+.excel-wrap.dragging th,
+.excel-wrap.dragging input { user-select: none !important; }
 
 .excel-table {
   border-collapse: collapse;
