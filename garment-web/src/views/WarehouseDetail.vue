@@ -24,6 +24,7 @@ const warehouseMeta = {
 }
 
 const meta = computed(() => warehouseMeta[props.warehouseType] || { label: '', unit: '' })
+const isFabric = computed(() => props.warehouseType === 'raw_material')
 
 const currentTab = ref('inventory')
 const inbound = ref([])
@@ -68,6 +69,46 @@ async function searchStyles(keyword) {
   }, 250)
 }
 
+// 面料装柜数据选择
+const fabricOptions = ref([])
+const fabricLoading = ref(false)
+const fabricSelectKey = ref('')
+const currentInventoryQty = ref(0)
+let fabricSearchTimer = null
+
+async function searchFabricOptions(keyword) {
+  clearTimeout(fabricSearchTimer)
+  fabricSearchTimer = setTimeout(async () => {
+    fabricLoading.value = true
+    try {
+      const { data } = await api.get('/fabric-loading/options', { params: { keyword: keyword || '' } })
+      fabricOptions.value = Array.isArray(data) ? data : []
+    } catch {
+      fabricOptions.value = []
+    }
+    fabricLoading.value = false
+  }, 250)
+}
+
+function onFabricSelect(form, val) {
+  const f = fabricOptions.value.find(item => `${item.style_no}|${item.pot_no}` === val)
+  if (f) {
+    form.style_no = f.style_no || ''
+    form.pot_no = f.pot_no || ''
+    form.fabric_name = f.fabric_name || ''
+    form.supplier = f.supplier || ''
+    form.customer = f.customer || ''
+    form.color = f.color || ''
+    form.width = f.width || ''
+    form.weight = f.weight || ''
+    form.unit = f.unit || 'KG'
+    form.loading_qty = f.loading_qty || 0
+    // 查当前库存
+    const inv = inventory.value.find(i => i.style_no === f.style_no && i.pot_no === f.pot_no)
+    currentInventoryQty.value = inv ? inv.current_qty : 0
+  }
+}
+
 async function loadInbound() {
   try {
     const { data } = await api.getWarehouseInbound(props.warehouseType)
@@ -102,30 +143,38 @@ function loadAll() {
 }
 
 function openInbound() {
+  const today = fmtLocal(new Date()).replace(/-/g, '')
+  const todayCount = inbound.value.filter(r => (r.inbound_date || '').startsWith(fmtLocal(new Date()))).length
+  const orderNo = `RB${today}-${String(todayCount + 1).padStart(3, '0')}`
   inboundForm.value = {
-    style_no: '',
-    color: '',
-    size_spec: '',
-    qty: null,
-    inbound_date: fmtLocal(new Date()),
-    operator: '',
+    style_no: '', color: '', size_spec: '', qty: null,
+    inbound_date: fmtLocal(new Date()), operator: '',
+    pot_no: '', fabric_name: '', supplier: '', customer: '',
+    width: '', weight: '', unit: 'KG', total_pcs: 0, unit2: '匹', remark: '',
+    order_no: orderNo, loading_qty: 0,
   }
-  styleOptions.value = []
-  searchStyles('')
+  fabricSelectKey.value = ''
+  currentInventoryQty.value = 0
+  if (isFabric.value) { fabricOptions.value = []; searchFabricOptions('') }
+  else { styleOptions.value = []; searchStyles('') }
   inboundDialogVisible.value = true
 }
 
 function openOutbound() {
+  const today = fmtLocal(new Date()).replace(/-/g, '')
+  const todayCount = outbound.value.filter(r => (r.outbound_date || '').startsWith(fmtLocal(new Date()))).length
+  const orderNo = `CB${today}-${String(todayCount + 1).padStart(3, '0')}`
   outboundForm.value = {
-    style_no: '',
-    color: '',
-    size_spec: '',
-    qty: null,
-    outbound_date: fmtLocal(new Date()),
-    operator: '',
+    style_no: '', color: '', size_spec: '', qty: null,
+    outbound_date: fmtLocal(new Date()), operator: '',
+    pot_no: '', fabric_name: '', supplier: '', customer: '',
+    width: '', weight: '', unit: 'KG', total_pcs: 0, unit2: '匹', remark: '',
+    order_no: orderNo,
   }
-  styleOptions.value = []
-  searchStyles('')
+  fabricSelectKey.value = ''
+  currentInventoryQty.value = 0
+  if (isFabric.value) { fabricOptions.value = []; searchFabricOptions('') }
+  else { styleOptions.value = []; searchStyles('') }
   outboundDialogVisible.value = true
 }
 
@@ -310,93 +359,162 @@ onMounted(loadAll)
     <el-tabs v-model="currentTab" class="detail-tabs">
       <el-tab-pane label="动态库存" name="inventory">
         <el-table :data="inventory" size="small" border stripe>
-          <el-table-column prop="style_no" label="款号" width="120" />
-          <el-table-column prop="color" label="颜色" width="100" />
-          <el-table-column prop="size_spec" label="规格" width="100" />
-          <el-table-column prop="current_qty" label="当前库存" width="120" />
-          <el-table-column prop="updated_at" label="更新时间" width="180" />
+          <template v-if="isFabric">
+            <el-table-column prop="supplier" label="供应商" width="120" />
+            <el-table-column prop="customer" label="客户" width="120" />
+            <el-table-column prop="style_no" label="款号" width="140" />
+            <el-table-column prop="pot_no" label="锅号" width="140" />
+            <el-table-column prop="fabric_name" label="面料名称" width="180" />
+            <el-table-column prop="width" label="幅宽" width="80" />
+            <el-table-column prop="weight" label="克重" width="80" />
+            <el-table-column prop="color" label="颜色" width="120" />
+            <el-table-column prop="current_qty" label="当前库存" width="100" />
+            <el-table-column prop="unit" label="单位" width="70" />
+            <el-table-column prop="total_pcs" label="总匹数" width="80" />
+            <el-table-column prop="unit2" label="单位2" width="70" />
+            <el-table-column prop="updated_at" label="更新时间" width="160" />
+          </template>
+          <template v-else>
+            <el-table-column prop="style_no" label="款号" width="120" />
+            <el-table-column prop="color" label="颜色" width="100" />
+            <el-table-column prop="size_spec" label="规格" width="100" />
+            <el-table-column prop="current_qty" label="当前库存" width="120" />
+            <el-table-column prop="updated_at" label="更新时间" width="180" />
+          </template>
         </el-table>
       </el-tab-pane>
 
       <el-tab-pane label="入库记录" name="inbound">
         <el-table :data="inbound" size="small" border stripe>
-          <el-table-column prop="inbound_date" label="日期" width="120" />
-          <el-table-column prop="style_no" label="款号" width="120" />
-          <el-table-column prop="color" label="颜色" width="100" />
-          <el-table-column prop="size_spec" label="规格" width="100" />
-          <el-table-column prop="qty" label="数量" width="100" />
-          <el-table-column prop="operator" label="操作人" width="100" />
+          <template v-if="isFabric">
+            <el-table-column prop="inbound_date" label="入库日期" width="110" />
+            <el-table-column prop="order_no" label="入库单号" width="160" />
+            <el-table-column prop="supplier" label="供应商" width="120" />
+            <el-table-column prop="customer" label="客户" width="120" />
+            <el-table-column prop="style_no" label="款号" width="140" />
+            <el-table-column prop="pot_no" label="锅号" width="140" />
+            <el-table-column prop="fabric_name" label="面料名称" width="180" />
+            <el-table-column prop="width" label="幅宽" width="80" />
+            <el-table-column prop="weight" label="克重" width="80" />
+            <el-table-column prop="color" label="颜色" width="120" />
+            <el-table-column prop="qty" label="数量" width="90" />
+            <el-table-column prop="unit" label="单位" width="70" />
+            <el-table-column prop="loading_qty" label="装柜数量" width="90" />
+            <el-table-column prop="total_pcs" label="总匹数" width="80" />
+            <el-table-column prop="unit2" label="单位2" width="70" />
+            <el-table-column prop="remark" label="备注" width="150" />
+          </template>
+          <template v-else>
+            <el-table-column prop="inbound_date" label="日期" width="120" />
+            <el-table-column prop="style_no" label="款号" width="120" />
+            <el-table-column prop="color" label="颜色" width="100" />
+            <el-table-column prop="size_spec" label="规格" width="100" />
+            <el-table-column prop="qty" label="数量" width="100" />
+            <el-table-column prop="operator" label="操作人" width="100" />
+          </template>
         </el-table>
       </el-tab-pane>
 
       <el-tab-pane label="出库记录" name="outbound">
         <el-table :data="outbound" size="small" border stripe>
-          <el-table-column prop="outbound_date" label="日期" width="120" />
-          <el-table-column prop="style_no" label="款号" width="120" />
-          <el-table-column prop="color" label="颜色" width="100" />
-          <el-table-column prop="size_spec" label="规格" width="100" />
-          <el-table-column prop="qty" label="数量" width="100" />
-          <el-table-column prop="operator" label="操作人" width="100" />
+          <template v-if="isFabric">
+            <el-table-column prop="outbound_date" label="出库日期" width="110" />
+            <el-table-column prop="order_no" label="出库单号" width="160" />
+            <el-table-column prop="supplier" label="供应商" width="120" />
+            <el-table-column prop="customer" label="客户" width="120" />
+            <el-table-column prop="style_no" label="款号" width="140" />
+            <el-table-column prop="pot_no" label="锅号" width="140" />
+            <el-table-column prop="fabric_name" label="面料名称" width="180" />
+            <el-table-column prop="width" label="幅宽" width="80" />
+            <el-table-column prop="weight" label="克重" width="80" />
+            <el-table-column prop="color" label="颜色" width="120" />
+            <el-table-column prop="qty" label="数量" width="90" />
+            <el-table-column prop="unit" label="单位" width="70" />
+            <el-table-column prop="total_pcs" label="总匹数" width="80" />
+            <el-table-column prop="unit2" label="单位2" width="70" />
+            <el-table-column prop="remark" label="备注" width="150" />
+          </template>
+          <template v-else>
+            <el-table-column prop="outbound_date" label="日期" width="120" />
+            <el-table-column prop="style_no" label="款号" width="120" />
+            <el-table-column prop="color" label="颜色" width="100" />
+            <el-table-column prop="size_spec" label="规格" width="100" />
+            <el-table-column prop="qty" label="数量" width="100" />
+            <el-table-column prop="operator" label="操作人" width="100" />
+          </template>
         </el-table>
       </el-tab-pane>
     </el-tabs>
 
     <!-- 入库弹窗 -->
-    <el-dialog v-model="inboundDialogVisible" title="入库" width="480px">
-      <el-form :model="inboundForm" label-width="80px" size="default">
-        <el-form-item label="款号" required>
-          <el-select
-            v-model="inboundForm.style_no"
-            filterable
-            remote
-            reserve-keyword
-            placeholder="输入款号或品名搜索..."
-            :remote-method="searchStyles"
-            :loading="styleLoading"
-            style="width:100%"
-            @change="onStyleChange(inboundForm, $event)"
-          >
-            <el-option
-              v-for="s in styleOptions"
-              :key="s.id"
-              :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`"
-              :value="s.style_no"
-            />
-          </el-select>
-        </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="颜色">
-              <el-input v-model="inboundForm.color" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="规格">
-              <el-input v-model="inboundForm.size_spec" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="数量" required>
-              <el-input-number
-                v-model="inboundForm.qty"
-                :min="1"
-                :precision="0"
-                style="width:100%"
+    <el-dialog v-model="inboundDialogVisible" title="入库" :width="isFabric ? '800px' : '480px'">
+      <el-form :model="inboundForm" :label-width="isFabric ? '80px' : '80px'" size="default">
+        <!-- 面料库：从装柜数据选择 -->
+        <template v-if="isFabric">
+          <el-form-item label="装柜数据">
+            <el-select
+              v-model="fabricSelectKey"
+              filterable
+              remote
+              reserve-keyword
+              placeholder="输入款号、锅号或面料名称搜索..."
+              :remote-method="searchFabricOptions"
+              :loading="fabricLoading"
+              style="width:100%"
+              @change="onFabricSelect(inboundForm, $event)"
+            >
+              <el-option
+                v-for="(f, idx) in fabricOptions"
+                :key="idx"
+                :label="`${f.style_no} | ${f.pot_no} | ${f.fabric_name} | ${f.color}`"
+                :value="`${f.style_no}|${f.pot_no}`"
               />
-              <span class="unit-suffix">{{ meta.unit }}</span>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="日期">
-              <el-input v-model="inboundForm.inbound_date" type="date" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="操作人">
-          <el-input v-model="inboundForm.operator" placeholder="可选" />
-        </el-form-item>
+            </el-select>
+          </el-form-item>
+          <el-row :gutter="12">
+            <el-col :span="8"><el-form-item label="款号"><el-input v-model="inboundForm.style_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="锅号"><el-input v-model="inboundForm.pot_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="面料名称"><el-input v-model="inboundForm.fabric_name" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="8"><el-form-item label="供应商"><el-input v-model="inboundForm.supplier" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="客户"><el-input v-model="inboundForm.customer" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="颜色"><el-input v-model="inboundForm.color" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="6"><el-form-item label="幅宽"><el-input v-model="inboundForm.width" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="克重"><el-input v-model="inboundForm.weight" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="数量" required><el-input-number v-model="inboundForm.qty" :min="0" :precision="1" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="单位"><el-input v-model="inboundForm.unit" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="6"><el-form-item label="总匹数"><el-input-number v-model="inboundForm.total_pcs" :min="0" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="日期"><el-input v-model="inboundForm.inbound_date" type="date" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="备注"><el-input v-model="inboundForm.remark" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="8"><el-form-item label="入库单号"><el-input v-model="inboundForm.order_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="当前库存"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="装柜数量"><el-input :model-value="inboundForm.loading_qty" readonly /></el-form-item></el-col>
+          </el-row>
+        </template>
+        <!-- 其他仓库：原有表单 -->
+        <template v-else>
+          <el-form-item label="款号" required>
+            <el-select v-model="inboundForm.style_no" filterable remote reserve-keyword placeholder="输入款号搜索..." :remote-method="searchStyles" :loading="styleLoading" style="width:100%" @change="onStyleChange(inboundForm, $event)">
+              <el-option v-for="s in styleOptions" :key="s.id" :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`" :value="s.style_no" />
+            </el-select>
+          </el-form-item>
+          <el-row :gutter="12">
+            <el-col :span="12"><el-form-item label="颜色"><el-input v-model="inboundForm.color" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="规格"><el-input v-model="inboundForm.size_spec" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="12"><el-form-item label="数量" required><el-input-number v-model="inboundForm.qty" :min="1" :precision="0" style="width:100%" /><span class="unit-suffix">{{ meta.unit }}</span></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="日期"><el-input v-model="inboundForm.inbound_date" type="date" /></el-form-item></el-col>
+          </el-row>
+          <el-form-item label="操作人"><el-input v-model="inboundForm.operator" placeholder="可选" /></el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="inboundDialogVisible = false">取消</el-button>
@@ -405,61 +523,74 @@ onMounted(loadAll)
     </el-dialog>
 
     <!-- 出库弹窗 -->
-    <el-dialog v-model="outboundDialogVisible" title="出库" width="480px">
-      <el-form :model="outboundForm" label-width="80px" size="default">
-        <el-form-item label="款号" required>
-          <el-select
-            v-model="outboundForm.style_no"
-            filterable
-            remote
-            reserve-keyword
-            placeholder="输入款号或品名搜索..."
-            :remote-method="searchStyles"
-            :loading="styleLoading"
-            style="width:100%"
-            @change="onStyleChange(outboundForm, $event)"
-          >
-            <el-option
-              v-for="s in styleOptions"
-              :key="s.id"
-              :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`"
-              :value="s.style_no"
-            />
-          </el-select>
-        </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="颜色">
-              <el-input v-model="outboundForm.color" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="规格">
-              <el-input v-model="outboundForm.size_spec" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="数量" required>
-              <el-input-number
-                v-model="outboundForm.qty"
-                :min="1"
-                :precision="0"
-                style="width:100%"
+    <el-dialog v-model="outboundDialogVisible" title="出库" :width="isFabric ? '800px' : '480px'">
+      <el-form :model="outboundForm" :label-width="isFabric ? '80px' : '80px'" size="default">
+        <!-- 面料库：从装柜数据选择 -->
+        <template v-if="isFabric">
+          <el-form-item label="装柜数据">
+            <el-select
+              v-model="fabricSelectKey"
+              filterable
+              remote
+              reserve-keyword
+              placeholder="输入款号、锅号或面料名称搜索..."
+              :remote-method="searchFabricOptions"
+              :loading="fabricLoading"
+              style="width:100%"
+              @change="onFabricSelect(outboundForm, $event)"
+            >
+              <el-option
+                v-for="(f, idx) in fabricOptions"
+                :key="idx"
+                :label="`${f.style_no} | ${f.pot_no} | ${f.fabric_name} | ${f.color}`"
+                :value="`${f.style_no}|${f.pot_no}`"
               />
-              <span class="unit-suffix">{{ meta.unit }}</span>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="日期">
-              <el-input v-model="outboundForm.outbound_date" type="date" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="操作人">
-          <el-input v-model="outboundForm.operator" placeholder="可选" />
-        </el-form-item>
+            </el-select>
+          </el-form-item>
+          <el-row :gutter="12">
+            <el-col :span="8"><el-form-item label="款号"><el-input v-model="outboundForm.style_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="锅号"><el-input v-model="outboundForm.pot_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="面料名称"><el-input v-model="outboundForm.fabric_name" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="8"><el-form-item label="供应商"><el-input v-model="outboundForm.supplier" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="客户"><el-input v-model="outboundForm.customer" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="颜色"><el-input v-model="outboundForm.color" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="6"><el-form-item label="幅宽"><el-input v-model="outboundForm.width" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="克重"><el-input v-model="outboundForm.weight" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="数量" required><el-input-number v-model="outboundForm.qty" :min="0" :precision="1" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="单位"><el-input v-model="outboundForm.unit" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="6"><el-form-item label="总匹数"><el-input-number v-model="outboundForm.total_pcs" :min="0" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="日期"><el-input v-model="outboundForm.outbound_date" type="date" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="备注"><el-input v-model="outboundForm.remark" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="8"><el-form-item label="出库单号"><el-input v-model="outboundForm.order_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="当前库存"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
+            <el-col :span="8"></el-col>
+          </el-row>
+        </template>
+        <!-- 其他仓库：原有表单 -->
+        <template v-else>
+          <el-form-item label="款号" required>
+            <el-select v-model="outboundForm.style_no" filterable remote reserve-keyword placeholder="输入款号搜索..." :remote-method="searchStyles" :loading="styleLoading" style="width:100%" @change="onStyleChange(outboundForm, $event)">
+              <el-option v-for="s in styleOptions" :key="s.id" :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`" :value="s.style_no" />
+            </el-select>
+          </el-form-item>
+          <el-row :gutter="12">
+            <el-col :span="12"><el-form-item label="颜色"><el-input v-model="outboundForm.color" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="规格"><el-input v-model="outboundForm.size_spec" /></el-form-item></el-col>
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="12"><el-form-item label="数量" required><el-input-number v-model="outboundForm.qty" :min="1" :precision="0" style="width:100%" /><span class="unit-suffix">{{ meta.unit }}</span></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="日期"><el-input v-model="outboundForm.outbound_date" type="date" /></el-form-item></el-col>
+          </el-row>
+          <el-form-item label="操作人"><el-input v-model="outboundForm.operator" placeholder="可选" /></el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="outboundDialogVisible = false">取消</el-button>

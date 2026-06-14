@@ -4,8 +4,12 @@ dist/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+*.db
+*.db-journal
 .env
 .env.*
 *.log
+*.xlsx
+*.xlsx~
 .DS_Store
 Thumbs.db

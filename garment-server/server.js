@@ -1002,10 +1002,11 @@ app.post('/api/warehouse/:type/inbound', (req, res) => {
     const errors = validateWarehouseRecord(r, req.params.type);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
-    const result = db.run(`INSERT INTO warehouse_inbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator)
-      VALUES (?,?,?,?,?,?,?,?,?)`,
-      [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.inbound_date, r.operator || '']);
-    updateInventory(req.params.type, r.style_no, r.color, r.size_spec, r.qty);
+    const result = db.run(`INSERT INTO warehouse_inbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no, loading_qty)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.inbound_date, r.operator || '',
+       r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', r.order_no || '', r.loading_qty || 0]);
+    updateInventory(req.params.type, r.style_no, r.color, r.size_spec, r.qty, r);
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
     db.logOperation('warehouse', 'inbound', null, `${req.params.type} 入库${r.qty}件`);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -1031,15 +1032,16 @@ app.post('/api/warehouse/:type/outbound', (req, res) => {
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
     const txn = db.getDb().transaction(() => {
-      const inv = db.get('SELECT current_qty FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ?',
-        [req.params.type, r.style_no, r.color || '', r.size_spec || '']);
+      const inv = db.get('SELECT current_qty FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
+        [req.params.type, r.style_no, r.color || '', r.size_spec || '', r.pot_no || '']);
       if (!inv || inv.current_qty < r.qty) {
         throw new Error(`库存不足，当前库存 ${inv ? inv.current_qty : 0}，出库 ${r.qty}`);
       }
-      const result = db.run(`INSERT INTO warehouse_outbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, outbound_date, operator)
-        VALUES (?,?,?,?,?,?,?,?,?)`,
-        [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.outbound_date, r.operator || '']);
-      updateInventory(req.params.type, r.style_no, r.color, r.size_spec, -r.qty);
+      const result = db.run(`INSERT INTO warehouse_outbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, outbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.outbound_date, r.operator || '',
+         r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', r.order_no || '']);
+      updateInventory(req.params.type, r.style_no, r.color, r.size_spec, -r.qty, r);
       return result;
     });
     const result = txn();
@@ -1164,20 +1166,415 @@ app.post('/api/warehouse/:type/import', (req, res) => {
   }
 });
 
+// ============================================================
+// ASN 到货通知单（入库流程）
+// ============================================================
+// 生成 ASN 单号
+function genAsnCode() {
+  const now = new Date();
+  const d = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  const count = db.get("SELECT COUNT(*) as c FROM asn_list WHERE asn_code LIKE ?", [`ASN${d}%`]).c;
+  return `ASN${d}${String(count + 1).padStart(3, '0')}`;
+}
+
+app.get('/api/asn', (req, res) => {
+  try {
+    const { warehouse_type, status } = req.query;
+    let sql = 'SELECT * FROM asn_list WHERE 1=1';
+    const params = [];
+    if (warehouse_type) { sql += ' AND warehouse_type = ?'; params.push(warehouse_type); }
+    if (status) { sql += ' AND status = ?'; params.push(status); }
+    sql += ' ORDER BY id DESC';
+    res.json(db.all(sql, params));
+  } catch (e) { console.error('GET /api/asn error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.get('/api/asn/:id', (req, res) => {
+  try {
+    const asn = db.get('SELECT * FROM asn_list WHERE id = ?', [req.params.id]);
+    if (!asn) return res.status(404).json({ error: 'Not found' });
+    asn.details = db.all('SELECT * FROM asn_detail WHERE asn_id = ?', [asn.id]);
+    res.json(asn);
+  } catch (e) { console.error('GET /api/asn/:id error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/asn', (req, res) => {
+  try {
+    const { warehouse_type, supplier, expected_date, details, remark } = req.body;
+    if (!warehouse_type) return res.status(400).json({ error: '仓库类型不能为空' });
+    const asn_code = genAsnCode();
+    let total_qty = 0;
+    if (details) details.forEach(d => total_qty += d.plan_qty || 0);
+
+    const result = db.run('INSERT INTO asn_list (asn_code, warehouse_type, supplier, status, expected_date, total_qty, remark, operator) VALUES (?,?,?,?,?,?,?,?)',
+      [asn_code, warehouse_type, supplier || '', 'PENDING', expected_date || '', total_qty, remark || '', req.body.operator || 'YC']);
+    const asnId = result.lastInsertRowid;
+
+    if (details && details.length > 0) {
+      const insDetail = db.prepare('INSERT INTO asn_detail (asn_id, style_no, fabric_name, color, size_spec, pot_no, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?,?,?)');
+      for (const d of details) {
+        insDetail.run(asnId, d.style_no || '', d.fabric_name || '', d.color || '', d.size_spec || '', d.pot_no || '', d.plan_qty || 0, d.unit || '件', d.remark || '');
+      }
+    }
+
+    db.logOperation('asn', 'create', asnId, asn_code);
+    res.json({ ok: true, id: asnId, asn_code });
+  } catch (e) { console.error('POST /api/asn error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.put('/api/asn/:id/status', (req, res) => {
+  try {
+    const { status, actual_qty, shortage_qty, damage_qty } = req.body;
+    const asn = db.get('SELECT * FROM asn_list WHERE id = ?', [req.params.id]);
+    if (!asn) return res.status(404).json({ error: 'Not found' });
+
+    const validTransitions = {
+      'PENDING': ['RECEIVED', 'CANCELLED'],
+      'RECEIVED': ['INSPECTING', 'COMPLETED'],
+      'INSPECTING': ['COMPLETED'],
+      'COMPLETED': [],
+      'CANCELLED': [],
+    };
+    if (!validTransitions[asn.status]?.includes(status)) {
+      return res.status(400).json({ error: `不能从 ${asn.status} 转换到 ${status}` });
+    }
+
+    db.run('UPDATE asn_list SET status = ?, actual_date = datetime("now","localtime") WHERE id = ?', [status, req.params.id]);
+
+    if (status === 'COMPLETED') {
+      // 入库完成：更新库存
+      const details = db.all('SELECT * FROM asn_detail WHERE asn_id = ?', [asn.id]);
+      for (const d of details) {
+        const qty = d.actual_qty || d.plan_qty || 0;
+        if (qty > 0) {
+          updateInventory(asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, { pot_no: d.pot_no });
+          // 写入 inbound 记录
+          db.run(`INSERT INTO warehouse_inbound (warehouse_type, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, unit, remark, order_no)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, asn.actual_date || new Date().toISOString().split('T')[0], asn.operator, d.pot_no, d.fabric_name, asn.supplier, d.unit, `ASN:${asn.asn_code}`, asn.asn_code]);
+        }
+      }
+      // 更新 ASN 汇总
+      const receivedTotal = details.reduce((s, d) => s + (d.actual_qty || d.plan_qty || 0), 0);
+      const shortageTotal = details.reduce((s, d) => s + (d.shortage_qty || 0), 0);
+      const damageTotal = details.reduce((s, d) => s + (d.damage_qty || 0), 0);
+      db.run('UPDATE asn_list SET received_qty = ?, shortage_qty = ?, damage_qty = ? WHERE id = ?',
+        [receivedTotal, shortageTotal, damageTotal, asn.id]);
+    }
+
+    const statusLabels = { PENDING: '待收货', RECEIVED: '已收货', INSPECTING: '质检中', COMPLETED: '已完成', CANCELLED: '已取消' };
+    db.logOperation('asn', status.toLowerCase(), req.params.id, asn.asn_code, statusLabels[status] || status);
+    res.json({ ok: true });
+  } catch (e) { console.error('PUT /api/asn/:id/status error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/asn/:id/details', (req, res) => {
+  try {
+    const { style_no, fabric_name, color, size_spec, pot_no, plan_qty, unit, remark } = req.body;
+    const result = db.run('INSERT INTO asn_detail (asn_id, style_no, fabric_name, color, size_spec, pot_no, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?,?,?)',
+      [req.params.id, style_no || '', fabric_name || '', color || '', size_spec || '', pot_no || '', plan_qty || 0, unit || '件', remark || '']);
+    // 更新总数量
+    const total = db.get('SELECT SUM(plan_qty) as t FROM asn_detail WHERE asn_id = ?', [req.params.id]);
+    db.run('UPDATE asn_list SET total_qty = ? WHERE id = ?', [total?.t || 0, req.params.id]);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) { console.error('POST /api/asn/:id/details error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.delete('/api/asn/:id', (req, res) => {
+  try {
+    const asn = db.get('SELECT * FROM asn_list WHERE id = ?', [req.params.id]);
+    if (!asn) return res.status(404).json({ error: 'Not found' });
+    if (asn.status !== 'PENDING') return res.status(400).json({ error: '只有待收货状态的单据可以删除' });
+    db.run('DELETE FROM asn_detail WHERE asn_id = ?', [req.params.id]);
+    db.run('DELETE FROM asn_list WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error('DELETE /api/asn error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ============================================================
+// DN 发货通知单（出库流程）
+// ============================================================
+function genDnCode() {
+  const now = new Date();
+  const d = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  const count = db.get("SELECT COUNT(*) as c FROM dn_list WHERE dn_code LIKE ?", [`DN${d}%`]).c;
+  return `DN${d}${String(count + 1).padStart(3, '0')}`;
+}
+
+app.get('/api/dn', (req, res) => {
+  try {
+    const { warehouse_type, status } = req.query;
+    let sql = 'SELECT * FROM dn_list WHERE 1=1';
+    const params = [];
+    if (warehouse_type) { sql += ' AND warehouse_type = ?'; params.push(warehouse_type); }
+    if (status) { sql += ' AND status = ?'; params.push(status); }
+    sql += ' ORDER BY id DESC';
+    res.json(db.all(sql, params));
+  } catch (e) { console.error('GET /api/dn error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.get('/api/dn/:id', (req, res) => {
+  try {
+    const dn = db.get('SELECT * FROM dn_list WHERE id = ?', [req.params.id]);
+    if (!dn) return res.status(404).json({ error: 'Not found' });
+    dn.details = db.all('SELECT * FROM dn_detail WHERE dn_id = ?', [dn.id]);
+    res.json(dn);
+  } catch (e) { console.error('GET /api/dn/:id error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/dn', (req, res) => {
+  try {
+    const { warehouse_type, customer, ship_date, details, remark } = req.body;
+    if (!warehouse_type) return res.status(400).json({ error: '仓库类型不能为空' });
+    const dn_code = genDnCode();
+    let total_qty = 0;
+    if (details) details.forEach(d => total_qty += d.plan_qty || 0);
+
+    const result = db.run('INSERT INTO dn_list (dn_code, warehouse_type, customer, status, ship_date, total_qty, remark, operator) VALUES (?,?,?,?,?,?,?,?)',
+      [dn_code, warehouse_type, customer || '', 'PENDING', ship_date || '', total_qty, remark || '', req.body.operator || 'YC']);
+    const dnId = result.lastInsertRowid;
+
+    if (details && details.length > 0) {
+      const insDetail = db.prepare('INSERT INTO dn_detail (dn_id, style_no, color, size_spec, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?)');
+      for (const d of details) {
+        insDetail.run(dnId, d.style_no || '', d.color || '', d.size_spec || '', d.plan_qty || 0, d.unit || '件', d.remark || '');
+      }
+    }
+
+    db.logOperation('dn', 'create', dnId, dn_code);
+    res.json({ ok: true, id: dnId, dn_code });
+  } catch (e) { console.error('POST /api/dn error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.put('/api/dn/:id/status', (req, res) => {
+  try {
+    const { status, picked_qty, shipped_qty } = req.body;
+    const dn = db.get('SELECT * FROM dn_list WHERE id = ?', [req.params.id]);
+    if (!dn) return res.status(404).json({ error: 'Not found' });
+
+    const validTransitions = {
+      'PENDING': ['PICKING', 'CANCELLED'],
+      'PICKING': ['PICKED', 'CANCELLED'],
+      'PICKED': ['SHIPPED'],
+      'SHIPPED': ['DELIVERED'],
+      'DELIVERED': [],
+      'CANCELLED': [],
+    };
+    if (!validTransitions[dn.status]?.includes(status)) {
+      return res.status(400).json({ error: `不能从 ${dn.status} 转换到 ${status}` });
+    }
+
+    db.run('UPDATE dn_list SET status = ? WHERE id = ?', [status, req.params.id]);
+
+    if (status === 'SHIPPED') {
+      // 发货：扣减库存
+      const details = db.all('SELECT * FROM dn_detail WHERE dn_id = ?', [dn.id]);
+      for (const d of details) {
+        const qty = d.shipped_qty || d.picked_qty || d.plan_qty || 0;
+        if (qty > 0) {
+          updateInventory(dn.warehouse_type, d.style_no, d.color, d.size_spec, -qty);
+          db.run(`INSERT INTO warehouse_outbound (warehouse_type, style_no, color, size_spec, qty, outbound_date, operator, remark, order_no)
+            VALUES (?,?,?,?,?,?,?,?,?)`,
+            [dn.warehouse_type, d.style_no, d.color, d.size_spec, qty, new Date().toISOString().split('T')[0], dn.operator, `DN:${dn.dn_code}`, dn.dn_code]);
+        }
+      }
+      const shippedTotal = details.reduce((s, d) => s + (d.shipped_qty || d.plan_qty || 0), 0);
+      db.run('UPDATE dn_list SET shipped_qty = ?, actual_ship_date = datetime("now","localtime") WHERE id = ?', [shippedTotal, dn.id]);
+    }
+
+    if (status === 'DELIVERED') {
+      db.run('UPDATE dn_list SET delivery_date = datetime("now","localtime") WHERE id = ?', [req.params.id]);
+    }
+
+    const statusLabels = { PENDING: '待拣货', PICKING: '拣货中', PICKED: '已拣货', SHIPPED: '已发货', DELIVERED: '已签收', CANCELLED: '已取消' };
+    db.logOperation('dn', status.toLowerCase(), req.params.id, dn.dn_code, statusLabels[status] || status);
+    res.json({ ok: true });
+  } catch (e) { console.error('PUT /api/dn/:id/status error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/dn/:id/details', (req, res) => {
+  try {
+    const { style_no, color, size_spec, plan_qty, unit, remark } = req.body;
+    const result = db.run('INSERT INTO dn_detail (dn_id, style_no, color, size_spec, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?)',
+      [req.params.id, style_no || '', color || '', size_spec || '', plan_qty || 0, unit || '件', remark || '']);
+    const total = db.get('SELECT SUM(plan_qty) as t FROM dn_detail WHERE dn_id = ?', [req.params.id]);
+    db.run('UPDATE dn_list SET total_qty = ? WHERE id = ?', [total?.t || 0, req.params.id]);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) { console.error('POST /api/dn/:id/details error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.delete('/api/dn/:id', (req, res) => {
+  try {
+    const dn = db.get('SELECT * FROM dn_list WHERE id = ?', [req.params.id]);
+    if (!dn) return res.status(404).json({ error: 'Not found' });
+    if (dn.status !== 'PENDING') return res.status(400).json({ error: '只有待拣货状态的单据可以删除' });
+    db.run('DELETE FROM dn_detail WHERE dn_id = ?', [req.params.id]);
+    db.run('DELETE FROM dn_list WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error('DELETE /api/dn error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // [fix#5] Inventory update with safety check
-function updateInventory(type, styleNo, color, sizeSpec, delta) {
+function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
   if (!delta || delta === 0) return;
-  const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ?',
-    [type, styleNo, color || '', sizeSpec || '']);
+  const potNo = extra?.pot_no || ''
+  const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
+    [type, styleNo, color || '', sizeSpec || '', potNo]);
   if (existing) {
     const newQty = Math.max(0, existing.current_qty + delta);
     db.run('UPDATE warehouse_inventory SET current_qty = ?, updated_at = datetime("now","localtime") WHERE id = ?',
       [newQty, existing.id]);
   } else if (delta > 0) {
-    db.run('INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, current_qty) VALUES (?,?,?,?,?)',
-      [type, styleNo, color || '', sizeSpec || '', delta]);
+    db.run('INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, current_qty, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [type, styleNo, color || '', sizeSpec || '', delta, potNo, extra?.fabric_name || '', extra?.supplier || '', extra?.customer || '', extra?.width || '', extra?.weight || '', extra?.unit || 'KG', extra?.total_pcs || 0, extra?.unit2 || '匹']);
   }
 }
+
+// 获取装柜数据供仓库选择（款号+锅号联动）
+app.get('/api/fabric-loading/options', (req, res) => {
+  try {
+    const { keyword } = req.query
+    let sql = 'SELECT DISTINCT style_no, pot_no, fabric_name, supplier, customer, color, width, weight, unit, loading_qty FROM fabric_loading_list'
+    const params = []
+    if (keyword) {
+      sql += ' WHERE style_no LIKE ? OR pot_no LIKE ? OR fabric_name LIKE ?'
+      const kw = `%${keyword}%`
+      params.push(kw, kw, kw)
+    }
+    sql += ' ORDER BY style_no'
+    res.json(db.all(sql, params))
+  } catch (e) {
+    console.error('GET /api/fabric-loading/options error:', e)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ---------- 面料装柜清单 ----------
+app.get('/api/fabric-loading', (req, res) => {
+  try {
+    const { keyword } = req.query;
+    let sql = 'SELECT * FROM fabric_loading_list';
+    const params = [];
+    if (keyword) {
+      sql += ' WHERE style_no LIKE ? OR fabric_name LIKE ? OR supplier LIKE ? OR customer LIKE ? OR color LIKE ?';
+      const kw = `%${keyword}%`;
+      params.push(kw, kw, kw, kw, kw);
+    }
+    sql += ' ORDER BY id DESC';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/fabric-loading error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/fabric-loading', (req, res) => {
+  try {
+    const r = req.body;
+    const result = db.run(
+      `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, remark)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.loading_date, r.loading_qty || 0, r.remark]
+    );
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) {
+    console.error('POST /api/fabric-loading error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/fabric-loading/:id', (req, res) => {
+  try {
+    const r = req.body;
+    const existing = db.get('SELECT id FROM fabric_loading_list WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    db.run(
+      `UPDATE fabric_loading_list SET inbound_date=?, supplier=?, customer=?, style_no=?, pot_no=?, fabric_name=?, width=?, weight=?, color=?, qty=?, unit=?, total_pcs=?, unit2=?, loading_date=?, loading_qty=?, remark=? WHERE id=?`,
+      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.loading_date, r.loading_qty || 0, r.remark, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('PUT /api/fabric-loading error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/fabric-loading/:id', (req, res) => {
+  try {
+    db.run('DELETE FROM fabric_loading_list WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('DELETE /api/fabric-loading error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/fabric-loading/export', async (req, res) => {
+  try {
+    const rows = db.all('SELECT * FROM fabric_loading_list ORDER BY id');
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('面料装柜清单');
+    ws.columns = [
+      { header: '入库日期', key: 'inbound_date', width: 14 },
+      { header: '供应商', key: 'supplier', width: 14 },
+      { header: '客户', key: 'customer', width: 14 },
+      { header: '款号', key: 'style_no', width: 22 },
+      { header: '锅号', key: 'pot_no', width: 16 },
+      { header: '面料名称', key: 'fabric_name', width: 24 },
+      { header: '幅宽', key: 'width', width: 10 },
+      { header: '克重', key: 'weight', width: 10 },
+      { header: '颜色', key: 'color', width: 18 },
+      { header: '数量', key: 'qty', width: 10 },
+      { header: '单位', key: 'unit', width: 8 },
+      { header: '总匹数', key: 'total_pcs', width: 10 },
+      { header: '单位2', key: 'unit2', width: 8 },
+      { header: '装柜日期', key: 'loading_date', width: 14 },
+      { header: '装柜数量', key: 'loading_qty', width: 12 },
+      { header: '备注', key: 'remark', width: 20 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    for (const r of rows) {
+      ws.addRow({
+        inbound_date: r.inbound_date || '', supplier: r.supplier || '', customer: r.customer || '',
+        style_no: r.style_no || '', pot_no: r.pot_no || '', fabric_name: r.fabric_name || '',
+        width: r.width || '', weight: r.weight || '', color: r.color || '',
+        qty: r.qty || 0, unit: r.unit || 'KG', total_pcs: r.total_pcs || 0,
+        unit2: r.unit2 || '匹', loading_date: r.loading_date || '', loading_qty: r.loading_qty || 0,
+        remark: r.remark || '',
+      });
+    }
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=fabric-loading-list.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('GET /api/fabric-loading/export error:', e);
+    res.status(500).json({ error: '导出失败' });
+  }
+});
+
+app.post('/api/fabric-loading/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !records.length) return res.status(400).json({ error: '没有数据' });
+    let imported = 0;
+    const tx = db.getDb().transaction(() => {
+      for (const r of records) {
+        db.run(
+          `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, remark)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.loading_date, r.loading_qty || 0, r.remark]
+        );
+        imported++;
+      }
+    });
+    tx();
+    res.json({ ok: true, imported });
+  } catch (e) {
+    console.error('POST /api/fabric-loading/import error:', e);
+    res.status(500).json({ error: 'Import failed: ' + e.message });
+  }
+});
 
 // ---------- 产能配置 ----------
 app.get('/api/config/capacity', (req, res) => {

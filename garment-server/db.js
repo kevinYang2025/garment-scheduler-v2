@@ -162,6 +162,17 @@ function createTables() {
       qty INTEGER DEFAULT 0,
       inbound_date TEXT,
       operator TEXT DEFAULT '',
+      -- 面料库扩展字段
+      pot_no TEXT DEFAULT '',
+      fabric_name TEXT DEFAULT '',
+      supplier TEXT DEFAULT '',
+      customer TEXT DEFAULT '',
+      width TEXT DEFAULT '',
+      weight TEXT DEFAULT '',
+      unit TEXT DEFAULT 'KG',
+      total_pcs INTEGER DEFAULT 0,
+      unit2 TEXT DEFAULT '匹',
+      remark TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
@@ -177,6 +188,17 @@ function createTables() {
       qty INTEGER DEFAULT 0,
       outbound_date TEXT,
       operator TEXT DEFAULT '',
+      -- 面料库扩展字段
+      pot_no TEXT DEFAULT '',
+      fabric_name TEXT DEFAULT '',
+      supplier TEXT DEFAULT '',
+      customer TEXT DEFAULT '',
+      width TEXT DEFAULT '',
+      weight TEXT DEFAULT '',
+      unit TEXT DEFAULT 'KG',
+      total_pcs INTEGER DEFAULT 0,
+      unit2 TEXT DEFAULT '匹',
+      remark TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
@@ -188,8 +210,111 @@ function createTables() {
       color TEXT DEFAULT '',
       size_spec TEXT DEFAULT '',
       current_qty INTEGER DEFAULT 0,
+      -- 面料库扩展字段
+      pot_no TEXT DEFAULT '',
+      fabric_name TEXT DEFAULT '',
+      supplier TEXT DEFAULT '',
+      customer TEXT DEFAULT '',
+      width TEXT DEFAULT '',
+      weight TEXT DEFAULT '',
+      unit TEXT DEFAULT 'KG',
+      total_pcs INTEGER DEFAULT 0,
+      unit2 TEXT DEFAULT '匹',
       updated_at TEXT DEFAULT (datetime('now','localtime')),
-      UNIQUE(warehouse_type, style_no, color, size_spec)
+      UNIQUE(warehouse_type, style_no, color, size_spec, pot_no)
+    );
+
+    -- ASN 到货通知单（入库单头）
+    CREATE TABLE IF NOT EXISTS asn_list (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      asn_code TEXT NOT NULL UNIQUE,
+      warehouse_type TEXT NOT NULL,
+      supplier TEXT DEFAULT '',
+      status TEXT DEFAULT 'PENDING',
+      -- PENDING=待收货, RECEIVED=已收货, INSPECTING=质检中, COMPLETED=已完成, CANCELLED=已取消
+      expected_date TEXT,
+      actual_date TEXT,
+      total_qty REAL DEFAULT 0,
+      received_qty REAL DEFAULT 0,
+      inspect_qty REAL DEFAULT 0,
+      shortage_qty REAL DEFAULT 0,
+      damage_qty REAL DEFAULT 0,
+      remark TEXT DEFAULT '',
+      operator TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- ASN 明细（入库单行）
+    CREATE TABLE IF NOT EXISTS asn_detail (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      asn_id INTEGER NOT NULL,
+      style_no TEXT DEFAULT '',
+      fabric_name TEXT DEFAULT '',
+      color TEXT DEFAULT '',
+      size_spec TEXT DEFAULT '',
+      pot_no TEXT DEFAULT '',
+      plan_qty REAL DEFAULT 0,
+      actual_qty REAL DEFAULT 0,
+      inspect_qty REAL DEFAULT 0,
+      shortage_qty REAL DEFAULT 0,
+      damage_qty REAL DEFAULT 0,
+      unit TEXT DEFAULT '件',
+      remark TEXT DEFAULT '',
+      FOREIGN KEY (asn_id) REFERENCES asn_list(id) ON DELETE CASCADE
+    );
+
+    -- DN 发货通知单（出库单头）
+    CREATE TABLE IF NOT EXISTS dn_list (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dn_code TEXT NOT NULL UNIQUE,
+      warehouse_type TEXT NOT NULL,
+      customer TEXT DEFAULT '',
+      status TEXT DEFAULT 'PENDING',
+      -- PENDING=待拣货, PICKING=拣货中, PICKED=已拣货, PACKING=装箱中, SHIPPED=已发货, DELIVERED=已签收, CANCELLED=已取消
+      ship_date TEXT,
+      actual_ship_date TEXT,
+      delivery_date TEXT,
+      total_qty REAL DEFAULT 0,
+      picked_qty REAL DEFAULT 0,
+      shipped_qty REAL DEFAULT 0,
+      received_qty REAL DEFAULT 0,
+      remark TEXT DEFAULT '',
+      operator TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- DN 明细（出库单行）
+    CREATE TABLE IF NOT EXISTS dn_detail (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dn_id INTEGER NOT NULL,
+      style_no TEXT DEFAULT '',
+      color TEXT DEFAULT '',
+      size_spec TEXT DEFAULT '',
+      plan_qty REAL DEFAULT 0,
+      picked_qty REAL DEFAULT 0,
+      shipped_qty REAL DEFAULT 0,
+      received_qty REAL DEFAULT 0,
+      unit TEXT DEFAULT '件',
+      remark TEXT DEFAULT '',
+      FOREIGN KEY (dn_id) REFERENCES dn_list(id) ON DELETE CASCADE
+    );
+
+    -- 库存扩展：增加状态维度（参考 GreaterWMS 16 维库存）
+    CREATE TABLE IF NOT EXISTS warehouse_stock_status (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      warehouse_type TEXT NOT NULL,
+      style_no TEXT DEFAULT '',
+      color TEXT DEFAULT '',
+      size_spec TEXT DEFAULT '',
+      pot_no TEXT DEFAULT '',
+      onhand_qty REAL DEFAULT 0,
+      intransit_qty REAL DEFAULT 0,
+      inspect_qty REAL DEFAULT 0,
+      hold_qty REAL DEFAULT 0,
+      picked_qty REAL DEFAULT 0,
+      allocated_qty REAL DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(warehouse_type, style_no, color, size_spec, pot_no)
     );
 
     -- 产能配置
@@ -339,6 +464,28 @@ function createTables() {
       active INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    -- 面料装柜清单
+    CREATE TABLE IF NOT EXISTS fabric_loading_list (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      inbound_date TEXT,
+      supplier TEXT DEFAULT '',
+      customer TEXT DEFAULT '',
+      style_no TEXT DEFAULT '',
+      pot_no TEXT DEFAULT '',
+      fabric_name TEXT DEFAULT '',
+      width TEXT DEFAULT '',
+      weight TEXT DEFAULT '',
+      color TEXT DEFAULT '',
+      qty REAL DEFAULT 0,
+      unit TEXT DEFAULT 'KG',
+      total_pcs INTEGER DEFAULT 0,
+      unit2 TEXT DEFAULT '匹',
+      loading_date TEXT,
+      loading_qty REAL DEFAULT 0,
+      remark TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 
@@ -419,6 +566,26 @@ function migrateStyles() {
     }
   }
   if (rows.length > 0) console.log(`✅ 迁移款式数据：${rows.length} 条刺绣/印花字段拆分`)
+
+  // 迁移：仓库表添加面料库扩展字段
+  const whFields = ['pot_no', 'fabric_name', 'supplier', 'customer', 'width', 'weight', 'unit', 'total_pcs', 'unit2', 'remark']
+  for (const tbl of ['warehouse_inbound', 'warehouse_outbound', 'warehouse_inventory']) {
+    for (const f of whFields) {
+      try {
+        const def = f === 'total_pcs' ? 'INTEGER DEFAULT 0' : f === 'unit' ? "TEXT DEFAULT 'KG'" : f === 'unit2' ? "TEXT DEFAULT '匹'" : "TEXT DEFAULT ''"
+        db.prepare(`ALTER TABLE ${tbl} ADD COLUMN ${f} ${def}`).run()
+      } catch { /* 已存在 */ }
+    }
+  }
+  // 重建 inventory 唯一索引（加 pot_no）
+  try {
+    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_fabric ON warehouse_inventory(warehouse_type, style_no, color, size_spec, pot_no)`).run()
+  } catch { /* ignore */ }
+
+  // 迁移：入库/出库加单号和装柜数量
+  try { db.prepare("ALTER TABLE warehouse_inbound ADD COLUMN order_no TEXT DEFAULT ''").run() } catch {}
+  try { db.prepare("ALTER TABLE warehouse_inbound ADD COLUMN loading_qty REAL DEFAULT 0").run() } catch {}
+  try { db.prepare("ALTER TABLE warehouse_outbound ADD COLUMN order_no TEXT DEFAULT ''").run() } catch {}
 }
 
 function seedDefaultData() {

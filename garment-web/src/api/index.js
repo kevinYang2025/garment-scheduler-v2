@@ -3,6 +3,12 @@ import axios from 'axios'
 const api = axios.create({ baseURL: '/api' })
 
 export default {
+  // 通用 HTTP 方法（供直接调用）
+  get: (url, config) => api.get(url, config),
+  post: (url, data, config) => api.post(url, data, config),
+  put: (url, data, config) => api.put(url, data, config),
+  delete: (url, config) => api.delete(url, config),
+
   // 款式
   getStyles: (keyword) => api.get('/styles', { params: { keyword } }),
   getDistinctStyles: () => api.get('/styles/distinct'),
@@ -135,6 +141,22 @@ export default {
   // 自动排产 & 产能预排
   autoSchedule: (strategyId) => api.post('/auto-schedule', { strategy_id: strategyId }),
   capacityPrecheck: () => api.get('/capacity-precheck'),
+
+  // ASN 到货通知单
+  getAsnList: (params) => api.get('/asn', { params }),
+  getAsnDetail: (id) => api.get(`/asn/${id}`),
+  createAsn: (data) => api.post('/asn', data),
+  updateAsnStatus: (id, data) => api.put(`/asn/${id}/status`, data),
+  addAsnDetail: (id, data) => api.post(`/asn/${id}/details`, data),
+  deleteAsn: (id) => api.delete(`/asn/${id}`),
+
+  // DN 发货通知单
+  getDnList: (params) => api.get('/dn', { params }),
+  getDnDetail: (id) => api.get(`/dn/${id}`),
+  createDn: (data) => api.post('/dn', data),
+  updateDnStatus: (id, data) => api.put(`/dn/${id}/status`, data),
+  addDnDetail: (id, data) => api.post(`/dn/${id}/details`, data),
+  deleteDn: (id) => api.delete(`/dn/${id}`),
 
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
