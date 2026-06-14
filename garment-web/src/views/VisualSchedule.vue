@@ -202,11 +202,11 @@ onMounted(loadGantt)
 
         <!-- 车间/产线行 -->
         <div class="gantt-body">
-          <template v-for="workshop in workshops" :key="workshop.id">
+          <template v-for="workshop in workshops" :key="workshop.name">
             <div class="workshop-header">{{ workshop.name }}</div>
             <div
               v-for="line in workshop.lines"
-              :key="line.id"
+              :key="line.name"
               class="gantt-row"
               :class="{ 'fault-line': line.status === '故障' }"
               @dragover.prevent

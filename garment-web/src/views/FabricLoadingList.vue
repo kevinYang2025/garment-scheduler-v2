@@ -119,6 +119,31 @@ async function batchDelete() {
   }
 }
 
+async function batchInbound() {
+  const count = selectedIds.value.size
+  if (count === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定将选中的 ${count} 条装柜记录批量入库到面料库？`,
+      '批量入库',
+      { type: 'warning', confirmButtonText: '确认入库', cancelButtonText: '取消' }
+    )
+    const ids = [...selectedIds.value]
+    const { data } = await api.batchInbound(ids)
+    if (data.ok) {
+      let msg = `批量入库完成：${data.imported} 条成功`
+      if (data.errors?.length > 0) msg += `，${data.errors.length} 条跳过（已入库/不存在）`
+      ElMessage.success(msg)
+    } else {
+      ElMessage.error(data.error || '批量入库失败')
+    }
+    selectedIds.value = new Set()
+    loadRecords()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('批量入库失败')
+  }
+}
+
 const filteredRecords = computed(() => {
   let list = records.value
   // 关键字搜索
@@ -362,6 +387,7 @@ onUnmounted(() => {
 
     <div v-if="selectedCount > 0" class="batch-bar">
       <span class="batch-count">已选 {{ selectedCount }} 项</span>
+      <el-button size="small" type="primary" @click="batchInbound">📦 批量入库到面料库</el-button>
       <el-button size="small" type="danger" @click="batchDelete">批量删除</el-button>
       <el-button size="small" text @click="selectedIds = new Set()">取消选择</el-button>
     </div>

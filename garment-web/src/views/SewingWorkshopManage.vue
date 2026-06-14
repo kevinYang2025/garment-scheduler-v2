@@ -12,9 +12,10 @@ const textFilters = ref({})
 const sortState = ref({ field: '', dir: 'asc' })
 const precomputedOptions = shallowRef({})
 
-// 行内编辑
-const editingId = ref(null)
-const editingName = ref('')
+// 行内编辑（支持多行）
+const editingMap = ref({}) // { [rowKey]: newName }
+const editingKeys = computed(() => Object.keys(editingMap.value))
+const isEditing = (key) => key in editingMap.value
 
 // 新增弹窗
 const dialogVisible = ref(false)
@@ -52,7 +53,7 @@ function toggleRow(row) {
   selectedIds.value = s
 }
 
-// 批量编辑弹窗
+// 批量编辑弹窗（快捷操作：前缀/后缀/替换）
 const batchEditVisible = ref(false)
 const batchEditForm = ref({ mode: 'prefix', text: '', text2: '' })
 const batchEditModes = [
@@ -159,26 +160,65 @@ function canAddChild(type) {
   return type === 'workshop' || type === 'team'
 }
 
+// 名称验证
+const nameRules = {
+  workshop: { re: /^\d+$/, tip: '车间名称只能是数字（如 1、2、12）' },
+  team: { re: /^\d+(-\d+)?班$/, tip: '班组名称格式：数字+班（如 1班、2-2班）' },
+}
+function validateName(type, name) {
+  const rule = nameRules[type]
+  if (!rule) return true // category 无限制
+  if (!rule.re.test(name)) { ElMessage.warning(rule.tip); return false }
+  return true
+}
+
 // ====== 行内编辑 ======
 function startEdit(row) {
-  editingId.value = rowKey(row)
-  editingName.value = row.name
+  editingMap.value = { [rowKey(row)]: row.name }
 }
 function cancelEdit() {
-  editingId.value = null
-  editingName.value = ''
+  editingMap.value = {}
+}
+function getEditingName(key) {
+  return editingMap.value[key] ?? ''
+}
+function setEditingName(key, val) {
+  editingMap.value = { ...editingMap.value, [key]: val }
 }
 async function saveEdit(row) {
-  if (!editingName.value.trim()) { ElMessage.warning('名称不能为空'); return }
-  if (editingName.value.trim() === row.name) { cancelEdit(); return }
+  const k = rowKey(row)
+  const newName = (editingMap.value[k] || '').trim()
+  if (!newName) { ElMessage.warning('名称不能为空'); return }
+  if (!validateName(row.type, newName)) return
+  if (newName === row.name) { cancelEdit(); return }
   try {
-    await api.updateSewingWorkshopNode(row.id, { type: row.type, name: editingName.value.trim() })
+    await api.updateSewingWorkshopNode(row.id, { type: row.type, name: newName })
     ElMessage.success('修改成功')
     cancelEdit()
     loadTree()
   } catch (e) {
     ElMessage.error('修改失败：' + (e.response?.data?.error || e.message))
   }
+}
+async function saveAllEdits() {
+  const keys = Object.keys(editingMap.value)
+  let changed = 0
+  for (const k of keys) {
+    const row = flatRows.value.find(r => rowKey(r) === k)
+    if (!row) continue
+    const newName = editingMap.value[k].trim()
+    if (!newName || newName === row.name) continue
+    if (!validateName(row.type, newName)) continue
+    try {
+      await api.updateSewingWorkshopNode(row.id, { type: row.type, name: newName })
+      changed++
+    } catch (e) {
+      ElMessage.error(`「${row.name}」修改失败：${e.response?.data?.error || e.message}`)
+    }
+  }
+  if (changed) ElMessage.success(`修改 ${changed} 项成功`)
+  cancelEdit()
+  loadTree()
 }
 
 // ====== 新增 ======
@@ -194,6 +234,7 @@ function openAdd(row) {
 async function saveNode() {
   const f = dialogForm.value
   if (!f.name.trim()) { ElMessage.warning('请输入名称'); return }
+  if (!validateName(f.type, f.name.trim())) return
   try {
     await api.addSewingWorkshopNode({ type: f.type, name: f.name.trim(), parent_id: f.parent_id })
     ElMessage.success('新增成功')
@@ -242,10 +283,21 @@ async function batchDelete() {
 
 function openBatchEdit() {
   if (!selectedIds.value.size) { ElMessage.warning('请先选择要编辑的行'); return }
+  // 所有选中行进入行内编辑
+  const map = {}
+  for (const k of selectedIds.value) {
+    const row = flatRows.value.find(r => rowKey(r) === k)
+    if (row) map[k] = row.name
+  }
+  editingMap.value = map
+}
+
+// 快捷批量操作（前缀/后缀/替换）
+function openBatchEditDialog() {
+  if (!selectedIds.value.size) { ElMessage.warning('请先选择要编辑的行'); return }
   batchEditForm.value = { mode: 'prefix', text: '', text2: '' }
   batchEditVisible.value = true
 }
-
 async function doBatchEdit() {
   const { mode, text } = batchEditForm.value
   if (!text.trim()) { ElMessage.warning('请输入内容'); return }
@@ -351,12 +403,18 @@ onUnmounted(() => {
     <div class="wm-header">
       <h2>缝制车间管理</h2>
       <div class="wm-actions">
-        <el-button type="primary" @click="openAdd(null)">新增车间</el-button>
-        <el-button v-if="selectedIds.size" type="warning" @click="openBatchEdit">批量编辑 ({{ selectedIds.size }})</el-button>
-        <el-button v-if="selectedIds.size" type="danger" @click="batchDelete">批量删除 ({{ selectedIds.size }})</el-button>
-        <el-divider v-if="!selectedIds.size" direction="vertical" />
-        <el-button @click="doExport">导出Excel</el-button>
-        <el-button @click="openImport">导入Excel</el-button>
+        <template v-if="editingKeys.length">
+          <el-button type="primary" @click="saveAllEdits">保存全部 ({{ editingKeys.length }})</el-button>
+          <el-button @click="cancelEdit">取消</el-button>
+        </template>
+        <template v-else>
+          <el-button type="primary" @click="openAdd(null)">新增车间</el-button>
+          <el-button v-if="selectedIds.size" type="warning" @click="openBatchEdit">批量编辑 ({{ selectedIds.size }})</el-button>
+          <el-button v-if="selectedIds.size" type="danger" @click="batchDelete">批量删除 ({{ selectedIds.size }})</el-button>
+          <el-divider v-if="!selectedIds.size" direction="vertical" />
+          <el-button @click="doExport">导出Excel</el-button>
+          <el-button @click="openImport">导入Excel</el-button>
+        </template>
       </div>
     </div>
 
@@ -394,7 +452,7 @@ onUnmounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in filteredRows" :key="rowKey(row)" :class="{ 'editing-row': editingId === rowKey(row) }">
+            <tr v-for="row in filteredRows" :key="rowKey(row)" :class="{ 'editing-row': isEditing(rowKey(row)) }">
               <td style="text-align:center">
                 <el-checkbox :model-value="selectedIds.has(rowKey(row))" @change="toggleRow(row)" />
               </td>
@@ -402,8 +460,8 @@ onUnmounted(() => {
               <td>
                 <template v-if="row.type === 'workshop'">
                   <span class="type-tag workshop">车间</span>
-                  <template v-if="editingId === rowKey(row)">
-                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
+                  <template v-if="isEditing(rowKey(row))">
+                    <input class="inp" :model-value="getEditingName(rowKey(row))" @input="setEditingName(rowKey(row), $event.target.value)" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
                   </template>
                   <template v-else>
                     <span class="node-name">{{ row.workshopName }}</span>
@@ -417,8 +475,8 @@ onUnmounted(() => {
               <td>
                 <template v-if="row.type === 'team'">
                   <span class="type-tag team">班组</span>
-                  <template v-if="editingId === rowKey(row)">
-                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
+                  <template v-if="isEditing(rowKey(row))">
+                    <input class="inp" :model-value="getEditingName(rowKey(row))" @input="setEditingName(rowKey(row), $event.target.value)" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
                   </template>
                   <template v-else>
                     <span class="node-name">{{ row.teamName }}</span>
@@ -432,8 +490,8 @@ onUnmounted(() => {
               <td>
                 <template v-if="row.type === 'category'">
                   <span class="type-tag category">款式分类</span>
-                  <template v-if="editingId === rowKey(row)">
-                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
+                  <template v-if="isEditing(rowKey(row))">
+                    <input class="inp" :model-value="getEditingName(rowKey(row))" @input="setEditingName(rowKey(row), $event.target.value)" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
                   </template>
                   <template v-else>
                     <span class="node-name">{{ row.categoryName }}</span>
@@ -442,7 +500,7 @@ onUnmounted(() => {
               </td>
               <!-- 操作列 -->
               <td class="action-cell">
-                <template v-if="editingId === rowKey(row)">
+                <template v-if="isEditing(rowKey(row))">
                   <el-button size="small" type="primary" text @click="saveEdit(row)">保存</el-button>
                   <el-button size="small" text @click="cancelEdit">取消</el-button>
                 </template>

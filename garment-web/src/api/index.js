@@ -178,6 +178,9 @@ export default {
   addDnDetail: (id, data) => api.post(`/dn/${id}/details`, data),
   deleteDn: (id) => api.delete(`/dn/${id}`),
 
+  // 批量入库
+  batchInbound: (ids) => api.post('/fabric-loading/batch-inbound', { ids }),
+
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
 }

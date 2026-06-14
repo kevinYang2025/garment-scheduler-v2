@@ -156,7 +156,10 @@
       "Bash(node -e \"process.stdin.setEncoding\\('utf8'\\);let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);j.forEach\\(w=>{const cats=w.children?.flatMap\\(l=>l.children||[]\\);if\\(cats?.length\\)console.log\\(w.name,'->',cats.map\\(c=>c.name\\).join\\(', '\\)\\);}\\);}\\)\")",
       "WebFetch(domain:github.com)",
       "WebSearch",
-      "Bash(curl -sL https://raw.githubusercontent.com/colbymchenry/codegraph/main/README.md)"
+      "Bash(curl -sL https://raw.githubusercontent.com/colbymchenry/codegraph/main/README.md)",
+      "Bash(curl -s http://localhost:3001/api/visual-schedule/gantt)",
+      "Bash(curl -s http://localhost:3001/api/schedule/sewing)",
+      "Bash(node -c server.js)"
     ]
   }
 }

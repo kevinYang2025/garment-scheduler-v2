@@ -1762,6 +1762,60 @@ app.delete('/api/fabric-loading/:id', (req, res) => {
   }
 });
 
+// 批量入库：从面料装柜清单选中多条，一键入库
+app.post('/api/fabric-loading/batch-inbound', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: '请选择要入库的记录' });
+    }
+
+    const today = fmtLocal(new Date()).replace(/-/g, '');
+    let imported = 0;
+    let errors = [];
+
+    const txn = db.getDb().transaction(() => {
+      for (const id of ids) {
+        const record = db.get('SELECT * FROM fabric_loading_list WHERE id = ?', [id]);
+        if (!record) { errors.push(`ID ${id} 不存在`); continue }
+
+        // 检查是否已经入过库
+        const existing = db.get(
+          "SELECT id FROM warehouse_inbound WHERE ref_type = 'fabric_loading' AND ref_id = ?",
+          [id]
+        );
+        if (existing) { errors.push(`${record.style_no} 已入库`); continue }
+
+        // 生成入库单号
+        const count = db.get("SELECT COUNT(*) as c FROM warehouse_inbound WHERE order_no LIKE ?", [`RB${today}%`]).c;
+        const orderNo = `RB${today}-${String(count + 1 + imported).padStart(3, '0')}`;
+
+        // 写入入库记录
+        db.run(`INSERT INTO warehouse_inbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no, loading_qty)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          ['raw_material', 'fabric_loading', id, record.style_no || '', record.color || '', '', record.qty || 0,
+           record.inbound_date || fmtLocal(new Date()), '', record.pot_no || '', record.fabric_name || '',
+           record.supplier || '', record.customer || '', record.width || '', record.weight || '',
+           record.unit || 'KG', record.total_pcs || 0, record.unit2 || '匹', record.remark || '', orderNo, record.loading_qty || 0]);
+
+        // 更新库存
+        updateInventory('raw_material', record.style_no, record.color, '', record.qty || 0, record);
+
+        imported++;
+      }
+    });
+    txn();
+
+    broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', ['raw_material']));
+    db.logOperation('warehouse', 'batch_inbound', null, `批量入库 ${imported} 条`);
+
+    res.json({ ok: true, imported, errors });
+  } catch (e) {
+    console.error('POST /api/fabric-loading/batch-inbound error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/api/fabric-loading/export', async (req, res) => {
   try {
     const rows = db.all('SELECT * FROM fabric_loading_list ORDER BY id');
@@ -2119,21 +2173,35 @@ app.post('/api/inventory', (req, res) => {
 // ---------- 目视化排程 ----------
 app.get('/api/visual-schedule/gantt', (req, res) => {
   try {
-    const workshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
-    for (const ws of workshops) {
-      ws.lines = db.all('SELECT * FROM production_lines WHERE workshop_id = ? ORDER BY sort_order', [ws.id]);
-      for (const line of ws.lines) {
-        line.tasks = db.all(`SELECT mp.id as planId, mp.style_no as styleNo, mp.product_name as productName,
-          mp.color, mp.size_spec as sizeSpec, mp.plan_qty as planQty,
-          mp.sewing_start as sewingStart, mp.sewing_end as sewingEnd, mp.due_date as dueDate
-          FROM main_plan mp WHERE mp.workshop = ? AND mp.line_team = ? AND mp.is_scheduled = 1`,
-          [ws.name, line.line_name]);
-      }
+    // 直接从 schedule_master 取所有缝制排程，按 workshop/line_team 分组
+    const allTasks = db.all(`SELECT sm.id as planId, sm.style_no as styleNo,
+      sm.product_name as productName, sm.color, sm.size_spec as sizeSpec,
+      sm.plan_qty as planQty, sm.plan_start as sewingStart, sm.plan_end as sewingEnd,
+      sm.workshop, sm.line_team
+      FROM schedule_master sm WHERE sm.schedule_type = 'sewing'
+      ORDER BY sm.workshop, sm.line_team, sm.plan_start`);
+
+    // 按 workshop → line_team 分组构建甘特行
+    const wsMap = {}
+    for (const t of allTasks) {
+      const wsName = t.workshop || '未分配车间'
+      const lineName = t.line_team || '未分配班组'
+      if (!wsMap[wsName]) wsMap[wsName] = { name: wsName, lines: {} }
+      if (!wsMap[wsName].lines[lineName]) wsMap[wsName].lines[lineName] = { name: lineName, tasks: [] }
+      wsMap[wsName].lines[lineName].tasks.push(t)
     }
+    // 转为数组
+    const workshops = Object.values(wsMap).map(ws => ({
+      ...ws,
+      lines: Object.values(ws.lines)
+    }))
+
+    // 未排班项：main_plan 中尚未排程的
     const unscheduled = db.all(`SELECT mp.id as planId, mp.style_no as styleNo, mp.product_name as productName,
-      s.color, s.size_spec as sizeSpec, s.plan_qty as planQty, mp.due_date as dueDate
-      FROM main_plan mp JOIN styles s ON mp.style_id = s.id
-      WHERE mp.is_scheduled = 0 ORDER BY mp.due_date`);
+      mp.color, mp.size_spec as sizeSpec, mp.plan_qty as planQty, mp.due_date as dueDate
+      FROM main_plan mp
+      WHERE mp.is_scheduled = 0 OR mp.is_scheduled IS NULL
+      ORDER BY mp.due_date`);
     res.json({ workshops, unscheduled });
   } catch (e) {
     console.error('GET /api/visual-schedule/gantt error:', e);
@@ -2143,8 +2211,8 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
 
 app.get('/api/visual-schedule/date-range', (req, res) => {
   try {
-    const min = db.get("SELECT MIN(sewing_start) as d FROM main_plan WHERE sewing_start != ''");
-    const max = db.get("SELECT MAX(sewing_end) as d FROM main_plan WHERE sewing_end != ''");
+    const min = db.get("SELECT MIN(plan_start) as d FROM schedule_master WHERE schedule_type = 'sewing' AND plan_start != ''");
+    const max = db.get("SELECT MAX(plan_end) as d FROM schedule_master WHERE schedule_type = 'sewing' AND plan_end != ''");
     const start = min?.d || '2026-06-01';
     const end = max?.d || '2026-08-31';
     res.json({ start, end });
