@@ -1244,14 +1244,19 @@ app.post('/api/warehouse/:type/inbound', (req, res) => {
     const errors = validateWarehouseRecord(r, req.params.type);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
+    // 自动生成入库单号（不可手动指定）
+    const today = fmtLocal(new Date()).replace(/-/g, '');
+    const todayCount = db.get("SELECT COUNT(*) as c FROM warehouse_inbound WHERE order_no LIKE ?", [`RB${today}%`]).c;
+    const orderNo = `RB${today}-${String(todayCount + 1).padStart(3, '0')}`;
+
     const result = db.run(`INSERT INTO warehouse_inbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no, loading_qty)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.inbound_date, r.operator || '',
-       r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', r.order_no || '', r.loading_qty || 0]);
+       r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', orderNo, r.loading_qty || 0]);
     updateInventory(req.params.type, r.style_no, r.color, r.size_spec, r.qty, r);
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
     db.logOperation('warehouse', 'inbound', null, `${req.params.type} 入库${r.qty}件`);
-    res.json({ ok: true, id: result.lastInsertRowid });
+    res.json({ ok: true, id: result.lastInsertRowid, order_no: orderNo });
   } catch (e) {
     console.error('POST /api/warehouse/inbound error:', e);
     res.status(500).json({ error: 'Internal server error' });
@@ -1273,23 +1278,29 @@ app.post('/api/warehouse/:type/outbound', (req, res) => {
     const errors = validateWarehouseRecord(r, req.params.type);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
+    // 自动生成出库单号（不可手动指定）
+    const today = fmtLocal(new Date()).replace(/-/g, '');
+    const todayCount = db.get("SELECT COUNT(*) as c FROM warehouse_outbound WHERE order_no LIKE ?", [`CB${today}%`]).c;
+    const orderNo = `CB${today}-${String(todayCount + 1).padStart(3, '0')}`;
+
     const txn = db.getDb().transaction(() => {
       const inv = db.get('SELECT current_qty FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
         [req.params.type, r.style_no, r.color || '', r.size_spec || '', r.pot_no || '']);
       if (!inv || inv.current_qty < r.qty) {
         throw new Error(`库存不足，当前库存 ${inv ? inv.current_qty : 0}，出库 ${r.qty}`);
       }
+
       const result = db.run(`INSERT INTO warehouse_outbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, outbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.outbound_date, r.operator || '',
-         r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', r.order_no || '']);
+         r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', orderNo]);
       updateInventory(req.params.type, r.style_no, r.color, r.size_spec, -r.qty, r);
       return result;
     });
     const result = txn();
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
     db.logOperation('warehouse', 'outbound', null, `${req.params.type} 出库${r.qty}件`);
-    res.json({ ok: true, id: result.lastInsertRowid });
+    res.json({ ok: true, id: result.lastInsertRowid, order_no: orderNo });
   } catch (e) {
     console.error('POST /api/warehouse/outbound error:', e);
     res.status(400).json({ error: e.message || 'Internal server error' });

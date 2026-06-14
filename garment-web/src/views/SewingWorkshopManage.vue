@@ -1,24 +1,24 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, shallowRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import TextFilter from '../components/TextFilter.vue'
 
 const treeData = ref([])
 const loading = ref(false)
 
-// 单条弹窗
+// 筛选排序
+const textFilters = ref({})
+const sortState = ref({ field: '', dir: 'asc' })
+const precomputedOptions = shallowRef({})
+
+// 行内编辑
+const editingId = ref(null)
+const editingName = ref('')
+
+// 新增弹窗
 const dialogVisible = ref(false)
-const dialogMode = ref('add')
 const dialogForm = ref({ name: '', type: 'workshop', parent_id: null, parentName: '' })
-
-// 批量添加弹窗
-const batchAddVisible = ref(false)
-const batchAddTeamId = ref(null)
-const batchAddNames = ref('')
-
-// 批量编辑模式
-const batchEditMode = ref(false)
-const batchEditChanges = ref({}) // { 'type:id': newName }
 
 // 导入
 const importVisible = ref(false)
@@ -26,22 +26,87 @@ const importFile = ref(null)
 const importResult = ref(null)
 const importing = ref(false)
 
-// 用于下拉选择班组
-const allTeams = computed(() => {
-  const teams = []
-  for (const w of treeData.value) {
-    for (const t of (w.children || [])) {
-      teams.push({ id: t.id, label: `${w.name} / ${t.name}` })
+// 拖动滚动
+const bodyRef = ref(null)
+let dragging = false
+let dragWrap = null
+let dragX = 0, dragY = 0, dragSL = 0, dragST = 0
+
+// ====== 扁平化树 ======
+const typeMap = { workshop: '车间', team: '班组', category: '款式分类' }
+
+const flatRows = computed(() => {
+  const rows = []
+  function walk(nodes, depth, parentWorkshop, parentTeam) {
+    for (const node of (nodes || [])) {
+      const row = { ...node, depth, parentWorkshop, parentTeam, typeText: typeMap[node.type] || node.type }
+      if (node.type === 'workshop') {
+        row.parentWorkshop = node.name
+        rows.push(row)
+        walk(node.children, depth + 1, node.name, null)
+      } else if (node.type === 'team') {
+        row.parentTeam = node.name
+        rows.push(row)
+        walk(node.children, depth + 1, parentWorkshop, node.name)
+      } else {
+        rows.push(row)
+      }
     }
   }
-  return teams
+  walk(treeData.value, 0, '', '')
+  return rows
 })
 
+const filteredRows = computed(() => {
+  return flatRows.value.filter(r => {
+    for (const [field, f] of Object.entries(textFilters.value)) {
+      if (!f || !f.applied) continue
+      const val = r[field] || ''
+      const hasVal = !!val
+      if (hasVal && !f.checked.has(val)) return false
+      if (!hasVal && !f.includeEmpty) return false
+    }
+    return true
+  }).sort((a, b) => {
+    if (!sortState.value.field) return 0
+    const { field, dir } = sortState.value
+    const mul = dir === 'asc' ? 1 : -1
+    const va = a[field] || ''
+    const vb = b[field] || ''
+    return va.localeCompare(vb, 'zh') * mul
+  })
+})
+
+function computeFilterOptions() {
+  const fields = ['name', 'typeText']
+  const result = {}
+  for (const f of fields) {
+    const map = {}
+    let emptyCount = 0
+    for (const row of flatRows.value) {
+      const val = row[f]
+      if (val === undefined || val === null || val === '') { emptyCount++; continue }
+      map[String(val)] = (map[String(val)] || 0) + 1
+    }
+    result[f] = { options: Object.entries(map).map(([text, count]) => ({ text, count })), emptyCount }
+  }
+  precomputedOptions.value = result
+}
+
+function onTextFilter(field, f) {
+  textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } }
+}
+function onSort({ field, dir }) {
+  sortState.value = { field, dir }
+}
+
+// ====== 通用 ======
 async function loadTree() {
   loading.value = true
   try {
     const { data } = await api.getSewingWorkshopTree()
     treeData.value = Array.isArray(data) ? data : []
+    computeFilterOptions()
   } catch {
     ElMessage.error('加载数据失败')
   }
@@ -49,7 +114,7 @@ async function loadTree() {
 }
 
 function typeLabel(type) {
-  return { workshop: '车间', team: '班组', category: '款式分类' }[type] || type
+  return typeMap[type] || type
 }
 
 function childType(type) {
@@ -60,9 +125,30 @@ function canAddChild(type) {
   return type === 'workshop' || type === 'team'
 }
 
-// ====== 单条新增/编辑 ======
+// ====== 行内编辑 ======
+function startEdit(row) {
+  editingId.value = row.id
+  editingName.value = row.name
+}
+function cancelEdit() {
+  editingId.value = null
+  editingName.value = ''
+}
+async function saveEdit(row) {
+  if (!editingName.value.trim()) { ElMessage.warning('名称不能为空'); return }
+  if (editingName.value.trim() === row.name) { cancelEdit(); return }
+  try {
+    await api.updateSewingWorkshopNode(row.id, { type: row.type, name: editingName.value.trim() })
+    ElMessage.success('修改成功')
+    cancelEdit()
+    loadTree()
+  } catch (e) {
+    ElMessage.error('修改失败：' + (e.response?.data?.error || e.message))
+  }
+}
+
+// ====== 新增 ======
 function openAdd(row) {
-  dialogMode.value = 'add'
   if (row) {
     dialogForm.value = { name: '', type: childType(row.type), parent_id: row.id, parentName: row.name }
   } else {
@@ -71,23 +157,12 @@ function openAdd(row) {
   dialogVisible.value = true
 }
 
-function openEdit(row) {
-  dialogMode.value = 'edit'
-  dialogForm.value = { id: row.id, name: row.name, type: row.type }
-  dialogVisible.value = true
-}
-
 async function saveNode() {
   const f = dialogForm.value
   if (!f.name.trim()) { ElMessage.warning('请输入名称'); return }
   try {
-    if (dialogMode.value === 'add') {
-      await api.addSewingWorkshopNode({ type: f.type, name: f.name.trim(), parent_id: f.parent_id })
-      ElMessage.success('新增成功')
-    } else {
-      await api.updateSewingWorkshopNode(f.id, { type: f.type, name: f.name.trim() })
-      ElMessage.success('修改成功')
-    }
+    await api.addSewingWorkshopNode({ type: f.type, name: f.name.trim(), parent_id: f.parent_id })
+    ElMessage.success('新增成功')
     dialogVisible.value = false
     loadTree()
   } catch (e) {
@@ -111,67 +186,23 @@ async function deleteNode(row) {
   }
 }
 
-// ====== 批量添加 ======
-function openBatchAdd() {
-  batchAddTeamId.value = null
-  batchAddNames.value = ''
-  batchAddVisible.value = true
+// ====== 拖动滚动 ======
+function onDragStart(e) {
+  if (e.target.tagName !== 'TD' && e.target.tagName !== 'TH') return
+  dragWrap = e.currentTarget
+  dragging = true
+  dragX = e.pageX
+  dragY = e.pageY
+  dragSL = dragWrap.scrollLeft
+  dragST = dragWrap.scrollTop
+  e.preventDefault()
 }
-
-async function saveBatchAdd() {
-  if (!batchAddTeamId.value) { ElMessage.warning('请选择班组'); return }
-  const names = batchAddNames.value.split('\n').map(s => s.trim()).filter(Boolean)
-  if (!names.length) { ElMessage.warning('请输入至少一个款式分类名称'); return }
-  try {
-    const items = names.map(name => ({ line_id: batchAddTeamId.value, name }))
-    const { data } = await api.batchAddCategories(items)
-    ElMessage.success(`成功添加 ${data.added} 个款式分类`)
-    batchAddVisible.value = false
-    loadTree()
-  } catch (e) {
-    ElMessage.error('批量添加失败：' + (e.response?.data?.error || e.message))
-  }
+function onDragMove(e) {
+  if (!dragging || !dragWrap) return
+  dragWrap.scrollLeft = dragSL - (e.pageX - dragX)
+  dragWrap.scrollTop = dragST - (e.pageY - dragY)
 }
-
-// ====== 批量编辑 ======
-function startBatchEdit() {
-  batchEditMode.value = true
-  batchEditChanges.value = {}
-}
-
-function cancelBatchEdit() {
-  batchEditMode.value = false
-  batchEditChanges.value = {}
-}
-
-function onBatchEditInput(row, val) {
-  batchEditChanges.value[`${row.type}:${row.id}`] = val
-}
-
-function getBatchEditValue(row) {
-  const key = `${row.type}:${row.id}`
-  return batchEditChanges.value[key] !== undefined ? batchEditChanges.value[key] : row.name
-}
-
-async function saveBatchEdit() {
-  const items = []
-  for (const [key, newName] of Object.entries(batchEditChanges.value)) {
-    const [type, id] = key.split(':')
-    if (newName && newName.trim()) {
-      items.push({ id: Number(id), type, name: newName.trim() })
-    }
-  }
-  if (!items.length) { batchEditMode.value = false; return }
-  try {
-    const { data } = await api.batchUpdateNodes(items)
-    ElMessage.success(`成功修改 ${data.updated} 条`)
-    batchEditMode.value = false
-    batchEditChanges.value = {}
-    loadTree()
-  } catch (e) {
-    ElMessage.error('批量修改失败：' + (e.response?.data?.error || e.message))
-  }
-}
+function onDragEnd() { dragging = false; dragWrap = null }
 
 // ====== 导出 ======
 async function doExport() {
@@ -183,9 +214,7 @@ async function doExport() {
     a.download = '车间班组款式分类.xlsx'
     a.click()
     URL.revokeObjectURL(url)
-  } catch (e) {
-    ElMessage.error('导出失败')
-  }
+  } catch { ElMessage.error('导出失败') }
 }
 
 // ====== 导入 ======
@@ -214,7 +243,21 @@ async function doImport() {
   importing.value = false
 }
 
-onMounted(loadTree)
+onMounted(() => {
+  loadTree()
+  // Drag-to-scroll on body (same pattern as Styles.vue)
+  const body = bodyRef.value
+  if (body) {
+    body.addEventListener('mousedown', onDragStart)
+    document.addEventListener('mousemove', onDragMove)
+    document.addEventListener('mouseup', onDragEnd)
+  }
+})
+onUnmounted(() => {
+  if (bodyRef.value) bodyRef.value.removeEventListener('mousedown', onDragStart)
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
+})
 </script>
 
 <template>
@@ -222,63 +265,71 @@ onMounted(loadTree)
     <div class="wm-header">
       <h2>缝制车间管理</h2>
       <div class="wm-actions">
-        <el-button v-if="!batchEditMode" type="primary" @click="openAdd(null)">新增车间</el-button>
-        <el-button v-if="!batchEditMode" type="success" @click="openBatchAdd">批量添加</el-button>
-        <el-button v-if="!batchEditMode" type="warning" @click="startBatchEdit">批量编辑</el-button>
-        <template v-if="batchEditMode">
-          <el-button type="primary" @click="saveBatchEdit">保存修改</el-button>
-          <el-button @click="cancelBatchEdit">取消编辑</el-button>
-          <span class="batch-hint">直接点击名称可编辑，修改后点保存</span>
-        </template>
-        <el-divider v-if="!batchEditMode" direction="vertical" />
-        <el-button v-if="!batchEditMode" @click="doExport">导出Excel</el-button>
-        <el-button v-if="!batchEditMode" @click="openImport">导入Excel</el-button>
+        <el-button type="primary" @click="openAdd(null)">新增车间</el-button>
+        <el-divider direction="vertical" />
+        <el-button @click="doExport">导出Excel</el-button>
+        <el-button @click="openImport">导入Excel</el-button>
       </div>
     </div>
 
-    <el-table
-      :data="treeData"
-      row-key="id"
-      :tree-props="{ children: 'children' }"
-      v-loading="loading"
-      border
-      stripe
-      default-expand-all
-      style="width: 100%"
-    >
-      <el-table-column prop="name" label="名称" min-width="300">
-        <template #default="{ row }">
-          <span class="type-tag" :class="row.type">{{ typeLabel(row.type) }}</span>
-          <el-input
-            v-if="batchEditMode"
-            :model-value="getBatchEditValue(row)"
-            size="small"
-            style="width: 240px"
-            @input="val => onBatchEditInput(row, val)"
-          />
-          <span v-else class="node-name">{{ row.name }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="type" label="类型" width="120">
-        <template #default="{ row }">{{ typeLabel(row.type) }}</template>
-      </el-table-column>
-      <el-table-column v-if="!batchEditMode" label="操作" width="260" fixed="right">
-        <template #default="{ row }">
-          <el-button v-if="canAddChild(row.type)" size="small" type="primary" text @click="openAdd(row)">
-            新增{{ typeLabel(childType(row.type)) }}
-          </el-button>
-          <el-button size="small" type="warning" text @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" type="danger" text @click="deleteNode(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="excel-wrap">
+      <div class="excel-body" ref="bodyRef" v-loading="loading">
+        <table class="excel-table">
+          <colgroup>
+            <col style="min-width:300px" />
+            <col style="width:120px" />
+            <col style="width:260px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>
+                <div class="col-header">
+                  <TextFilter :data="flatRows" field="name" label="名称" :precomputed="precomputedOptions.name" @filter="f => onTextFilter('name', f)" @sort="onSort" />
+                </div>
+              </th>
+              <th style="width:120px">
+                <div class="col-header">
+                  <TextFilter :data="flatRows" field="typeText" label="类型" :precomputed="precomputedOptions.typeText" @filter="f => onTextFilter('typeText', f)" @sort="onSort" />
+                </div>
+              </th>
+              <th style="width:260px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in filteredRows" :key="row.id" :class="{ 'editing-row': editingId === row.id }">
+              <td>
+                <span :style="{ paddingLeft: row.depth * 24 + 'px' }">
+                  <span class="type-tag" :class="row.type">{{ typeLabel(row.type) }}</span>
+                  <template v-if="editingId === row.id">
+                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:200px" />
+                  </template>
+                  <template v-else>
+                    <span class="node-name">{{ row.name }}</span>
+                  </template>
+                </span>
+              </td>
+              <td>{{ typeLabel(row.type) }}</td>
+              <td class="action-cell">
+                <template v-if="editingId === row.id">
+                  <el-button size="small" type="primary" text @click="saveEdit(row)">保存</el-button>
+                  <el-button size="small" text @click="cancelEdit">取消</el-button>
+                </template>
+                <template v-else>
+                  <el-button v-if="canAddChild(row.type)" size="small" type="primary" text @click="openAdd(row)">
+                    新增{{ typeLabel(childType(row.type)) }}
+                  </el-button>
+                  <el-button size="small" type="warning" text @click="startEdit(row)">编辑</el-button>
+                  <el-button size="small" type="danger" text @click="deleteNode(row)">删除</el-button>
+                </template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-    <!-- 单条新增/编辑弹窗 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogMode === 'add' ? '新增' + typeLabel(dialogForm.type) : '编辑' + typeLabel(dialogForm.type)"
-      width="400px"
-    >
+    <!-- 新增弹窗（仅新增用） -->
+    <el-dialog v-model="dialogVisible" :title="'新增' + typeLabel(dialogForm.type)" width="400px">
       <el-form label-width="80px">
         <el-form-item v-if="dialogForm.parentName" label="上级">
           <el-input :model-value="dialogForm.parentName" readonly />
@@ -290,29 +341,6 @@ onMounted(loadTree)
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveNode">确定</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 批量添加弹窗 -->
-    <el-dialog v-model="batchAddVisible" title="批量添加款式分类" width="500px">
-      <el-form label-width="80px">
-        <el-form-item label="选择班组" required>
-          <el-select v-model="batchAddTeamId" filterable placeholder="选择班组" style="width:100%">
-            <el-option v-for="t in allTeams" :key="t.id" :label="t.label" :value="t.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="分类名称">
-          <el-input
-            v-model="batchAddNames"
-            type="textarea"
-            :rows="8"
-            placeholder="每行一个款式分类名称&#10;例如：&#10;T恤类&#10;卫衣类&#10;裤类"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchAddVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveBatchAdd">确认添加</el-button>
       </template>
     </el-dialog>
 
@@ -338,7 +366,7 @@ onMounted(loadTree)
 
 <style scoped>
 .workshop-manage {
-  max-width: 960px;
+  max-width: 1100px;
 }
 .wm-header {
   display: flex;
@@ -360,11 +388,68 @@ onMounted(loadTree)
   gap: 8px;
   flex-wrap: wrap;
 }
-.batch-hint {
-  font-size: 12px;
-  color: #e6a23c;
-  margin-left: 4px;
+
+.excel-wrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
 }
+.excel-body {
+  overflow: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.excel-table td, .excel-table th {
+  cursor: default;
+}
+.excel-table td *, .excel-table th * {
+  cursor: text;
+}
+
+.excel-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.excel-table th {
+  background: #f5f7fa;
+  border-bottom: 2px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.excel-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+  overflow: hidden;
+  word-break: break-all;
+  line-height: 1.5;
+}
+.excel-body tbody tr:hover td { background: var(--primary-light); }
+.editing-row td {
+  background: var(--primary-light) !important;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.col-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 10px 16px;
+  gap: 4px;
+}
+.col-header span {
+  font-weight: 500;
+  font-size: 11px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  letter-spacing: 0.3px;
+}
+
 .type-tag {
   display: inline-block;
   padding: 1px 6px;
@@ -376,7 +461,16 @@ onMounted(loadTree)
 .type-tag.workshop { background: #409eff; }
 .type-tag.team { background: #67c23a; }
 .type-tag.category { background: #e6a23c; }
-.node-name {
+.node-name { font-size: 14px; }
+
+.inp {
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  padding: 2px 8px;
   font-size: 14px;
+  outline: none;
 }
+.inp:focus { box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2); }
+
+.action-cell { white-space: nowrap; }
 </style>

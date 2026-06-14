@@ -143,15 +143,12 @@ function loadAll() {
 }
 
 function openInbound() {
-  const today = fmtLocal(new Date()).replace(/-/g, '')
-  const todayCount = inbound.value.filter(r => (r.inbound_date || '').startsWith(fmtLocal(new Date()))).length
-  const orderNo = `RB${today}-${String(todayCount + 1).padStart(3, '0')}`
   inboundForm.value = {
     style_no: '', color: '', size_spec: '', qty: null,
     inbound_date: fmtLocal(new Date()), operator: '',
     pot_no: '', fabric_name: '', supplier: '', customer: '',
     width: '', weight: '', unit: 'KG', total_pcs: 0, unit2: '匹', remark: '',
-    order_no: orderNo, loading_qty: 0,
+    order_no: '（提交后自动生成）', loading_qty: 0,
   }
   fabricSelectKey.value = ''
   currentInventoryQty.value = 0
@@ -161,15 +158,12 @@ function openInbound() {
 }
 
 function openOutbound() {
-  const today = fmtLocal(new Date()).replace(/-/g, '')
-  const todayCount = outbound.value.filter(r => (r.outbound_date || '').startsWith(fmtLocal(new Date()))).length
-  const orderNo = `CB${today}-${String(todayCount + 1).padStart(3, '0')}`
   outboundForm.value = {
     style_no: '', color: '', size_spec: '', qty: null,
     outbound_date: fmtLocal(new Date()), operator: '',
     pot_no: '', fabric_name: '', supplier: '', customer: '',
     width: '', weight: '', unit: 'KG', total_pcs: 0, unit2: '匹', remark: '',
-    order_no: orderNo,
+    order_no: '（提交后自动生成）',
   }
   fabricSelectKey.value = ''
   currentInventoryQty.value = 0
@@ -493,7 +487,7 @@ onMounted(loadAll)
             <el-col :span="12"><el-form-item label="备注"><el-input v-model="inboundForm.remark" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="入库单号"><el-input v-model="inboundForm.order_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="入库单号"><el-input v-model="inboundForm.order_no" disabled /></el-form-item></el-col>
             <el-col :span="8"><el-form-item label="当前库存"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
             <el-col :span="8"><el-form-item label="装柜数量"><el-input :model-value="inboundForm.loading_qty" readonly /></el-form-item></el-col>
           </el-row>
@@ -569,7 +563,7 @@ onMounted(loadAll)
             <el-col :span="12"><el-form-item label="备注"><el-input v-model="outboundForm.remark" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="出库单号"><el-input v-model="outboundForm.order_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="出库单号"><el-input v-model="outboundForm.order_no" disabled /></el-form-item></el-col>
             <el-col :span="8"><el-form-item label="当前库存"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
             <el-col :span="8"></el-col>
           </el-row>

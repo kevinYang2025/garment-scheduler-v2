@@ -153,7 +153,10 @@
       "Bash(node -e \"const Database=require\\('better-sqlite3'\\); const db=new Database\\('./data.sqlite'\\); const rows=db.prepare\\('SELECT * FROM workshops'\\).all\\(\\); rows.forEach\\(r=>console.log\\(r.id, r.name\\)\\);\")",
       "Bash(node -e \"const Database=require\\('better-sqlite3'\\); const db=new Database\\('./data.sqlite'\\); db.prepare\\('UPDATE workshops SET name = ? WHERE id = ?'\\).run\\('一车间', 1\\); console.log\\('Fixed. Now:', db.prepare\\('SELECT * FROM workshops'\\).all\\(\\).map\\(r=>r.id+':'+r.name\\).join\\(', '\\)\\);\")",
       "Bash(node -e \"const Database=require\\('better-sqlite3'\\); const db=new Database\\('./data.sqlite'\\); const rows=db.prepare\\('SELECT * FROM production_lines ORDER BY sort_order'\\).all\\(\\); rows.forEach\\(r=>console.log\\(r.id, r.line_name\\)\\);\")",
-      "Bash(node -e \"process.stdin.setEncoding\\('utf8'\\);let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);j.forEach\\(w=>{const cats=w.children?.flatMap\\(l=>l.children||[]\\);if\\(cats?.length\\)console.log\\(w.name,'->',cats.map\\(c=>c.name\\).join\\(', '\\)\\);}\\);}\\)\")"
+      "Bash(node -e \"process.stdin.setEncoding\\('utf8'\\);let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);j.forEach\\(w=>{const cats=w.children?.flatMap\\(l=>l.children||[]\\);if\\(cats?.length\\)console.log\\(w.name,'->',cats.map\\(c=>c.name\\).join\\(', '\\)\\);}\\);}\\)\")",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(curl -sL https://raw.githubusercontent.com/colbymchenry/codegraph/main/README.md)"
     ]
   }
 }
