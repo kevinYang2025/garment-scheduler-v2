@@ -26,34 +26,68 @@ const importFile = ref(null)
 const importResult = ref(null)
 const importing = ref(false)
 
+// 批量选择
+const selectedIds = ref(new Set())
+const isAllSelected = computed(() => {
+  if (filteredRows.value.length === 0) return false
+  return filteredRows.value.every(r => selectedIds.value.has(rowKey(r)))
+})
+const isIndeterminate = computed(() => {
+  const n = filteredRows.value.filter(r => selectedIds.value.has(rowKey(r))).length
+  return n > 0 && n < filteredRows.value.length
+})
+function toggleAll() {
+  const s = new Set(selectedIds.value)
+  if (isAllSelected.value) {
+    filteredRows.value.forEach(r => s.delete(rowKey(r)))
+  } else {
+    filteredRows.value.forEach(r => s.add(rowKey(r)))
+  }
+  selectedIds.value = s
+}
+function toggleRow(row) {
+  const s = new Set(selectedIds.value)
+  const k = rowKey(row)
+  if (s.has(k)) s.delete(k); else s.add(k)
+  selectedIds.value = s
+}
+
+// 批量编辑弹窗
+const batchEditVisible = ref(false)
+const batchEditForm = ref({ mode: 'prefix', text: '', text2: '' })
+const batchEditModes = [
+  { value: 'prefix', label: '加前缀' },
+  { value: 'suffix', label: '加后缀' },
+  { value: 'replace', label: '替换文本' },
+  { value: 'rename', label: '统一重命名' },
+]
+
 // 拖动滚动
 const bodyRef = ref(null)
 let dragging = false
 let dragWrap = null
 let dragX = 0, dragY = 0, dragSL = 0, dragST = 0
 
-// ====== 扁平化树 ======
+// ====== 扁平化树 → 三列表格 ======
 const typeMap = { workshop: '车间', team: '班组', category: '款式分类' }
+function rowKey(row) { return row.type + '-' + row.id }
 
 const flatRows = computed(() => {
   const rows = []
-  function walk(nodes, depth, parentWorkshop, parentTeam) {
+  function walk(nodes, pw, pt) {
     for (const node of (nodes || [])) {
-      const row = { ...node, depth, parentWorkshop, parentTeam, typeText: typeMap[node.type] || node.type }
       if (node.type === 'workshop') {
-        row.parentWorkshop = node.name
-        rows.push(row)
-        walk(node.children, depth + 1, node.name, null)
+        rows.push({ ...node, workshopName: node.name, teamName: '', categoryName: '' })
+        walk(node.children, node.name, '')
       } else if (node.type === 'team') {
-        row.parentTeam = node.name
-        rows.push(row)
-        walk(node.children, depth + 1, parentWorkshop, node.name)
+        rows.push({ ...node, workshopName: pw, teamName: node.name, categoryName: '' })
+        walk(node.children, pw, node.name)
       } else {
-        rows.push(row)
+        rows.push({ ...node, workshopName: pw, teamName: pt, categoryName: node.name })
       }
     }
   }
-  walk(treeData.value, 0, '', '')
+  walk(treeData.value, '', '')
   return rows
 })
 
@@ -78,7 +112,7 @@ const filteredRows = computed(() => {
 })
 
 function computeFilterOptions() {
-  const fields = ['name', 'typeText']
+  const fields = ['workshopName', 'teamName', 'categoryName']
   const result = {}
   for (const f of fields) {
     const map = {}
@@ -127,7 +161,7 @@ function canAddChild(type) {
 
 // ====== 行内编辑 ======
 function startEdit(row) {
-  editingId.value = row.id
+  editingId.value = rowKey(row)
   editingName.value = row.name
 }
 function cancelEdit() {
@@ -183,6 +217,59 @@ async function deleteNode(row) {
     loadTree()
   } catch (e) {
     ElMessage.error('删除失败：' + (e.response?.data?.error || e.message))
+  }
+}
+
+// ====== 批量操作 ======
+async function batchDelete() {
+  const keys = [...selectedIds.value]
+  if (!keys.length) return
+  const msg = `确定删除选中的 ${keys.length} 项？子节点将一并删除。`
+  try { await ElMessageBox.confirm(msg, '批量删除', { type: 'warning' }) } catch { return }
+  try {
+    for (const k of keys) {
+      const row = flatRows.value.find(r => rowKey(r) === k)
+      if (row) await api.deleteSewingWorkshopNode(row.id, row.type)
+    }
+    ElMessage.success(`删除 ${keys.length} 项成功`)
+    selectedIds.value = new Set()
+    loadTree()
+  } catch (e) {
+    ElMessage.error('删除失败：' + (e.response?.data?.error || e.message))
+    loadTree()
+  }
+}
+
+function openBatchEdit() {
+  if (!selectedIds.value.size) { ElMessage.warning('请先选择要编辑的行'); return }
+  batchEditForm.value = { mode: 'prefix', text: '', text2: '' }
+  batchEditVisible.value = true
+}
+
+async function doBatchEdit() {
+  const { mode, text } = batchEditForm.value
+  if (!text.trim()) { ElMessage.warning('请输入内容'); return }
+  const keys = [...selectedIds.value]
+  try {
+    for (const k of keys) {
+      const row = flatRows.value.find(r => rowKey(r) === k)
+      if (!row) continue
+      let newName = row.name
+      if (mode === 'prefix') newName = text.trim() + row.name
+      else if (mode === 'suffix') newName = row.name + text.trim()
+      else if (mode === 'replace') newName = row.name.replaceAll(text.trim(), batchEditForm.value.text2 || '')
+      else if (mode === 'rename') newName = text.trim()
+      if (newName !== row.name) {
+        await api.updateSewingWorkshopNode(row.id, { type: row.type, name: newName })
+      }
+    }
+    ElMessage.success(`批量编辑完成`)
+    batchEditVisible.value = false
+    selectedIds.value = new Set()
+    loadTree()
+  } catch (e) {
+    ElMessage.error('批量编辑失败：' + (e.response?.data?.error || e.message))
+    loadTree()
   }
 }
 
@@ -245,7 +332,6 @@ async function doImport() {
 
 onMounted(() => {
   loadTree()
-  // Drag-to-scroll on body (same pattern as Styles.vue)
   const body = bodyRef.value
   if (body) {
     body.addEventListener('mousedown', onDragStart)
@@ -266,7 +352,9 @@ onUnmounted(() => {
       <h2>缝制车间管理</h2>
       <div class="wm-actions">
         <el-button type="primary" @click="openAdd(null)">新增车间</el-button>
-        <el-divider direction="vertical" />
+        <el-button v-if="selectedIds.size" type="warning" @click="openBatchEdit">批量编辑 ({{ selectedIds.size }})</el-button>
+        <el-button v-if="selectedIds.size" type="danger" @click="batchDelete">批量删除 ({{ selectedIds.size }})</el-button>
+        <el-divider v-if="!selectedIds.size" direction="vertical" />
         <el-button @click="doExport">导出Excel</el-button>
         <el-button @click="openImport">导入Excel</el-button>
       </div>
@@ -276,41 +364,85 @@ onUnmounted(() => {
       <div class="excel-body" ref="bodyRef" v-loading="loading">
         <table class="excel-table">
           <colgroup>
-            <col style="min-width:300px" />
-            <col style="width:120px" />
+            <col style="width:40px" />
+            <col style="min-width:200px" />
+            <col style="min-width:200px" />
+            <col style="min-width:200px" />
             <col style="width:260px" />
           </colgroup>
           <thead>
             <tr>
+              <th style="text-align:center">
+                <el-checkbox :model-value="isAllSelected" :indeterminate="isIndeterminate" @change="toggleAll" />
+              </th>
               <th>
                 <div class="col-header">
-                  <TextFilter :data="flatRows" field="name" label="名称" :precomputed="precomputedOptions.name" @filter="f => onTextFilter('name', f)" @sort="onSort" />
+                  <TextFilter :data="flatRows" field="workshopName" label="车间" :precomputed="precomputedOptions.workshopName" @filter="f => onTextFilter('workshopName', f)" @sort="onSort" />
                 </div>
               </th>
-              <th style="width:120px">
+              <th>
                 <div class="col-header">
-                  <TextFilter :data="flatRows" field="typeText" label="类型" :precomputed="precomputedOptions.typeText" @filter="f => onTextFilter('typeText', f)" @sort="onSort" />
+                  <TextFilter :data="flatRows" field="teamName" label="班组" :precomputed="precomputedOptions.teamName" @filter="f => onTextFilter('teamName', f)" @sort="onSort" />
+                </div>
+              </th>
+              <th>
+                <div class="col-header">
+                  <TextFilter :data="flatRows" field="categoryName" label="款式分类" :precomputed="precomputedOptions.categoryName" @filter="f => onTextFilter('categoryName', f)" @sort="onSort" />
                 </div>
               </th>
               <th style="width:260px">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in filteredRows" :key="row.id" :class="{ 'editing-row': editingId === row.id }">
+            <tr v-for="row in filteredRows" :key="rowKey(row)" :class="{ 'editing-row': editingId === rowKey(row) }">
+              <td style="text-align:center">
+                <el-checkbox :model-value="selectedIds.has(rowKey(row))" @change="toggleRow(row)" />
+              </td>
+              <!-- 车间列 -->
               <td>
-                <span :style="{ paddingLeft: row.depth * 24 + 'px' }">
-                  <span class="type-tag" :class="row.type">{{ typeLabel(row.type) }}</span>
-                  <template v-if="editingId === row.id">
-                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:200px" />
+                <template v-if="row.type === 'workshop'">
+                  <span class="type-tag workshop">车间</span>
+                  <template v-if="editingId === rowKey(row)">
+                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
                   </template>
                   <template v-else>
-                    <span class="node-name">{{ row.name }}</span>
+                    <span class="node-name">{{ row.workshopName }}</span>
                   </template>
-                </span>
+                </template>
+                <template v-else>
+                  <span class="node-name" style="color:var(--text-secondary)">{{ row.workshopName }}</span>
+                </template>
               </td>
-              <td>{{ typeLabel(row.type) }}</td>
+              <!-- 班组列 -->
+              <td>
+                <template v-if="row.type === 'team'">
+                  <span class="type-tag team">班组</span>
+                  <template v-if="editingId === rowKey(row)">
+                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
+                  </template>
+                  <template v-else>
+                    <span class="node-name">{{ row.teamName }}</span>
+                  </template>
+                </template>
+                <template v-else-if="row.teamName">
+                  <span class="node-name" style="color:var(--text-secondary)">{{ row.teamName }}</span>
+                </template>
+              </td>
+              <!-- 款式分类列 -->
+              <td>
+                <template v-if="row.type === 'category'">
+                  <span class="type-tag category">款式分类</span>
+                  <template v-if="editingId === rowKey(row)">
+                    <input class="inp" v-model="editingName" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:160px" />
+                  </template>
+                  <template v-else>
+                    <span class="node-name">{{ row.categoryName }}</span>
+                  </template>
+                </template>
+              </td>
+              <!-- 操作列 -->
               <td class="action-cell">
-                <template v-if="editingId === row.id">
+                <template v-if="editingId === rowKey(row)">
                   <el-button size="small" type="primary" text @click="saveEdit(row)">保存</el-button>
                   <el-button size="small" text @click="cancelEdit">取消</el-button>
                 </template>
@@ -328,7 +460,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 新增弹窗（仅新增用） -->
+    <!-- 新增弹窗 -->
     <el-dialog v-model="dialogVisible" :title="'新增' + typeLabel(dialogForm.type)" width="400px">
       <el-form label-width="80px">
         <el-form-item v-if="dialogForm.parentName" label="上级">
@@ -361,12 +493,42 @@ onUnmounted(() => {
         <el-button type="primary" @click="doImport" :loading="importing" :disabled="!importFile">开始导入</el-button>
       </template>
     </el-dialog>
+
+    <!-- 批量编辑弹窗 -->
+    <el-dialog v-model="batchEditVisible" :title="'批量编辑 (' + selectedIds.size + ' 项)'" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="操作">
+          <el-select v-model="batchEditForm.mode" style="width:100%">
+            <el-option v-for="m in batchEditModes" :key="m.value" :label="m.label" :value="m.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="batchEditForm.mode === 'replace'" label="查找">
+          <el-input v-model="batchEditForm.text" placeholder="要替换的文本" />
+        </el-form-item>
+        <el-form-item v-if="batchEditForm.mode === 'replace'" label="替换为">
+          <el-input v-model="batchEditForm.text2" placeholder="替换后的文本（留空则删除）" />
+        </el-form-item>
+        <el-form-item v-if="batchEditForm.mode === 'rename'" label="新名称">
+          <el-input v-model="batchEditForm.text" placeholder="统一重命名为" />
+        </el-form-item>
+        <el-form-item v-if="batchEditForm.mode === 'prefix'" label="前缀">
+          <el-input v-model="batchEditForm.text" placeholder="在名称前添加" />
+        </el-form-item>
+        <el-form-item v-if="batchEditForm.mode === 'suffix'" label="后缀">
+          <el-input v-model="batchEditForm.text" placeholder="在名称后添加" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchEditVisible = false">取消</el-button>
+        <el-button type="primary" @click="doBatchEdit">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .workshop-manage {
-  max-width: 1100px;
+  max-width: 1200px;
 }
 .wm-header {
   display: flex;

@@ -52,6 +52,7 @@ function fmtLocal(d) {
 
 // 款式下拉数据（远程搜索）
 const styleOptions = ref([])
+const outboundStyleOptions = ref([])
 const styleLoading = ref(false)
 let styleSearchTimer = null
 
@@ -64,6 +65,25 @@ async function searchStyles(keyword) {
       styleOptions.value = Array.isArray(data) ? data : []
     } catch {
       styleOptions.value = []
+    }
+    styleLoading.value = false
+  }, 250)
+}
+
+// 出库：只搜索有库存的款号
+async function searchInventoryStyles(keyword) {
+  clearTimeout(styleSearchTimer)
+  styleSearchTimer = setTimeout(async () => {
+    styleLoading.value = true
+    try {
+      const { data } = await api.getWarehouseInventory(props.warehouseType)
+      const items = Array.isArray(data) ? data : []
+      const filtered = keyword
+        ? items.filter(r => (r.style_no || '').includes(keyword) || (r.color || '').includes(keyword) || (r.fabric_name || '').includes(keyword))
+        : items
+      outboundStyleOptions.value = filtered.filter(r => r.current_qty > 0)
+    } catch {
+      outboundStyleOptions.value = []
     }
     styleLoading.value = false
   }, 250)
@@ -168,7 +188,7 @@ function openOutbound() {
   fabricSelectKey.value = ''
   currentInventoryQty.value = 0
   if (isFabric.value) { fabricOptions.value = []; searchFabricOptions('') }
-  else { styleOptions.value = []; searchStyles('') }
+  else { outboundStyleOptions.value = []; searchInventoryStyles('') }
   outboundDialogVisible.value = true
 }
 
@@ -222,6 +242,24 @@ function onStyleChange(form, val) {
   if (s) {
     form.color = s.color || form.color || ''
     form.size_spec = s.size_spec || form.size_spec || ''
+  }
+}
+
+function onOutboundStyleChange(val) {
+  const s = outboundStyleOptions.value.find(item => item.style_no === val)
+  if (s) {
+    outboundForm.value.color = s.color || ''
+    outboundForm.value.size_spec = s.size_spec || ''
+    outboundForm.value.pot_no = s.pot_no || ''
+    outboundForm.value.fabric_name = s.fabric_name || ''
+    outboundForm.value.supplier = s.supplier || ''
+    outboundForm.value.customer = s.customer || ''
+    outboundForm.value.width = s.width || ''
+    outboundForm.value.weight = s.weight || ''
+    outboundForm.value.unit = s.unit || 'KG'
+    outboundForm.value.total_pcs = s.total_pcs || 0
+    outboundForm.value.unit2 = s.unit2 || '匹'
+    currentInventoryQty.value = s.current_qty || 0
   }
 }
 
@@ -571,8 +609,8 @@ onMounted(loadAll)
         <!-- 其他仓库：原有表单 -->
         <template v-else>
           <el-form-item label="款号" required>
-            <el-select v-model="outboundForm.style_no" filterable remote reserve-keyword placeholder="输入款号搜索..." :remote-method="searchStyles" :loading="styleLoading" style="width:100%" @change="onStyleChange(outboundForm, $event)">
-              <el-option v-for="s in styleOptions" :key="s.id" :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`" :value="s.style_no" />
+            <el-select v-model="outboundForm.style_no" filterable remote reserve-keyword placeholder="输入款号搜索有库存的款..." :remote-method="searchInventoryStyles" :loading="styleLoading" style="width:100%" @change="onOutboundStyleChange($event)">
+              <el-option v-for="s in outboundStyleOptions" :key="s.id" :label="`${s.style_no} - ${s.fabric_name || ''} ${s.color} (库存:${s.current_qty})`" :value="s.style_no" />
             </el-select>
           </el-form-item>
           <el-row :gutter="12">
