@@ -211,7 +211,7 @@ app.post('/api/styles/import', async (req, res) => {
       if (key) colMap[colNumber] = key;
     });
     let imported = 0, skipped = 0;
-    const txn = db.transaction(() => {
+    const txn = db.getDb().transaction(() => {
       for (let i = 2; i <= ws.rowCount; i++) {
         const row = ws.getRow(i);
         const data = {};
@@ -358,6 +358,248 @@ app.get('/api/production-lines/:id/events', (req, res) => {
     res.json(db.all('SELECT * FROM production_line_events WHERE line_id = ? ORDER BY created_at DESC', [req.params.id]));
   } catch (e) {
     console.error('GET /api/production-lines/:id/events error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 缝制车间管理（三层树） ----------
+app.get('/api/sewing-workshop-tree', (req, res) => {
+  try {
+    const workshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
+    const lines = db.all('SELECT * FROM production_lines ORDER BY sort_order');
+    const categories = db.all('SELECT * FROM line_style_categories ORDER BY sort_order');
+    const tree = workshops.map(w => ({
+      id: w.id, name: w.name, type: 'workshop', sort_order: w.sort_order,
+      children: lines.filter(l => l.workshop_id === w.id).map(l => ({
+        id: l.id, name: l.line_name, type: 'team', workshop_id: l.workshop_id, sort_order: l.sort_order, status: l.status,
+        children: categories.filter(c => c.line_id === l.id).map(c => ({
+          id: c.id, name: c.name, type: 'category', line_id: c.line_id, sort_order: c.sort_order
+        }))
+      }))
+    }));
+    res.json(tree);
+  } catch (e) {
+    console.error('GET /api/sewing-workshop-tree error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/sewing-workshop-tree', (req, res) => {
+  try {
+    const { type, name, parent_id } = req.body;
+    if (!type || !name) return res.status(400).json({ error: 'type和name必填' });
+    if (type === 'workshop') {
+      const max = db.get('SELECT MAX(sort_order) as m FROM workshops');
+      const result = db.run('INSERT INTO workshops (name, sort_order) VALUES (?, ?)', [name, (max?.m || 0) + 1]);
+      res.json({ id: result.lastInsertRowid });
+    } else if (type === 'team') {
+      if (!parent_id) return res.status(400).json({ error: '班组需要workshop_id' });
+      const max = db.get('SELECT MAX(sort_order) as m FROM production_lines WHERE workshop_id = ?', [parent_id]);
+      const result = db.run('INSERT INTO production_lines (workshop_id, line_name, sort_order) VALUES (?, ?, ?)', [parent_id, name, (max?.m || 0) + 1]);
+      res.json({ id: result.lastInsertRowid });
+    } else if (type === 'category') {
+      if (!parent_id) return res.status(400).json({ error: '款式分类需要line_id' });
+      const max = db.get('SELECT MAX(sort_order) as m FROM line_style_categories WHERE line_id = ?', [parent_id]);
+      const result = db.run('INSERT INTO line_style_categories (line_id, name, sort_order) VALUES (?, ?, ?)', [parent_id, name, (max?.m || 0) + 1]);
+      res.json({ id: result.lastInsertRowid });
+    } else {
+      return res.status(400).json({ error: '无效type' });
+    }
+  } catch (e) {
+    console.error('POST /api/sewing-workshop-tree error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/sewing-workshop-tree/batch', (req, res) => {
+  try {
+    const { items } = req.body; // [{id, type, name}]
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: '参数错误' });
+    }
+    let updated = 0;
+    const rawDb = db.getDb();
+    const txn = rawDb.transaction(() => {
+      for (const item of items) {
+        if (!item.id || !item.type || !item.name) continue;
+        if (item.type === 'workshop') {
+          db.run('UPDATE workshops SET name = ? WHERE id = ?', [item.name, item.id]);
+        } else if (item.type === 'team') {
+          db.run('UPDATE production_lines SET line_name = ? WHERE id = ?', [item.name, item.id]);
+        } else if (item.type === 'category') {
+          db.run('UPDATE line_style_categories SET name = ? WHERE id = ?', [item.name, item.id]);
+        }
+        updated++;
+      }
+    });
+    txn();
+    res.json({ updated });
+  } catch (e) {
+    console.error('PUT /api/sewing-workshop-tree/batch error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/sewing-workshop-tree/:id', (req, res) => {
+  try {
+    const { type, name } = req.body;
+    if (!type || !name) return res.status(400).json({ error: 'type和name必填' });
+    if (type === 'workshop') {
+      db.run('UPDATE workshops SET name = ? WHERE id = ?', [name, req.params.id]);
+    } else if (type === 'team') {
+      db.run('UPDATE production_lines SET line_name = ? WHERE id = ?', [name, req.params.id]);
+    } else if (type === 'category') {
+      db.run('UPDATE line_style_categories SET name = ? WHERE id = ?', [name, req.params.id]);
+    } else {
+      return res.status(400).json({ error: '无效type' });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('PUT /api/sewing-workshop-tree error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/sewing-workshop-tree/:id', (req, res) => {
+  try {
+    const { type } = req.query;
+    if (!type) return res.status(400).json({ error: 'type必填' });
+    if (type === 'workshop') {
+      const lines = db.all('SELECT id FROM production_lines WHERE workshop_id = ?', [req.params.id]);
+      for (const l of lines) {
+        db.run('DELETE FROM line_style_categories WHERE line_id = ?', [l.id]);
+      }
+      db.run('DELETE FROM production_lines WHERE workshop_id = ?', [req.params.id]);
+      db.run('DELETE FROM workshops WHERE id = ?', [req.params.id]);
+    } else if (type === 'team') {
+      db.run('DELETE FROM line_style_categories WHERE line_id = ?', [req.params.id]);
+      db.run('DELETE FROM production_lines WHERE id = ?', [req.params.id]);
+    } else if (type === 'category') {
+      db.run('DELETE FROM line_style_categories WHERE id = ?', [req.params.id]);
+    } else {
+      return res.status(400).json({ error: '无效type' });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('DELETE /api/sewing-workshop-tree error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 缝制车间：批量操作 ----------
+app.post('/api/sewing-workshop-tree/batch', (req, res) => {
+  try {
+    const { type, items } = req.body; // type='category', items=[{line_id, name}]
+    if (type !== 'category' || !Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: '参数错误' });
+    }
+    let added = 0;
+    const rawDb = db.getDb();
+    const txn = rawDb.transaction(() => {
+      for (const item of items) {
+        if (!item.line_id || !item.name) continue;
+        const max = db.get('SELECT MAX(sort_order) as m FROM line_style_categories WHERE line_id = ?', [item.line_id]);
+        db.run('INSERT INTO line_style_categories (line_id, name, sort_order) VALUES (?, ?, ?)',
+          [item.line_id, item.name, (max?.m || 0) + 1]);
+        added++;
+      }
+    });
+    txn();
+    res.json({ added });
+  } catch (e) {
+    console.error('POST /api/sewing-workshop-tree/batch error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 缝制车间：导入导出 ----------
+app.get('/api/sewing-workshop-tree/export', async (req, res) => {
+  try {
+    const workshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
+    const lines = db.all('SELECT * FROM production_lines ORDER BY sort_order');
+    const categories = db.all('SELECT * FROM line_style_categories ORDER BY sort_order');
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('车间班组款式分类');
+    ws.columns = [
+      { header: '车间', key: 'workshop', width: 15 },
+      { header: '班组', key: 'team', width: 15 },
+      { header: '款式分类', key: 'category', width: 30 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    for (const w of workshops) {
+      const wLines = lines.filter(l => l.workshop_id === w.id);
+      const wCats = categories.filter(c => wLines.some(l => l.id === c.line_id));
+      if (wCats.length === 0) {
+        // 车间无分类，仍输出车间+班组
+        for (const l of wLines) {
+          ws.addRow({ workshop: w.name, team: l.line_name, category: '' });
+        }
+      } else {
+        for (const l of wLines) {
+          const lCats = categories.filter(c => c.line_id === l.id);
+          if (lCats.length === 0) {
+            ws.addRow({ workshop: w.name, team: l.line_name, category: '' });
+          } else {
+            for (const c of lCats) {
+              ws.addRow({ workshop: w.name, team: l.line_name, category: c.name });
+            }
+          }
+        }
+      }
+    }
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=workshop_tree.xlsx');
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('GET /api/sewing-workshop-tree/export error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/sewing-workshop-tree/import', async (req, res) => {
+  try {
+    const { file } = req.body;
+    if (!file) return res.status(400).json({ error: '请上传文件' });
+    const buffer = Buffer.from(file, 'base64');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const ws = wb.worksheets[0];
+    if (!ws || ws.rowCount < 2) return res.status(400).json({ error: '文件为空' });
+
+    // 建立车间/班组名称→ID映射
+    const workshops = db.all('SELECT * FROM workshops');
+    const lines = db.all('SELECT * FROM production_lines');
+    const wsMap = {}; // name→id
+    for (const w of workshops) wsMap[w.name] = w.id;
+    const lineMap = {}; // "workshopId_lineName"→id
+    for (const l of lines) lineMap[`${l.workshop_id}_${l.line_name}`] = l.id;
+
+    let added = 0, skipped = 0;
+    const txn = db.getDb().transaction(() => {
+      for (let i = 2; i <= ws.rowCount; i++) {
+        const row = ws.getRow(i);
+        const workshopName = String(row.getCell(1).value || '').trim();
+        const teamName = String(row.getCell(2).value || '').trim();
+        const categoryName = String(row.getCell(3).value || '').trim();
+        if (!workshopName || !teamName || !categoryName) { skipped++; continue; }
+        const wsId = wsMap[workshopName];
+        if (!wsId) { skipped++; continue; }
+        const lineId = lineMap[`${wsId}_${teamName}`];
+        if (!lineId) { skipped++; continue; }
+        // 检查是否已存在
+        const existing = db.get('SELECT id FROM line_style_categories WHERE line_id = ? AND name = ?', [lineId, categoryName]);
+        if (existing) { skipped++; continue; }
+        const max = db.get('SELECT MAX(sort_order) as m FROM line_style_categories WHERE line_id = ?', [lineId]);
+        db.run('INSERT INTO line_style_categories (line_id, name, sort_order) VALUES (?, ?, ?)',
+          [lineId, categoryName, (max?.m || 0) + 1]);
+        added++;
+      }
+    });
+    txn();
+    res.json({ added, skipped });
+  } catch (e) {
+    console.error('POST /api/sewing-workshop-tree/import error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -909,7 +1151,7 @@ app.post('/api/shipping-plans/generate', (req, res) => {
   try {
     const plans = db.all('SELECT * FROM main_plan WHERE due_date IS NOT NULL ORDER BY due_date');
     let count = 0;
-    const txn = db.transaction(() => {
+    const txn = db.getDb().transaction(() => {
       for (const p of plans) {
         const existing = db.get('SELECT id FROM shipping_plans WHERE style_no = ? AND ship_date = ?', [p.style_no, p.due_date]);
         if (existing) continue;
@@ -1239,7 +1481,7 @@ app.put('/api/asn/:id/status', (req, res) => {
       return res.status(400).json({ error: `不能从 ${asn.status} 转换到 ${status}` });
     }
 
-    db.run('UPDATE asn_list SET status = ?, actual_date = datetime("now","localtime") WHERE id = ?', [status, req.params.id]);
+    db.run(`UPDATE asn_list SET status = ?, actual_date = datetime('now','localtime') WHERE id = ?`, [status, req.params.id]);
 
     if (status === 'COMPLETED') {
       // 入库完成：更新库存
@@ -1379,11 +1621,11 @@ app.put('/api/dn/:id/status', (req, res) => {
         }
       }
       const shippedTotal = details.reduce((s, d) => s + (d.shipped_qty || d.plan_qty || 0), 0);
-      db.run('UPDATE dn_list SET shipped_qty = ?, actual_ship_date = datetime("now","localtime") WHERE id = ?', [shippedTotal, dn.id]);
+      db.run(`UPDATE dn_list SET shipped_qty = ?, actual_ship_date = datetime('now','localtime') WHERE id = ?`, [shippedTotal, dn.id]);
     }
 
     if (status === 'DELIVERED') {
-      db.run('UPDATE dn_list SET delivery_date = datetime("now","localtime") WHERE id = ?', [req.params.id]);
+      db.run(`UPDATE dn_list SET delivery_date = datetime('now','localtime') WHERE id = ?`, [req.params.id]);
     }
 
     const statusLabels = { PENDING: '待拣货', PICKING: '拣货中', PICKED: '已拣货', SHIPPED: '已发货', DELIVERED: '已签收', CANCELLED: '已取消' };
@@ -1422,7 +1664,7 @@ function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
     [type, styleNo, color || '', sizeSpec || '', potNo]);
   if (existing) {
     const newQty = Math.max(0, existing.current_qty + delta);
-    db.run('UPDATE warehouse_inventory SET current_qty = ?, updated_at = datetime("now","localtime") WHERE id = ?',
+    db.run(`UPDATE warehouse_inventory SET current_qty = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
       [newQty, existing.id]);
   } else if (delta > 0) {
     db.run('INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, current_qty, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -1736,7 +1978,7 @@ app.put('/api/config/gantt/:type', (req, res) => {
       db.run('INSERT INTO gantt_field_config (schedule_type, bar_fields, tooltip_fields, left_fields) VALUES (?,?,?,?)',
         [req.params.type, JSON.stringify(barFields || []), JSON.stringify(tooltipFields || []), JSON.stringify(leftFields || [])]);
     } else {
-      db.run('UPDATE gantt_field_config SET bar_fields=?, tooltip_fields=?, left_fields=?, updated_at=datetime("now","localtime") WHERE schedule_type=?',
+      db.run(`UPDATE gantt_field_config SET bar_fields=?, tooltip_fields=?, left_fields=?, updated_at=datetime('now','localtime') WHERE schedule_type=?`,
         [JSON.stringify(barFields || []), JSON.stringify(tooltipFields || []), JSON.stringify(leftFields || []), req.params.type]);
     }
     res.json({ ok: true });

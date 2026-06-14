@@ -425,6 +425,14 @@ function createTables() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
+    -- 缝制车间款式分类（第三层）
+    CREATE TABLE IF NOT EXISTS line_style_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      line_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0
+    );
+
     -- 交期预估
     CREATE TABLE IF NOT EXISTS delivery_estimations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

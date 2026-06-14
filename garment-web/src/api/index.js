@@ -34,6 +34,26 @@ export default {
   getProductionLines: () => api.get('/production-lines'),
   updateProductionLine: (id, data) => api.put(`/production-lines/${id}`, data),
 
+  // 缝制车间管理（三层树）
+  getSewingWorkshopTree: () => api.get('/sewing-workshop-tree'),
+  addSewingWorkshopNode: (data) => api.post('/sewing-workshop-tree', data),
+  updateSewingWorkshopNode: (id, data) => api.put(`/sewing-workshop-tree/${id}`, data),
+  deleteSewingWorkshopNode: (id, type) => api.delete(`/sewing-workshop-tree/${id}`, { params: { type } }),
+  batchAddCategories: (items) => api.post('/sewing-workshop-tree/batch', { type: 'category', items }),
+  batchUpdateNodes: (items) => api.put('/sewing-workshop-tree/batch', { items }),
+  exportSewingWorkshopTree: () => api.get('/sewing-workshop-tree/export', { responseType: 'blob' }),
+  importSewingWorkshopTree: (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1]
+        api.post('/sewing-workshop-tree/import', { file: base64 }).then(resolve).catch(reject)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  },
+
   // 主计划
   getMainPlan: () => api.get('/main-plan'),
   saveMainPlan: (plan) => api.post('/main-plan', plan),
