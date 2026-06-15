@@ -1036,11 +1036,19 @@ app.post('/api/actual', (req, res) => {
 app.get('/api/dispatch-summary', (req, res) => {
   try {
     const { schedule_type, style_no, date_from, date_to, group_by = 'date' } = req.query;
-    let sql = `SELECT
-      production_date,
-      style_no,
-      workshop,
-      line_team,
+    let groupExpr, selectExtra;
+    switch (group_by) {
+      case 'style':
+        groupExpr = 'style_no'; selectExtra = 'style_no,'; break;
+      case 'workshop':
+        groupExpr = 'workshop'; selectExtra = 'workshop,'; break;
+      case 'line_team':
+        groupExpr = 'line_team'; selectExtra = 'line_team,'; break;
+      default:
+        groupExpr = 'production_date, style_no'; selectExtra = 'production_date, style_no,';
+    }
+    let sql = `SELECT ${selectExtra}
+      workshop, line_team,
       COUNT(*) as record_count,
       SUM(completed_qty) as total_completed,
       SUM(defect_qty) as total_defects,
@@ -1051,11 +1059,223 @@ app.get('/api/dispatch-summary', (req, res) => {
     if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
-    sql += ' GROUP BY production_date, style_no, workshop, line_team ORDER BY production_date DESC LIMIT 200';
+    sql += ` GROUP BY ${groupExpr} ORDER BY ${groupExpr.split(',')[0]} DESC LIMIT 500`;
     res.json(db.all(sql, params));
   } catch (e) {
     console.error('GET /api/dispatch-summary error:', e);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 单条报工 CRUD ----------
+app.get('/api/actual/:id', (req, res) => {
+  try {
+    const row = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
+    if (!row) return res.status(404).json({ error: '记录不存在' });
+    res.json(row);
+  } catch (e) {
+    console.error('GET /api/actual/:id error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/actual/:id', (req, res) => {
+  try {
+    const r = req.body;
+    const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: '记录不存在' });
+
+    const oldStyleId = existing.style_id;
+    const newStyleId = r.style_id || oldStyleId;
+
+    db.run(`UPDATE actual_production SET schedule_type=?, style_id=?, style_no=?, color=?, size_spec=?,
+      production_date=?, completed_qty=?, defect_qty=?, workshop=?, line_team=?, remark=?,
+      worker_name=?, start_time=?, end_time=? WHERE id=?`,
+      [r.schedule_type || existing.schedule_type, newStyleId, r.style_no || existing.style_no,
+       r.color ?? existing.color, r.size_spec ?? existing.size_spec,
+       r.production_date || existing.production_date, r.completed_qty ?? existing.completed_qty,
+       r.defect_qty ?? existing.defect_qty, r.workshop ?? existing.workshop,
+       r.line_team ?? existing.line_team, r.remark ?? existing.remark,
+       r.worker_name ?? existing.worker_name, r.start_time ?? existing.start_time,
+       r.end_time ?? existing.end_time, req.params.id]);
+
+    syncActualToDaily({ ...existing, ...r, style_id: newStyleId });
+    if (newStyleId) db.recalcTaskStatus(newStyleId);
+    if (oldStyleId && oldStyleId !== newStyleId) db.recalcTaskStatus(oldStyleId);
+    broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('PUT /api/actual/:id error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/actual/:id', (req, res) => {
+  try {
+    const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: '记录不存在' });
+
+    db.run('DELETE FROM actual_production WHERE id = ?', [req.params.id]);
+
+    const masters = db.all('SELECT id FROM schedule_master WHERE style_no = ? AND schedule_type = ?',
+      [existing.style_no, existing.schedule_type]);
+    for (const m of masters) {
+      db.run("DELETE FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = 'ACTUAL'",
+        [m.id, existing.production_date]);
+    }
+
+    if (existing.style_id) db.recalcTaskStatus(existing.style_id);
+    broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('DELETE /api/actual/:id error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 批量导入报工 ----------
+app.post('/api/actual/batch', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: '请提供报工记录数组' });
+    }
+    let inserted = 0;
+    const styleIds = new Set();
+    for (const r of records) {
+      if (!r.style_no || !r.production_date) continue;
+      const result = db.run(`INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [r.schedule_type || '', r.style_id || 0, r.style_no, r.color || '', r.size_spec || '',
+         r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '',
+         r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '']);
+      syncActualToDaily(r);
+      if (r.style_id) styleIds.add(r.style_id);
+      inserted++;
+    }
+    for (const sid of styleIds) db.recalcTaskStatus(sid);
+    broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
+    res.json({ ok: true, inserted });
+  } catch (e) {
+    console.error('POST /api/actual/batch error:', e);
+    res.status(500).json({ error: '批量导入失败' });
+  }
+});
+
+// ---------- 每日完成量趋势 ----------
+app.get('/api/dispatch-daily-trend', (req, res) => {
+  try {
+    const { style_no, date_from, date_to } = req.query;
+    let sql = `SELECT production_date, SUM(completed_qty) as total_completed, SUM(defect_qty) as total_defects
+      FROM actual_production WHERE 1=1`;
+    const params = [];
+    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
+    if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
+    sql += ' GROUP BY production_date ORDER BY production_date ASC';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/dispatch-daily-trend error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 计划 vs 实际对比 ----------
+app.get('/api/dispatch-plan-vs-actual', (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+    let dateFilter = '';
+    const params = [];
+    if (date_from) { dateFilter += ' AND sm.plan_start >= ?'; params.push(date_from); }
+    if (date_to) { dateFilter += ' AND sm.plan_end <= ?'; params.push(date_to); }
+
+    const rows = db.all(`
+      SELECT sm.style_no, sm.style_id, sm.plan_qty, sm.schedule_type,
+        COALESCE(a.actual_total, 0) as actual_total,
+        CASE WHEN sm.plan_qty > 0
+          THEN MIN(ROUND(CAST(COALESCE(a.actual_total, 0) AS REAL) * 100.0 / sm.plan_qty), 100)
+          ELSE 0 END as progress_pct
+      FROM schedule_master sm
+      LEFT JOIN (
+        SELECT style_no, style_id, schedule_type, SUM(completed_qty) as actual_total
+        FROM actual_production GROUP BY style_no, schedule_type
+      ) a ON sm.style_no = a.style_no AND sm.schedule_type = a.schedule_type
+      WHERE sm.plan_qty > 0 ${dateFilter}
+      GROUP BY sm.style_no, sm.schedule_type
+      ORDER BY progress_pct ASC
+    `, params);
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /api/dispatch-plan-vs-actual error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 报工预警（落后于计划） ----------
+app.get('/api/dispatch-alerts', (req, res) => {
+  try {
+    const rows = db.all(`
+      SELECT sm.style_no, sm.style_id, sm.plan_qty, sm.schedule_type, sm.plan_end,
+        COALESCE(a.actual_total, 0) as actual_total,
+        CASE WHEN sm.plan_qty > 0
+          THEN ROUND(CAST(COALESCE(a.actual_total, 0) AS REAL) * 100.0 / sm.plan_qty, 1)
+          ELSE 0 END as progress_pct
+      FROM schedule_master sm
+      LEFT JOIN (
+        SELECT style_no, style_id, schedule_type, SUM(completed_qty) as actual_total
+        FROM actual_production GROUP BY style_no, schedule_type
+      ) a ON sm.style_no = a.style_no AND sm.schedule_type = a.schedule_type
+      WHERE sm.plan_qty > 0 AND COALESCE(a.actual_total, 0) < sm.plan_qty
+      ORDER BY sm.plan_end ASC
+    `);
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /api/dispatch-alerts error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 报工导出 Excel ----------
+app.get('/api/dispatch-export', async (req, res) => {
+  try {
+    const { schedule_type, style_no, date_from, date_to } = req.query;
+    let sql = `SELECT production_date, style_no, color, size_spec, completed_qty, defect_qty,
+      workshop, line_team, worker_name, remark, recorded_at
+      FROM actual_production WHERE 1=1`;
+    const params = [];
+    if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
+    if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
+    sql += ' ORDER BY production_date DESC';
+    const rows = db.all(sql, params);
+
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('报工明细');
+    ws.columns = [
+      { header: '生产日期', key: 'production_date', width: 14 },
+      { header: '款号', key: 'style_no', width: 25 },
+      { header: '颜色', key: 'color', width: 12 },
+      { header: '尺码', key: 'size_spec', width: 10 },
+      { header: '完成数量', key: 'completed_qty', width: 12 },
+      { header: '次品数量', key: 'defect_qty', width: 10 },
+      { header: '车间', key: 'workshop', width: 10 },
+      { header: '班组', key: 'line_team', width: 10 },
+      { header: '工人', key: 'worker_name', width: 12 },
+      { header: '备注', key: 'remark', width: 20 },
+      { header: '录入时间', key: 'recorded_at', width: 20 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    for (const r of rows) {
+      ws.addRow(r);
+    }
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('报工明细_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('GET /api/dispatch-export error:', e);
+    res.status(500).json({ error: '导出失败' });
   }
 });
 

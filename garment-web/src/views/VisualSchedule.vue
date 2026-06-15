@@ -172,10 +172,15 @@ function getTaskStyle(task) {
   const endDate = new Date(task.sewingEnd)
   const rangeStart = new Date(dates.value[0])
   const dayWidth = 28
-  const left = Math.round((startDate - rangeStart) / (1000 * 60 * 60 * 24)) * dayWidth
-  const width = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24) + 1) * dayWidth
+  const totalWidth = dates.value.length * dayWidth
+  let left = Math.round((startDate - rangeStart) / (1000 * 60 * 60 * 24)) * dayWidth
+  let width = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24) + 1) * dayWidth
   // 任务完全在可见范围外则隐藏
-  if (left + width < 0 || left > dates.value.length * dayWidth) return { display: 'none' }
+  if (left + width < 0 || left > totalWidth) return { display: 'none' }
+  // 裁剪：左侧超出则从0开始
+  if (left < 0) { width += left; left = 0 }
+  // 裁剪：右侧超出则截断
+  if (left + width > totalWidth) { width = totalWidth - left }
   return {
     left: left + 'px',
     width: Math.max(width, dayWidth) + 'px'
@@ -675,6 +680,7 @@ onMounted(loadGantt)
 .tasks-area {
   position: relative;
   min-height: 40px;
+  overflow: hidden;
 }
 
 .fault-line {

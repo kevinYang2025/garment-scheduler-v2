@@ -74,7 +74,11 @@ export default {
 
   // 实际生产数据
   getActual: (scheduleType) => api.get('/actual', { params: { scheduleType } }),
+  getActualById: (id) => api.get(`/actual/${id}`),
   saveActual: (data) => api.post('/actual', data),
+  updateActual: (id, data) => api.put(`/actual/${id}`, data),
+  deleteActual: (id) => api.delete(`/actual/${id}`),
+  batchImportActual: (records) => api.post('/actual/batch', { records }),
   // [#32] Missing sewing API methods
   saveSewing: (data) => api.post('/schedule/sewing', data),
   deleteSewing: (id) => api.delete(`/schedule/sewing/${id}`),
@@ -138,6 +142,10 @@ export default {
 
   // 报工汇总
   getDispatchSummary: (params) => api.get('/dispatch-summary', { params }),
+  getDispatchDailyTrend: (params) => api.get('/dispatch-daily-trend', { params }),
+  getDispatchPlanVsActual: (params) => api.get('/dispatch-plan-vs-actual', { params }),
+  getDispatchAlerts: () => api.get('/dispatch-alerts'),
+  exportDispatchReport: (params) => api.get('/dispatch-export', { params, responseType: 'blob' }),
 
   // 交期预估
   getEstimations: () => api.get('/estimations'),
