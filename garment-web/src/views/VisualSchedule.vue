@@ -11,6 +11,23 @@ const unscheduled = ref([])
 const dateRange = ref({ start: '', end: '' })
 const loading = ref(false)
 const draggedItem = ref(null)
+const filterWorkshop = ref('')
+const filterLine = ref('')
+
+// 筛选后的车间列表
+const filteredWorkshops = computed(() => {
+  let result = workshops.value
+  if (filterWorkshop.value) {
+    result = result.filter(ws => ws.name === filterWorkshop.value)
+  }
+  if (filterLine.value) {
+    result = result.map(ws => ({
+      ...ws,
+      lines: ws.lines.filter(l => l.name.includes(filterLine.value))
+    })).filter(ws => ws.lines.length > 0)
+  }
+  return result
+})
 const ganttConfig = ref({
   barFields: ['styleNo', 'planQty'],
   tooltipFields: ['styleNo', 'productName', 'planQty', 'sewingStart', 'sewingEnd'],
@@ -151,6 +168,12 @@ onMounted(loadGantt)
         <button class="back-btn" @click="emit('back')">
           <span style="margin-right:4px">←</span> 返回
         </button>
+        <select v-model="filterWorkshop" class="filter-select">
+          <option value="">全部车间</option>
+          <option v-for="ws in workshops" :key="ws.name" :value="ws.name">{{ ws.name }}</option>
+        </select>
+        <input v-model="filterLine" class="filter-input" placeholder="搜班组..." />
+        <span v-if="filterWorkshop || filterLine" class="filter-clear" @click="filterWorkshop=''; filterLine=''">✕ 清除</span>
       </div>
       <button @click="loadGantt" :disabled="loading">
         {{ loading ? '加载中...' : '刷新' }}
@@ -187,7 +210,7 @@ onMounted(loadGantt)
       <div class="gantt-container">
         <!-- 日期标题 -->
         <div class="gantt-header">
-          <div class="line-label">产线</div>
+          <div class="line-label header-label">产线</div>
           <div class="dates-row">
             <div
               v-for="date in dates"
@@ -202,7 +225,7 @@ onMounted(loadGantt)
 
         <!-- 车间/产线行 -->
         <div class="gantt-body">
-          <template v-for="workshop in workshops" :key="workshop.name">
+          <template v-for="workshop in filteredWorkshops" :key="workshop.name">
             <div class="workshop-header">{{ workshop.name }}</div>
             <div
               v-for="line in workshop.lines"
@@ -213,8 +236,12 @@ onMounted(loadGantt)
               @drop="line.status !== '故障' && onDrop(workshop, line)"
             >
               <div class="line-label">
-                {{ line.name }}
-                <span v-if="line.status === '故障'" class="fault-badge">故障</span>
+                <div class="line-name">{{ line.name }}
+                  <span v-if="line.status === '故障'" class="fault-badge">故障</span>
+                </div>
+                <div v-if="line.categories && line.categories.length" class="line-categories">
+                  <span v-for="cat in line.categories" :key="cat" class="cat-tag">{{ cat }}</span>
+                </div>
               </div>
               <div class="tasks-area">
                 <div
@@ -283,6 +310,27 @@ onMounted(loadGantt)
   transition: var(--transition);
 }
 .toolbar .back-btn:hover { color: var(--primary); }
+
+.filter-select, .filter-input {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--card);
+  outline: none;
+}
+.filter-select:focus, .filter-input:focus {
+  border-color: var(--primary);
+}
+.filter-input { width: 120px; }
+.filter-clear {
+  font-size: 12px;
+  color: var(--danger);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.filter-clear:hover { text-decoration: underline; }
 
 .toolbar button {
   padding: 6px 16px;
@@ -398,14 +446,45 @@ onMounted(loadGantt)
 }
 
 .line-label {
-  width: 80px;
-  min-width: 80px;
-  padding: 8px;
+  width: 100px;
+  min-width: 100px;
+  padding: 6px 8px;
   font-weight: 600;
   font-size: 12px;
   text-align: center;
   border-right: 1px solid var(--border);
   color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.line-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.line-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: center;
+}
+
+.cat-tag {
+  font-size: 10px;
+  padding: 1px 4px;
+  background: var(--primary-light, #eef2ff);
+  color: var(--primary-dark, #3730a3);
+  border-radius: 3px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.header-label {
+  font-size: 13px;
 }
 
 .dates-row {

@@ -1671,15 +1671,25 @@ app.delete('/api/dn/:id', (req, res) => {
 function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
   if (!delta || delta === 0) return;
   const potNo = extra?.pot_no || ''
-  const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
-    [type, styleNo, color || '', sizeSpec || '', potNo]);
+  // 查找库存记录（按 UNIQUE 约束的 4 个字段匹配）
+  const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ?',
+    [type, styleNo, color || '', sizeSpec || '']);
   if (existing) {
     const newQty = Math.max(0, existing.current_qty + delta);
     db.run(`UPDATE warehouse_inventory SET current_qty = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
       [newQty, existing.id]);
   } else if (delta > 0) {
-    db.run('INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, current_qty, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      [type, styleNo, color || '', sizeSpec || '', delta, potNo, extra?.fabric_name || '', extra?.supplier || '', extra?.customer || '', extra?.width || '', extra?.weight || '', extra?.unit || 'KG', extra?.total_pcs || 0, extra?.unit2 || '匹']);
+    try {
+      db.run('INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, current_qty, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [type, styleNo, color || '', sizeSpec || '', delta, potNo, extra?.fabric_name || '', extra?.supplier || '', extra?.customer || '', extra?.width || '', extra?.weight || '', extra?.unit || 'KG', extra?.total_pcs || 0, extra?.unit2 || '匹']);
+    } catch (e) {
+      // 并发插入时可能冲突，改用 UPDATE
+      const fallback = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ?',
+        [type, styleNo, color || '', sizeSpec || '']);
+      if (fallback) {
+        db.run('UPDATE warehouse_inventory SET current_qty = current_qty + ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?', [delta, fallback.id]);
+      }
+    }
   }
 }
 
@@ -2195,16 +2205,24 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       taskIndex[key].push(t)
     }
 
-    // 以车间产线为骨架，关联排程数据
+    // 加载所有产线的款式分类
+    const allCats = db.all('SELECT * FROM line_style_categories ORDER BY line_id, sort_order');
+    const catIndex = {}
+    for (const c of allCats) {
+      if (!catIndex[c.line_id]) catIndex[c.line_id] = []
+      catIndex[c.line_id].push(c.name)
+    }
+
+    // 以车间产线为骨架，关联排程数据和分类
     const workshops = allWorkshops.map(ws => ({
       name: ws.name,
       lines: ws.lines.map(line => {
-        // schedule_master.line_team 是纯数字，line_name 末尾去掉"班"匹配
         const lineNum = line.line_name.replace(/班$/, '')
         const key = ws.name + '|' + lineNum
         return {
           name: line.line_name,
           status: line.status,
+          categories: catIndex[line.id] || [],
           tasks: taskIndex[key] || []
         }
       })
