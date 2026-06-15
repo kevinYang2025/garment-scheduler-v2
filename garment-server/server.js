@@ -2544,13 +2544,17 @@ app.post('/api/visual-schedule/assign', (req, res) => {
       ORDER BY plan_end DESC LIMIT 1`, [workshop, lineNum])
 
     const today = fmtLocal(new Date())
-    // 新任务上线时间 = 产线最后任务结束日+1 或 今天（取较晚的）
-    let sewingStart = today
+    // 无任务产线从明天开始（当天排不上）
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = fmtLocal(tomorrow)
+    let sewingStart = tomorrowStr
+    // 有任务则排在最后任务之后
     if (lastTask && lastTask.plan_end) {
       const nextDay = new Date(lastTask.plan_end + 'T00:00:00')
       nextDay.setDate(nextDay.getDate() + 1)
       const nextDayStr = fmtLocal(nextDay)
-      if (nextDayStr > today) sewingStart = nextDayStr
+      if (nextDayStr > tomorrowStr) sewingStart = nextDayStr
     }
 
     // 计算下线时间：计划数量 / 日产量（向上取整）
@@ -2624,12 +2628,15 @@ app.post('/api/visual-schedule/move', (req, res) => {
       WHERE schedule_type = 'sewing' AND workshop = ? AND line_team = ?
       ORDER BY plan_end DESC LIMIT 1`, [newWorkshop, newLineNum]);
     const today = fmtLocal(new Date());
-    let sewingStart = today;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = fmtLocal(tomorrow);
+    let sewingStart = tomorrowStr;
     if (lastTask && lastTask.plan_end) {
       const nextDay = new Date(lastTask.plan_end + 'T00:00:00');
       nextDay.setDate(nextDay.getDate() + 1);
       const nextDayStr = fmtLocal(nextDay);
-      if (nextDayStr > today) sewingStart = nextDayStr;
+      if (nextDayStr > tomorrowStr) sewingStart = nextDayStr;
     }
     // 计算下线时间
     let sewingEnd = sewingStart;

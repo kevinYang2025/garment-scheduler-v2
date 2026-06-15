@@ -61,7 +61,6 @@ const navSections = [
     items: [
       { key: 'basicData', label: '基础数据总览', icon: 'grid' },
       { key: 'styles', label: '款式管理', icon: 'tag' },
-      { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
       { key: 'sewingWorkshop', label: '缝制车间管理', icon: 'factory' },
       { key: 'styleColorSize', label: '分色分尺码', icon: 'ruler' },
     ]
@@ -80,6 +79,7 @@ const navSections = [
     label: '仓库管理',
     items: [
       { key: 'warehouse', label: '仓库管理', icon: 'package' },
+      { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
     ]
   },
   {
