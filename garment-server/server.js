@@ -2196,10 +2196,11 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       lines: Object.values(ws.lines)
     }))
 
-    // 未排班项：main_plan 中尚未排程的
+    // 未排班项：main_plan 中尚未排程的（JOIN styles 获取颜色/规格）
     const unscheduled = db.all(`SELECT mp.id as planId, mp.style_no as styleNo, mp.product_name as productName,
-      mp.color, mp.size_spec as sizeSpec, mp.plan_qty as planQty, mp.due_date as dueDate
+      s.color, s.size_spec as sizeSpec, mp.plan_qty as planQty, mp.due_date as dueDate
       FROM main_plan mp
+      LEFT JOIN styles s ON mp.style_id = s.id
       WHERE mp.is_scheduled = 0 OR mp.is_scheduled IS NULL
       ORDER BY mp.due_date`);
     res.json({ workshops, unscheduled });
