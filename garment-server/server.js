@@ -2297,9 +2297,7 @@ app.post('/api/visual-schedule/assign', (req, res) => {
     if (!plan) return res.status(404).json({ error: '计划不存在' });
     if (plan.is_scheduled) return res.status(400).json({ error: '该计划已排班' });
     const lineNum = String(lineTeam).replace(/班$/, '')
-    // 更新 main_plan：设置车间、班组、上下线时间
-    db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 1, sewing_start = ?, sewing_end = ? WHERE id = ?',
-      [workshop, lineNum, plan.sewing_start || plan.due_date, plan.sewing_end || plan.due_date, planId]);
+
     // 查产线日产量
     const lineId = db.get('SELECT id FROM production_lines WHERE line_name = ?', [lineTeam]);
     let dailyTarget = 0;
@@ -2307,19 +2305,44 @@ app.post('/api/visual-schedule/assign', (req, res) => {
       const cat = db.get('SELECT daily_output FROM line_style_categories WHERE line_id = ? ORDER BY sort_order LIMIT 1', [lineId.id]);
       dailyTarget = cat?.daily_output || 0;
     }
-    // 查款式数据
+
+    // 查该产线最后一个任务的结束日期，新任务排在后面
+    const lastTask = db.get(`SELECT plan_end FROM schedule_master
+      WHERE schedule_type = 'sewing' AND workshop = ? AND line_team = ?
+      ORDER BY plan_end DESC LIMIT 1`, [workshop, lineNum])
+
+    const today = fmtLocal(new Date())
+    // 新任务上线时间 = 产线最后任务结束日+1 或 今天（取较晚的）
+    let sewingStart = today
+    if (lastTask && lastTask.plan_end) {
+      const nextDay = new Date(lastTask.plan_end + 'T00:00:00')
+      nextDay.setDate(nextDay.getDate() + 1)
+      const nextDayStr = fmtLocal(nextDay)
+      if (nextDayStr > today) sewingStart = nextDayStr
+    }
+
+    // 计算下线时间：计划数量 / 日产量（向上取整）
+    let sewingEnd = sewingStart
+    if (dailyTarget > 0 && plan.plan_qty > 0) {
+      const daysNeeded = Math.ceil(plan.plan_qty / dailyTarget)
+      sewingEnd = db.addWorkdays(sewingStart, daysNeeded - 1) // start算第1天
+    }
+
+    // 更新 main_plan
+    db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 1, sewing_start = ?, sewing_end = ? WHERE id = ?',
+      [workshop, lineNum, sewingStart, sewingEnd, planId]);
+
+    // 查款式数据，插入 schedule_master
     const style = db.get('SELECT * FROM styles WHERE style_no = ? LIMIT 1', [plan.style_no]);
-    const planStart = plan.sewing_start || plan.due_date || '';
-    const planEnd = plan.sewing_end || plan.due_date || '';
-    if (style && planStart && planEnd && planStart <= planEnd) {
+    if (style && sewingStart <= sewingEnd) {
       db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
         plan_qty, plan_start, plan_end, workshop, line_team, daily_target, cutting_plan_qty, due_date)
         VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [style.id, plan.style_no, plan.product_name, style.color || '', style.size_spec || '',
-         plan.plan_qty, planStart, planEnd, workshop, lineNum, dailyTarget, plan.plan_qty, plan.due_date || '']);
+         plan.plan_qty, sewingStart, sewingEnd, workshop, lineNum, dailyTarget, plan.plan_qty, plan.due_date || '']);
     }
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    res.json({ ok: true });
+    res.json({ ok: true, sewingStart, sewingEnd, dailyTarget });
   } catch (e) {
     console.error('POST /api/visual-schedule/assign error:', e);
     res.status(500).json({ error: 'Internal server error' });

@@ -22,6 +22,7 @@ import ShippingPlan from './views/ShippingPlan.vue'
 import SchedulingStrategy from './views/SchedulingStrategy.vue'
 import FabricLoadingList from './views/FabricLoadingList.vue'
 import SewingWorkshopManage from './views/SewingWorkshopManage.vue'
+import EntryHome from './views/EntryHome.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
@@ -46,9 +47,14 @@ watch(() => DB.value, async (db) => {
 
 const navSections = [
   {
+    label: '工作台',
+    items: [
+      { key: 'dashboard', label: '数据看板', icon: 'grid' },
+    ]
+  },
+  {
     label: '基础数据',
     items: [
-      { key: 'dashboard', label: '工作台', icon: 'grid' },
       { key: 'styles', label: '款式管理', icon: 'tag' },
       { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
       { key: 'sewingWorkshop', label: '缝制车间管理', icon: 'factory' },
@@ -71,13 +77,18 @@ const navSections = [
     ]
   },
   {
-    label: '系统',
+    label: '报工',
     items: [
-      { key: 'config', label: '设置', icon: 'settings' },
-      { key: 'work-calendar', label: '工作日历', icon: 'calendar' },
       { key: 'dispatch', label: '报工汇总', icon: 'data-analysis' },
       { key: 'estimation', label: '交期预估', icon: 'timer' },
       { key: 'shipping', label: '出货计划', icon: 'van' },
+    ]
+  },
+  {
+    label: '设置',
+    items: [
+      { key: 'config', label: '系统设置', icon: 'settings' },
+      { key: 'work-calendar', label: '工作日历', icon: 'calendar' },
       { key: 'strategy', label: '排产策略', icon: 'magic-stick' },
       { key: 'logs', label: '操作日志', icon: 'list' },
     ]
@@ -271,8 +282,11 @@ function getIcon(name) {
       <!-- Content -->
       <main class="main-content">
         <KeepAlive :max="8">
-          <!-- Home / Dashboard -->
-          <div v-if="currentModule === 'home' && DB" key="home">
+          <!-- 入口页面 -->
+          <EntryHome v-if="currentModule === 'home' && DB" key="home" @navigate="enterModule" />
+
+          <!-- 工作台 / 数据看板 -->
+          <div v-else-if="currentModule === 'dashboard' && DB" key="dashboard">
             <Dashboard :db="DB" @navigate="enterModule" />
           </div>
 

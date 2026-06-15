@@ -82,6 +82,9 @@ const dates = computed(() => {
   return result
 })
 
+// 日期行总宽度（px），确保 tasks-area 与之等宽
+const datesWidth = computed(() => dates.value.length * 28)
+
 // 周导航
 function prevWeek() { weekOffset.value-- }
 function nextWeek() { weekOffset.value++ }
@@ -136,7 +139,8 @@ async function onDrop(workshop, line) {
       lineTeam: line.name
     })
     if (res.data.ok) {
-      ElMessage.success('排班成功')
+      const { sewingStart, sewingEnd, dailyTarget } = res.data
+      ElMessage.success(`排班成功：${sewingStart.slice(5)} ~ ${sewingEnd.slice(5)}，日产量 ${dailyTarget}件`)
       await loadGantt()
     } else {
       ElMessage.error(res.data.error || '排班失败')
@@ -279,7 +283,7 @@ onMounted(loadGantt)
                   <span class="output-tag">{{ line.categories.reduce((s, c) => s + c.dailyOutput, 0) }}件/天</span>
                 </div>
               </div>
-              <div class="tasks-area">
+              <div class="tasks-area" :style="{ minWidth: datesWidth + 'px' }">
                 <div
                   v-for="task in line.tasks"
                   :key="task.planId"
@@ -527,8 +531,10 @@ onMounted(loadGantt)
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  position: relative;
-  z-index: 2;
+  position: sticky;
+  left: 0;
+  background: var(--card);
+  z-index: 5;
   gap: 2px;
 }
 
@@ -566,6 +572,7 @@ onMounted(loadGantt)
 
 .header-label {
   font-size: 13px;
+  background: var(--bg);
 }
 
 .dates-row {
@@ -594,7 +601,7 @@ onMounted(loadGantt)
 }
 
 .gantt-body {
-  overflow-y: auto;
+  /* 不设 overflow，让 gantt-container 统一滚动 */
 }
 
 .workshop-header {
@@ -604,6 +611,9 @@ onMounted(loadGantt)
   font-size: 13px;
   color: var(--primary-dark);
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  left: 0;
+  z-index: 4;
 }
 
 .gantt-row {

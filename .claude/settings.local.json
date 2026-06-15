@@ -184,7 +184,9 @@
       "Bash(curl -s http://localhost:3001/api/visual-schedule/date-range)",
       "Bash(taskkill //F //PID 19056)",
       "Bash(findstr \":3001 :5173\")",
-      "Bash(rtk curl *)"
+      "Bash(rtk curl *)",
+      "Bash(taskkill //F //PID 6852)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"车间数: {len\\(d['workshops']\\)}, 待排: {len\\(d['unscheduled']\\)}\\\\\"\\)\")"
     ]
   }
 }
