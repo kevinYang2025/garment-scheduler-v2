@@ -526,6 +526,8 @@ onMounted(loadGantt)
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 2;
   gap: 2px;
 }
 
@@ -628,6 +630,7 @@ onMounted(loadGantt)
   position: relative;
   flex: 1;
   min-height: 40px;
+  overflow: hidden;
 }
 
 .gantt-bar {
