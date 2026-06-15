@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import api from '../api'
 
-const emit = defineEmits(['enter', 'enter-asn', 'enter-dn', 'exit'])
+const emit = defineEmits(['enter', 'exit'])
 
 const warehouseTypes = [
   { key: 'raw_material', label: '面料库', icon: '🧵', unit: '米' },
@@ -82,10 +82,6 @@ onMounted(loadSummaries)
         <div class="card-name">{{ w.label }}</div>
         <div class="card-qty">{{ summaries[w.key]?.totalQty ?? 0 }}</div>
         <div class="card-time">最近操作：{{ formatTime(summaries[w.key]?.lastUpdate) }}</div>
-        <div class="card-actions" @click.stop>
-          <el-button size="small" @click="emit('enter-asn', w.key)">📦 入库</el-button>
-          <el-button size="small" @click="emit('enter-dn', w.key)">📤 出库</el-button>
-        </div>
       </div>
     </div>
   </div>
@@ -186,12 +182,6 @@ onMounted(loadSummaries)
   color: var(--text-tertiary);
 }
 
-.card-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 8px;
-}
 
 .loading {
   display: flex;

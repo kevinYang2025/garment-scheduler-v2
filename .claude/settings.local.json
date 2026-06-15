@@ -169,7 +169,22 @@
       "Bash(taskkill //F //PID 32996)",
       "Bash(python -m json.tool)",
       "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\('/tmp/gantt.json','utf8'\\)\\); console.log\\('Workshops:', d.workshops.length\\); d.workshops.forEach\\(ws => ws.lines.slice\\(0,2\\).forEach\\(l => console.log\\(ws.name+'/'+l.name, 'cats:', l.categories\\)\\)\\);\")",
-      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(process.env.TEMP+'/gantt.json','utf8'\\)\\); console.log\\('Workshops:', d.workshops.length\\); d.workshops.forEach\\(ws => ws.lines.slice\\(0,2\\).forEach\\(l => console.log\\(ws.name+'/'+l.name, 'cats:', JSON.stringify\\(l.categories\\)\\)\\)\\);\")"
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(process.env.TEMP+'/gantt.json','utf8'\\)\\); console.log\\('Workshops:', d.workshops.length\\); d.workshops.forEach\\(ws => ws.lines.slice\\(0,2\\).forEach\\(l => console.log\\(ws.name+'/'+l.name, 'cats:', JSON.stringify\\(l.categories\\)\\)\\)\\);\")",
+      "Bash(npx vue-tsc *)",
+      "Bash(curl -s http://localhost:5173/views/VisualSchedule.vue)",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\('C:/Users/kevin/AppData/Local/Temp/gantt_test.json','utf8'\\)\\);console.log\\(d.workshops.map\\(w=>w.name\\)\\);\")",
+      "Bash(taskkill //F //PID 3096)",
+      "Bash(curl -s -X PUT http://localhost:3001/api/main-plan/9 -H \"Content-Type: application/json\" -d '{\"style_no\":\"0102-65244（柬埔寨）\",\"product_name\":\"高领长袖\",\"plan_qty\":800,\"due_date\":\"2026-10-14\",\"workshop\":\"一车间\",\"line_team\":\"2\"}')",
+      "Bash(node -e \"const Database = require\\('better-sqlite3'\\); const db = new Database\\('data.sqlite'\\); console.log\\(db.prepare\\('SELECT id, style_no FROM main_plan'\\).all\\(\\)\\); db.close\\(\\);\")",
+      "Bash(taskkill //F //PID 28352)",
+      "Bash(curl -s -X PUT http://localhost:3001/api/main-plan/10 -H \"Content-Type: application/json\" -d '{\"workshop\":\"一车间\",\"line_team\":\"2\"}')",
+      "Bash(taskkill //F //PID 28580)",
+      "Bash(curl -s http://localhost:3001/api/main-plan)",
+      "Bash(taskkill //F //PID 35296)",
+      "Bash(curl -s http://localhost:3001/api/visual-schedule/date-range)",
+      "Bash(taskkill //F //PID 19056)",
+      "Bash(findstr \":3001 :5173\")",
+      "Bash(rtk curl *)"
     ]
   }
 }

@@ -8,8 +8,6 @@ import MainPlan from './views/MainPlan.vue'
 import ScheduleView from './views/ScheduleView.vue'
 import WarehouseHome from './views/WarehouseHome.vue'
 import WarehouseDetail from './views/WarehouseDetail.vue'
-import ASNWorkflow from './views/ASNWorkflow.vue'
-import DNWorkflow from './views/DNWorkflow.vue'
 import SecondaryHome from './views/SecondaryHome.vue'
 import SecondaryDetail from './views/SecondaryDetail.vue'
 import SewingHome from './views/SewingHome.vue'
@@ -28,7 +26,6 @@ import SewingWorkshopManage from './views/SewingWorkshopManage.vue'
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
 const warehouseActiveType = ref('')
-const warehouseWorkflow = ref('') // 'asn' or 'dn' for ASN/DN workflow views
 const secondaryActiveType = ref('')
 const sewingActiveType = ref('')
 const prefetchedStyles = ref(null)
@@ -135,17 +132,10 @@ function goHome() {
 
 function enterWarehouse(type) {
   warehouseActiveType.value = type
-  warehouseWorkflow.value = ''
-}
-
-function enterWarehouseWorkflow(type, workflow) {
-  warehouseActiveType.value = type
-  warehouseWorkflow.value = workflow
 }
 
 function backToWarehouseHome() {
   warehouseActiveType.value = ''
-  warehouseWorkflow.value = ''
 }
 
 function enterSecondaryDetail(type) {
@@ -310,10 +300,8 @@ function getIcon(name) {
           <SewingHome v-else-if="currentModule === 'sewing' && !sewingActiveType && DB" @enter="enterSewingDetail" @back="goHome" key="sewingHome" />
           <SewingPlanDetail v-else-if="currentModule === 'sewing' && sewingActiveType === 'plan' && DB" @back="backToSewingHome" key="sewingPlan" />
           <VisualSchedule v-else-if="currentModule === 'sewing' && sewingActiveType === 'visual' && DB" :db="DB" @back="backToSewingHome" key="visualSchedule" />
-          <WarehouseHome v-else-if="currentModule === 'warehouse' && !warehouseActiveType && DB" @enter="enterWarehouse" @enter-asn="t => enterWarehouseWorkflow(t, 'asn')" @enter-dn="t => enterWarehouseWorkflow(t, 'dn')" @exit="goHome" key="warehouseHome" />
-          <ASNWorkflow v-else-if="currentModule === 'warehouse' && warehouseActiveType && warehouseWorkflow === 'asn' && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" key="asnWorkflow" />
-          <DNWorkflow v-else-if="currentModule === 'warehouse' && warehouseActiveType && warehouseWorkflow === 'dn' && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" key="dnWorkflow" />
-          <WarehouseDetail v-else-if="currentModule === 'warehouse' && warehouseActiveType && !warehouseWorkflow && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" key="warehouseDetail" />
+          <WarehouseHome v-else-if="currentModule === 'warehouse' && !warehouseActiveType && DB" @enter="enterWarehouse" @exit="goHome" key="warehouseHome" />
+          <WarehouseDetail v-else-if="currentModule === 'warehouse' && warehouseActiveType && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" key="warehouseDetail" />
           <CapacityConfig v-else-if="currentModule === 'config' && DB" :db="DB" key="capacityConfig" />
           <OperationLogs v-else-if="currentModule === 'logs' && DB" key="logs" />
           <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />

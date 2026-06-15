@@ -202,13 +202,32 @@ async function saveInbound() {
     return
   }
   try {
-    await api.addWarehouseInbound(props.warehouseType, {
-      ...inboundForm.value,
-      ref_type: '',
+    const f = inboundForm.value
+    const { data } = await api.createAsn({
+      warehouse_type: props.warehouseType,
+      supplier: f.supplier || '',
+      expected_date: f.inbound_date || '',
+      remark: f.remark || '',
+      details: [{
+        style_no: f.style_no,
+        fabric_name: f.fabric_name || '',
+        color: f.color || '',
+        size_spec: f.size_spec || '',
+        pot_no: f.pot_no || '',
+        plan_qty: f.qty || 0,
+        unit: f.unit || 'KG',
+      }],
     })
-    ElMessage.success('入库成功')
-    inboundDialogVisible.value = false
-    loadAll()
+    if (data.ok) {
+      // 自动确认收货并完成入库
+      await api.updateAsnStatus(data.id, { status: 'RECEIVED' })
+      await api.updateAsnStatus(data.id, { status: 'COMPLETED' })
+      ElMessage.success('入库成功')
+      inboundDialogVisible.value = false
+      loadAll()
+    } else {
+      ElMessage.error(data.error || '入库失败')
+    }
   } catch (e) {
     ElMessage.error('入库失败：' + (e.response?.data?.error || e.message))
   }
@@ -224,13 +243,29 @@ async function saveOutbound() {
     return
   }
   try {
-    await api.addWarehouseOutbound(props.warehouseType, {
-      ...outboundForm.value,
-      ref_type: '',
+    const f = outboundForm.value
+    const { data } = await api.createDn({
+      warehouse_type: props.warehouseType,
+      customer: f.customer || '',
+      ship_date: f.outbound_date || '',
+      remark: f.remark || '',
+      details: [{
+        style_no: f.style_no,
+        color: f.color || '',
+        size_spec: f.size_spec || '',
+        plan_qty: f.qty || 0,
+        unit: f.unit || 'KG',
+      }],
     })
-    ElMessage.success('出库成功')
-    outboundDialogVisible.value = false
-    loadAll()
+    if (data.ok) {
+      // 自动完成发货（扣减库存）
+      await api.updateDnStatus(data.id, { status: 'SHIPPED' })
+      ElMessage.success('出库成功')
+      outboundDialogVisible.value = false
+      loadAll()
+    } else {
+      ElMessage.error(data.error || '出库失败')
+    }
   } catch (e) {
     ElMessage.error('出库失败：' + (e.response?.data?.error || e.message))
   }

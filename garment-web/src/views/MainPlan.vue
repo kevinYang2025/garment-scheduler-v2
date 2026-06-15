@@ -107,6 +107,7 @@ const dateFields = computed(() => {
 })
 
 const filteredPlans = computed(() => {
+  const today = fmtLocal(new Date())
   return plans.value.filter(r => {
     // Date filters
     for (const [field, f] of Object.entries(dateFilters.value)) {
@@ -125,25 +126,45 @@ const filteredPlans = computed(() => {
     }
     return true
   }).sort((a, b) => {
-    if (!sortState.value.field) return 0
-    const { field, sortBy, dir } = sortState.value
-    const mul = dir === 'asc' ? 1 : -1
-    let va, vb
-    if (sortBy === 'count') {
+    // 用户选择排序
+    if (sortState.value.field) {
+      const { field, sortBy, dir } = sortState.value
+      const mul = dir === 'asc' ? 1 : -1
+      let va, vb
+      if (sortBy === 'count') {
+        va = a[field] || ''
+        vb = b[field] || ''
+        return va.localeCompare(vb, 'zh') * mul
+      }
+      if (sortBy === 'date') {
+        va = a[field] ? (a[field].includes('T') ? a[field].slice(0, 10) : a[field]) : ''
+        vb = b[field] ? (b[field].includes('T') ? b[field].slice(0, 10) : b[field]) : ''
+        return va.localeCompare(vb) * mul
+      }
       va = a[field] || ''
       vb = b[field] || ''
       return va.localeCompare(vb, 'zh') * mul
     }
-    if (sortBy === 'date') {
-      va = a[field] ? (a[field].includes('T') ? a[field].slice(0, 10) : a[field]) : ''
-      vb = b[field] ? (b[field].includes('T') ? b[field].slice(0, 10) : b[field]) : ''
-      return va.localeCompare(vb) * mul
+    // 默认排序：未排班组优先 → 缝制提醒到期优先 → 按上线时间
+    const aUnassigned = !a.workshop || !a.line_team
+    const bUnassigned = !b.workshop || !b.line_team
+    if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1
+    if (aUnassigned && bUnassigned) {
+      const aRemind = a.sewing_remind_date || ''
+      const bRemind = b.sewing_remind_date || ''
+      const aRemindDue = aRemind && aRemind <= today
+      const bRemindDue = bRemind && bRemind <= today
+      if (aRemindDue !== bRemindDue) return aRemindDue ? -1 : 1
     }
-    va = a[field] || ''
-    vb = b[field] || ''
-    return va.localeCompare(vb, 'zh') * mul
+    const aStart = a.sewing_start || '9999-99-99'
+    const bStart = b.sewing_start || '9999-99-99'
+    return aStart.localeCompare(bStart)
   })
 })
+
+// 未排班组数量
+const unassignedCount = computed(() => plans.value.filter(r => !r.workshop || !r.line_team).length)
+const assignedCount = computed(() => plans.value.filter(r => r.workshop && r.line_team).length)
 
 // Re-sync column widths when body rows change
 watch(filteredPlans, () => { setTimeout(syncColWidths, 0) })
@@ -448,7 +469,31 @@ onUnmounted(() => {
       <div class="excel-body" ref="bodyRef">
         <table class="excel-table">
           <tbody>
-          <tr v-for="row in filteredPlans" :key="row.id" :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id) }">
+          <template v-for="(row, idx) in filteredPlans" :key="row.id">
+          <!-- 分组分隔线：未排班组 → 已排班组 -->
+          <tr v-if="idx === 0 && (!row.workshop || !row.line_team)" class="section-row">
+            <td :colspan="columns.length + 2" class="section-label">
+              <span class="section-tag unassigned">待排班组款式 ({{ unassignedCount }})</span>
+              <span class="section-hint">缝制提醒到期的已置顶</span>
+            </td>
+          </tr>
+          <tr v-if="idx > 0 && (!row.workshop || !row.line_team) && (filteredPlans[idx-1].workshop && filteredPlans[idx-1].line_team)" class="section-row">
+            <td :colspan="columns.length + 2" class="section-label">
+              <span class="section-tag unassigned">待排班组款式 ({{ unassignedCount }})</span>
+              <span class="section-hint">缝制提醒到期的已置顶</span>
+            </td>
+          </tr>
+          <tr v-if="idx === 0 && row.workshop && row.line_team" class="section-row">
+            <td :colspan="columns.length + 2" class="section-label">
+              <span class="section-tag assigned">已排班组款式 ({{ assignedCount }})</span>
+            </td>
+          </tr>
+          <tr v-if="idx > 0 && row.workshop && row.line_team && (!filteredPlans[idx-1].workshop || !filteredPlans[idx-1].line_team)" class="section-row">
+            <td :colspan="columns.length + 2" class="section-label">
+              <span class="section-tag assigned">已排班组款式 ({{ assignedCount }})</span>
+            </td>
+          </tr>
+          <tr :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id), 'unassigned-row': !row.workshop || !row.line_team }">
             <td class="chk-cell" style="width:40px">
               <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
             </td>
@@ -515,6 +560,7 @@ onUnmounted(() => {
               </template>
             </td>
           </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -658,6 +704,40 @@ onUnmounted(() => {
 }
 .selected-row td {
   background: var(--primary-light) !important;
+}
+
+/* 分区分隔行 */
+.section-row td {
+  background: var(--bg) !important;
+  padding: 8px 12px !important;
+  border-bottom: 2px solid var(--border) !important;
+  white-space: nowrap;
+}
+.section-tag {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 4px;
+  margin-right: 8px;
+}
+.section-tag.unassigned {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.section-tag.assigned {
+  background: var(--primary-light, #eef2ff);
+  color: var(--primary-dark, #3730a3);
+  border: 1px solid var(--primary-light, #c7d2fe);
+}
+.section-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.unassigned-row td {
+  background: #fffbeb !important;
 }
 
 /* 双div容器：header固定 + body滚动 */

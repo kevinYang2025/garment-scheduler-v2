@@ -2330,7 +2330,14 @@ app.post('/api/visual-schedule/unassign', (req, res) => {
   try {
     const { planId } = req.body;
     if (!planId) return res.status(400).json({ error: '参数不完整' });
-    db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 0 WHERE id = ?', ['', '', planId]);
+    // planId 是 schedule_master.id，先取出 style_id
+    const sm = db.get('SELECT style_id FROM schedule_master WHERE id = ?', [planId]);
+    if (sm && sm.style_id) {
+      // 更新 main_plan：清除车间/班组，标记未排
+      db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 0 WHERE style_id = ?', ['', '', sm.style_id]);
+    }
+    // 删除 schedule_master 记录
+    db.run('DELETE FROM schedule_master WHERE id = ?', [planId]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     res.json({ ok: true });
   } catch (e) {
