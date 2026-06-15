@@ -8,7 +8,7 @@ const props = defineProps({
   warehouseType: { type: String, required: true },
 })
 
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'navigate'])
 
 // TODO: 权限判断接口，后续对接实际权限系统
 function hasPermission(perm) {
@@ -244,6 +244,11 @@ function loadAll() {
   loadInbound()
   loadOutbound()
   loadInventory()
+}
+
+function goToFabricList() {
+  inboundDialogVisible.value = false
+  emit('navigate', 'fabricList')
 }
 
 function openInbound() {
@@ -604,6 +609,7 @@ onMounted(loadAll)
         </template>
       </el-form>
       <template #footer>
+        <el-button v-if="isFabric" @click="goToFabricList" style="margin-right:auto">📑 从装柜清单批量入库</el-button>
         <el-button @click="inboundDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveInbound">确认入库</el-button>
       </template>

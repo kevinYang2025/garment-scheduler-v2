@@ -23,6 +23,7 @@ import SchedulingStrategy from './views/SchedulingStrategy.vue'
 import FabricLoadingList from './views/FabricLoadingList.vue'
 import AuxiliaryList from './views/AuxiliaryList.vue'
 import SewingWorkshopManage from './views/SewingWorkshopManage.vue'
+import PreWorkshopOutput from './views/PreWorkshopOutput.vue'
 import EntryHome from './views/EntryHome.vue'
 import BasicDataHome from './views/BasicDataHome.vue'
 import PlanManagementHome from './views/PlanManagementHome.vue'
@@ -63,6 +64,7 @@ const navSections = [
       { key: 'basicData', label: '基础数据总览', icon: 'grid' },
       { key: 'styles', label: '款式管理', icon: 'tag' },
       { key: 'sewingWorkshop', label: '缝制车间管理', icon: 'factory' },
+      { key: 'preWorkshopOutput', label: '前置车间产量管理', icon: 'factory' },
       { key: 'styleColorSize', label: '分色分尺码', icon: 'ruler' },
     ]
   },
@@ -350,6 +352,7 @@ function getIcon(name) {
           <AuxiliaryList v-else-if="currentModule === 'auxiliaryList'" key="auxiliaryList" />
 
           <SewingWorkshopManage v-else-if="currentModule === 'sewingWorkshop'" key="sewingWorkshop" />
+          <PreWorkshopOutput v-else-if="currentModule === 'preWorkshopOutput'" key="preWorkshopOutput" />
 
           <div v-else-if="currentModule === 'styleColorSize' && DB" class="placeholder-page" key="styleColorSize">
             <div class="page-header-bar">
@@ -370,7 +373,7 @@ function getIcon(name) {
           <SewingPlanDetail v-else-if="currentModule === 'sewing' && sewingActiveType === 'plan' && DB" @back="backToSewingHome" key="sewingPlan" />
           <VisualSchedule v-else-if="currentModule === 'sewing' && sewingActiveType === 'visual' && DB" :db="DB" @back="backToSewingHome" key="visualSchedule" />
           <WarehouseHome v-else-if="currentModule === 'warehouse' && !warehouseActiveType && DB" @enter="enterWarehouse" @exit="goHome" key="warehouseHome" />
-          <WarehouseDetail v-else-if="currentModule === 'warehouse' && warehouseActiveType && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" key="warehouseDetail" />
+          <WarehouseDetail v-else-if="currentModule === 'warehouse' && warehouseActiveType && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" @navigate="enterModule" key="warehouseDetail" />
           <CapacityConfig v-else-if="currentModule === 'config' && DB" :db="DB" key="capacityConfig" />
           <OperationLogs v-else-if="currentModule === 'logs' && DB" key="logs" />
           <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />
@@ -380,11 +383,17 @@ function getIcon(name) {
           <DispatchReport v-else-if="currentModule === 'template-dispatch' && DB" schedule-type="secondary" secondary-type="模板" key="template-dispatch" />
           <DispatchReport v-else-if="currentModule === 'ironing-dispatch' && DB" schedule-type="secondary" secondary-type="烫标" key="ironing-dispatch" />
           <DispatchReport v-else-if="currentModule === 'sewing-dispatch' && sewingActiveWorkshop && DB" schedule-type="sewing" :workshop="sewingActiveWorkshop" :key="'sewing-dispatch-' + sewingActiveWorkshop" />
-          <div v-else-if="currentModule === 'sewing-dispatch' && !sewingActiveWorkshop && DB" class="placeholder-page" key="sewing-dispatch-select">
-            <div style="text-align:center; padding:80px 0; color:var(--text-tertiary)">
-              <div style="font-size:48px; margin-bottom:16px">🏭</div>
-              <div style="font-size:16px; font-weight:600; margin-bottom:8px; color:var(--text)">请选择车间</div>
-              <div style="font-size:13px">点击左侧菜单选择具体车间查看报工数据</div>
+          <div v-else-if="currentModule === 'sewing-dispatch' && !sewingActiveWorkshop && DB" class="sewing-dispatch-home" key="sewing-dispatch-select">
+            <div class="sdh-header">
+              <h2 class="sdh-title">缝制报工</h2>
+              <p class="sdh-desc">选择车间查看或录入报工数据</p>
+            </div>
+            <div class="sdh-grid">
+              <div v-for="ws in ['一车间','二车间','三车间','四车间','五车间']" :key="ws" class="sdh-card" @click="enterSewingWorkshop(ws)">
+                <div class="sdh-card-icon">🏭</div>
+                <div class="sdh-card-name">{{ ws }}</div>
+                <div class="sdh-card-arrow">→</div>
+              </div>
             </div>
           </div>
           <DeliveryEstimation v-else-if="currentModule === 'estimation' && DB" key="estimation" />
@@ -860,6 +869,39 @@ body {
 
 /* ===== Placeholder pages ===== */
 .placeholder-page { }
+.sewing-dispatch-home { max-width: 800px; padding: 40px 20px; }
+.sdh-header { text-align: center; margin-bottom: 40px; }
+.sdh-title { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.sdh-desc { font-size: 14px; color: var(--text-secondary); }
+.sdh-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+.sdh-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.sdh-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 16px rgba(124,58,237,0.1);
+  transform: translateY(-2px);
+}
+.sdh-card-icon { font-size: 36px; margin-bottom: 12px; }
+.sdh-card-name { font-size: 16px; font-weight: 600; color: var(--text); }
+.sdh-card-arrow {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.sdh-card:hover .sdh-card-arrow { opacity: 1; color: var(--primary); }
 .empty-state {
   display: flex;
   flex-direction: column;

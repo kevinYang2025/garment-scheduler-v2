@@ -194,7 +194,8 @@
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('workDays:', d.get\\('workDays','?'\\)\\)\")",
       "Bash(taskkill //F //PID 20420)",
       "Bash(taskkill //F //PID 41828)",
-      "Bash(taskkill //F //PID 38972)"
+      "Bash(taskkill //F //PID 38972)",
+      "Bash(curl -s http://localhost:3001/api/config/capacity)"
     ]
   }
 }
