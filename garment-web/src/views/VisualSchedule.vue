@@ -8,11 +8,11 @@ const emit = defineEmits(['back'])
 
 const workshops = ref([])
 const unscheduled = ref([])
-const dateRange = ref({ start: '', end: '' })
 const loading = ref(false)
 const draggedItem = ref(null)
 const filterWorkshop = ref('')
 const filterLine = ref('')
+const weekOffset = ref(0) // 周偏移量，0 = 默认视图
 
 // 筛选后的车间列表
 const filteredWorkshops = computed(() => {
@@ -62,34 +62,56 @@ function buildTooltip(task) {
     .join('\n')
 }
 
-// 日期列表（甘特图横轴）
+// 日期列表：今天前1周 ~ 后3周，随 weekOffset 滚动
 const dates = computed(() => {
-  if (!dateRange.value.start || !dateRange.value.end) return []
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(today)
+  start.setDate(start.getDate() - 7 + weekOffset.value * 7)
+  const end = new Date(today)
+  end.setDate(end.getDate() + 21 + weekOffset.value * 7)
   const result = []
-  let current = new Date(dateRange.value.start)
-  const end = new Date(dateRange.value.end)
-  while (current <= end) {
-    const y = current.getFullYear()
-    const m = String(current.getMonth() + 1).padStart(2, '0')
-    const d = String(current.getDate()).padStart(2, '0')
+  const cur = new Date(start)
+  while (cur <= end) {
+    const y = cur.getFullYear()
+    const m = String(cur.getMonth() + 1).padStart(2, '0')
+    const d = String(cur.getDate()).padStart(2, '0')
     result.push(`${y}-${m}-${d}`)
-    current.setDate(current.getDate() + 1)
+    cur.setDate(cur.getDate() + 1)
   }
   return result
+})
+
+// 周导航
+function prevWeek() { weekOffset.value-- }
+function nextWeek() { weekOffset.value++ }
+function goToday() { weekOffset.value = 0 }
+
+// 当前视图日期范围标题
+const dateRangeLabel = computed(() => {
+  if (!dates.value.length) return ''
+  return dates.value[0].slice(5) + ' ~ ' + dates.value[dates.value.length - 1].slice(5)
+})
+
+// 今天日期字符串
+const todayStr = computed(() => {
+  const t = new Date()
+  const y = t.getFullYear()
+  const m = String(t.getMonth() + 1).padStart(2, '0')
+  const d = String(t.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 })
 
 // 加载甘特图数据
 async function loadGantt() {
   loading.value = true
   try {
-    const [ganttRes, rangeRes, configRes] = await Promise.all([
+    const [ganttRes, configRes] = await Promise.all([
       api.getVisualGantt(),
-      api.getVisualDateRange(),
       api.getGanttConfig(),
     ])
     workshops.value = ganttRes.data.workshops || []
     unscheduled.value = ganttRes.data.unscheduled || []
-    dateRange.value = rangeRes.data
     if (configRes.data?.sewing) {
       ganttConfig.value = configRes.data.sewing
     }
@@ -137,15 +159,17 @@ async function unassign(planId) {
   }
 }
 
-// 计算任务在甘特图中的位置和宽度
+// 计算任务在甘特图中的位置和宽度（基于可见日期范围）
 function getTaskStyle(task) {
-  if (!task.sewingStart || !task.sewingEnd) return { display: 'none' }
+  if (!task.sewingStart || !task.sewingEnd || !dates.value.length) return { display: 'none' }
   const startDate = new Date(task.sewingStart)
   const endDate = new Date(task.sewingEnd)
-  const rangeStart = new Date(dateRange.value.start)
-  const dayWidth = 28 // 每天宽度像素
+  const rangeStart = new Date(dates.value[0])
+  const dayWidth = 28
   const left = Math.round((startDate - rangeStart) / (1000 * 60 * 60 * 24)) * dayWidth
   const width = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24) + 1) * dayWidth
+  // 任务完全在可见范围外则隐藏
+  if (left + width < 0 || left > dates.value.length * dayWidth) return { display: 'none' }
   return {
     left: left + 'px',
     width: Math.max(width, dayWidth) + 'px'
@@ -175,9 +199,17 @@ onMounted(loadGantt)
         <input v-model="filterLine" class="filter-input" placeholder="搜班组..." />
         <span v-if="filterWorkshop || filterLine" class="filter-clear" @click="filterWorkshop=''; filterLine=''">✕ 清除</span>
       </div>
-      <button @click="loadGantt" :disabled="loading">
-        {{ loading ? '加载中...' : '刷新' }}
-      </button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="nav-arrows">
+          <button class="arrow-btn" @click="prevWeek" title="前一周">◀</button>
+          <button class="arrow-btn today-btn" @click="goToday" title="回到今天">今天</button>
+          <button class="arrow-btn" @click="nextWeek" title="后一周">▶</button>
+        </span>
+        <span class="date-range-label">{{ dateRangeLabel }}</span>
+        <button @click="loadGantt" :disabled="loading">
+          {{ loading ? '加载中...' : '刷新' }}
+        </button>
+      </div>
     </div>
 
     <div class="content">
@@ -216,7 +248,10 @@ onMounted(loadGantt)
               v-for="date in dates"
               :key="date"
               class="date-cell"
-              :class="{ weekend: new Date(date).getDay() === 0 || new Date(date).getDay() === 6 }"
+              :class="{
+                weekend: new Date(date).getDay() === 0 || new Date(date).getDay() === 6,
+                today: date === todayStr
+              }"
             >
               {{ formatDate(date) }}
             </div>
@@ -331,6 +366,39 @@ onMounted(loadGantt)
   white-space: nowrap;
 }
 .filter-clear:hover { text-decoration: underline; }
+
+.nav-arrows {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.arrow-btn {
+  padding: 4px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+.arrow-btn:hover {
+  background: var(--primary-light, #eef2ff);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.today-btn {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+}
+.date-range-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 100px;
+  text-align: center;
+}
 
 .toolbar button {
   padding: 6px 16px;
@@ -504,6 +572,12 @@ onMounted(loadGantt)
 .date-cell.weekend {
   background: var(--danger-light);
   color: var(--danger);
+}
+
+.date-cell.today {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
 }
 
 .gantt-body {
