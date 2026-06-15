@@ -100,6 +100,16 @@ onMounted(loadStats)
 
 <template>
   <div class="entry-page">
+    <!-- 顶部品牌 -->
+    <div class="brand-bar">
+      <div class="brand-logo">
+        <div class="logo-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        </div>
+        <span class="brand-text">EUC 排程系统</span>
+      </div>
+    </div>
+
     <!-- 顶部欢迎区 -->
     <div class="welcome-section">
       <div class="welcome-left">
@@ -154,6 +164,33 @@ onMounted(loadStats)
 .entry-page {
   max-width: 1100px;
   margin: 0 auto;
+}
+
+.brand-bar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo .logo-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6e3ff3, #aa8ef9);
+  color: white;
+}
+.brand-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.3px;
 }
 
 .welcome-section {
