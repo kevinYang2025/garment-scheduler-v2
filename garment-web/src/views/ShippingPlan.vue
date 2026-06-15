@@ -58,8 +58,15 @@ async function updateStatus(id, status) {
   } catch {}
 }
 
+function fmtLocal(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function openCreate() {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = fmtLocal(new Date())
   const seq = String(plans.value.length + 1).padStart(3, '0')
   createForm.value = { plan_no: `SP-${today.replace(/-/g,'')}-${seq}`, customer: '', style_no: '', product_name: '', plan_qty: 0, ship_date: '' }
   showCreateDialog.value = true
