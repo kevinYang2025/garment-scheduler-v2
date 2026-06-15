@@ -21,6 +21,7 @@ import DeliveryEstimation from './views/DeliveryEstimation.vue'
 import ShippingPlan from './views/ShippingPlan.vue'
 import SchedulingStrategy from './views/SchedulingStrategy.vue'
 import FabricLoadingList from './views/FabricLoadingList.vue'
+import AuxiliaryList from './views/AuxiliaryList.vue'
 import SewingWorkshopManage from './views/SewingWorkshopManage.vue'
 import EntryHome from './views/EntryHome.vue'
 import BasicDataHome from './views/BasicDataHome.vue'
@@ -78,8 +79,9 @@ const navSections = [
   {
     label: '仓库管理',
     items: [
-      { key: 'warehouse', label: '仓库管理', icon: 'package' },
       { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
+      { key: 'auxiliaryList', label: '辅料装柜清单', icon: 'list' },
+      { key: 'warehouse', label: '仓库管理', icon: 'package' },
     ]
   },
   {
@@ -345,6 +347,7 @@ function getIcon(name) {
           <Styles v-else-if="currentModule === 'styles' && DB" :db="DB" :initial-data="prefetchedStyles" key="styles" />
 
           <FabricLoadingList v-else-if="currentModule === 'fabricList'" key="fabricList" />
+          <AuxiliaryList v-else-if="currentModule === 'auxiliaryList'" key="auxiliaryList" />
 
           <SewingWorkshopManage v-else-if="currentModule === 'sewingWorkshop'" key="sewingWorkshop" />
 
