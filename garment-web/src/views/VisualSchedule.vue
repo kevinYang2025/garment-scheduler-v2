@@ -10,6 +10,8 @@ const workshops = ref([])
 const unscheduled = ref([])
 const loading = ref(false)
 const draggedItem = ref(null)
+const ganttLeftRef = ref(null)
+const ganttRightRef = ref(null)
 const filterWorkshop = ref('')
 const filterLine = ref('')
 const weekOffset = ref(0) // 周偏移量，0 = 默认视图
@@ -186,6 +188,13 @@ function formatDate(dateStr) {
   return dateStr.slice(5) // 只显示 MM-DD
 }
 
+// 左右同步垂直滚动
+function onRightScroll() {
+  if (ganttLeftRef.value && ganttRightRef.value) {
+    ganttLeftRef.value.scrollTop = ganttRightRef.value.scrollTop
+  }
+}
+
 onMounted(loadGantt)
 </script>
 
@@ -245,7 +254,7 @@ onMounted(loadGantt)
       <!-- 右侧：甘特图 -->
       <div class="gantt-wrapper">
         <!-- 左侧固定列：行标签 -->
-        <div class="gantt-left">
+        <div class="gantt-left" ref="ganttLeftRef">
           <div class="gantt-left-header">产线</div>
           <template v-for="workshop in filteredWorkshops" :key="'l-'+workshop.name">
             <div class="gantt-left-workshop">{{ workshop.name }}</div>
@@ -266,7 +275,7 @@ onMounted(loadGantt)
           </template>
         </div>
         <!-- 右侧可滚动区：日期 + 任务条 -->
-        <div class="gantt-right" ref="ganttRightRef">
+        <div class="gantt-right" ref="ganttRightRef" @scroll="onRightScroll">
           <!-- 日期标题（sticky top） -->
           <div class="gantt-right-header">
             <div

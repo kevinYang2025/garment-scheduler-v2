@@ -26,6 +26,7 @@ import EntryHome from './views/EntryHome.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
+const currentGroup = ref(null) // 当前所在的导航组
 const warehouseActiveType = ref('')
 const secondaryActiveType = ref('')
 const sewingActiveType = ref('')
@@ -124,10 +125,9 @@ const breadcrumb = computed(() => {
 })
 
 function enterModule(key) {
-  if (key === 'dashboard') {
-    goHome()
-    return
-  }
+  // 找到该模块所属的组
+  const group = navSections.find(g => g.items.some(item => item.key === key))
+  currentGroup.value = group || null
   currentModule.value = key
   if (key === 'warehouse') warehouseActiveType.value = ''
   if (key === 'secondary') secondaryActiveType.value = ''
@@ -136,6 +136,7 @@ function enterModule(key) {
 
 function goHome() {
   currentModule.value = 'home'
+  currentGroup.value = null
   warehouseActiveType.value = ''
   secondaryActiveType.value = ''
   sewingActiveType.value = ''
@@ -194,9 +195,9 @@ function getIcon(name) {
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <!-- Sidebar -->
-    <aside class="sidebar">
+  <div class="app-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'entry-mode': currentModule === 'home' }">
+    <!-- Sidebar (入口页面隐藏) -->
+    <aside v-if="currentModule !== 'home'" class="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo">
           <div class="logo-icon">
@@ -221,12 +222,18 @@ function getIcon(name) {
           </div>
         </div>
 
-        <!-- Navigation -->
+        <!-- 返回首页按钮 -->
+        <div class="back-to-home" @click="goHome">
+          <span v-html="getIcon('arrowLeft')"></span>
+          <span>返回首页</span>
+        </div>
+
+        <!-- Navigation (只显示当前模块组) -->
         <nav class="sidebar-nav">
-          <div v-for="section in navSections" :key="section.label" class="nav-section">
-            <div class="nav-section-label">{{ section.label }}</div>
+          <div v-if="currentGroup" class="nav-section">
+            <div class="nav-section-label">{{ currentGroup.label }}</div>
             <div
-              v-for="item in section.items"
+              v-for="item in currentGroup.items"
               :key="item.key"
               class="nav-item"
               :class="{ active: currentModule === item.key }"
@@ -254,8 +261,8 @@ function getIcon(name) {
 
     <!-- Main area -->
     <div class="main-area">
-      <!-- Header -->
-      <header class="app-header">
+      <!-- Header (入口页面隐藏) -->
+      <header v-if="currentModule !== 'home'" class="app-header">
         <div class="header-left">
           <button class="sidebar-toggle" @click="toggleSidebar" v-html="getIcon('panelLeft')"></button>
           <h1 class="header-title">{{ pageTitle }}</h1>
@@ -481,6 +488,28 @@ body {
 }
 .sidebar-content::-webkit-scrollbar { width: 4px; }
 .sidebar-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.back-to-home {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+.back-to-home:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.entry-mode .main-area {
+  margin-left: 0;
+}
 
 .workspace-card {
   display: flex;
