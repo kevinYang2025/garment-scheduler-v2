@@ -2296,18 +2296,27 @@ app.post('/api/visual-schedule/assign', (req, res) => {
     const plan = db.get('SELECT * FROM main_plan WHERE id = ?', [planId]);
     if (!plan) return res.status(404).json({ error: '计划不存在' });
     if (plan.is_scheduled) return res.status(400).json({ error: '该计划已排班' });
-    // lineTeam 从前端传可能是 "20班"，strip "班" 后缀存纯数字
     const lineNum = String(lineTeam).replace(/班$/, '')
-    db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 1 WHERE id = ?',
-      [workshop, lineNum, planId]);
-    // 同时在 schedule_master 创建缝制排程记录，让甘特图能显示
+    // 更新 main_plan：设置车间、班组、上下线时间
+    db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 1, sewing_start = ?, sewing_end = ? WHERE id = ?',
+      [workshop, lineNum, plan.sewing_start || plan.due_date, plan.sewing_end || plan.due_date, planId]);
+    // 查产线日产量
+    const lineId = db.get('SELECT id FROM production_lines WHERE line_name = ?', [lineTeam]);
+    let dailyTarget = 0;
+    if (lineId) {
+      const cat = db.get('SELECT daily_output FROM line_style_categories WHERE line_id = ? ORDER BY sort_order LIMIT 1', [lineId.id]);
+      dailyTarget = cat?.daily_output || 0;
+    }
+    // 查款式数据
     const style = db.get('SELECT * FROM styles WHERE style_no = ? LIMIT 1', [plan.style_no]);
-    if (style) {
+    const planStart = plan.sewing_start || plan.due_date || '';
+    const planEnd = plan.sewing_end || plan.due_date || '';
+    if (style && planStart && planEnd && planStart <= planEnd) {
       db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
-        plan_qty, plan_start, plan_end, workshop, line_team)
-        VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        plan_qty, plan_start, plan_end, workshop, line_team, daily_target, cutting_plan_qty, due_date)
+        VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [style.id, plan.style_no, plan.product_name, style.color || '', style.size_spec || '',
-         plan.plan_qty, plan.sewing_start, plan.sewing_end, workshop, lineNum]);
+         plan.plan_qty, planStart, planEnd, workshop, lineNum, dailyTarget, plan.plan_qty, plan.due_date || '']);
     }
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     res.json({ ok: true });
