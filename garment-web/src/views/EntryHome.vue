@@ -37,7 +37,7 @@ const weekday = weekdays[_d.getDay()]
 
 const modules = [
   { key: 'dashboard', label: '工作台', icon: '📊', color: '#7c5cfc', bg: '#f0ecff', desc: '数据看板与生产概览' },
-  { key: 'styles', label: '基础数据', icon: '📋', color: '#4a9eff', bg: '#eaf3ff', desc: '款式、面料、车间管理' },
+  { key: 'basicData', label: '基础数据', icon: '📋', color: '#4a9eff', bg: '#eaf3ff', desc: '款式、面料、车间管理',
   { key: 'mainPlan', label: '计划管理', icon: '📅', color: '#f5a623', bg: '#fff6e8', desc: '主计划、排程、二次加工' },
   { key: 'warehouse', label: '仓库管理', icon: '📦', color: '#34c77b', bg: '#e8faf0', desc: '面料、辅料、裁片、成品' },
   { key: 'dispatch', label: '报工管理', icon: '📝', color: '#a78bfa', bg: '#f3eeff', desc: '生产报工、产量统计' },
@@ -49,7 +49,7 @@ const cardStats = {
     { label: '款式', value: () => stats.value.styles, unit: '个' },
     { label: '计划', value: () => stats.value.mainPlan, unit: '个' },
   ],
-  styles: [
+  basicData: [
     { label: '款式', value: () => stats.value.styles, unit: '个' },
     { label: '装柜', value: () => '-', unit: '条' },
   ],

@@ -10,6 +10,7 @@ const workshops = ref([])
 const unscheduled = ref([])
 const loading = ref(false)
 const draggedItem = ref(null)
+const draggedTask = ref(null) // 拖拽已排任务
 const ganttLeftRef = ref(null)
 const ganttRightRef = ref(null)
 const filterWorkshop = ref('')
@@ -136,13 +137,44 @@ async function loadGantt() {
   loading.value = false
 }
 
-// 拖拽开始
+// 拖拽开始（从未排班列表）
 function onDragStart(item) {
   draggedItem.value = item
+  draggedTask.value = null
+}
+
+// 拖拽开始（从已排甘特条）
+function onTaskDragStart(task, workshop, line) {
+  draggedTask.value = { scheduleId: task.planId, fromWorkshop: workshop, fromLine: line }
+  draggedItem.value = null
+}
+
+// 拖拽结束清理
+function onDragEnd() {
+  draggedItem.value = null
+  draggedTask.value = null
 }
 
 // 拖拽到产线
 async function onDrop(workshop, line) {
+  // 移动已排任务到新产线
+  if (draggedTask.value) {
+    const { scheduleId, fromWorkshop, fromLine } = draggedTask.value
+    if (fromWorkshop === workshop.name && fromLine === line.name) { draggedTask.value = null; return }
+    try {
+      const res = await api.moveVisual({ scheduleId, newWorkshop: workshop.name, newLineTeam: line.name })
+      if (res.data.ok) {
+        const { sewingStart, sewingEnd, dailyTarget } = res.data
+        ElMessage.success(`移动成功：${sewingStart.slice(5)} ~ ${sewingEnd.slice(5)}，日产量 ${dailyTarget}件`)
+        await loadGantt()
+      } else {
+        ElMessage.error(res.data.error || '移动失败')
+      }
+    } catch (e) { console.error('移动失败:', e) }
+    draggedTask.value = null
+    return
+  }
+  // 排入未排班款式
   if (!draggedItem.value) return
   try {
     const res = await api.assignVisual({
@@ -322,6 +354,9 @@ onMounted(loadGantt)
                   class="gantt-bar"
                   :style="getTaskStyle(task)"
                   :title="buildTooltip(task)"
+                  draggable="true"
+                  @dragstart.stop="onTaskDragStart(task, workshop.name, line.name)"
+                  @dragend="onDragEnd"
                   @dblclick="unassign(task.planId)"
                 >
                   <span class="bar-text">{{ buildBarText(task) }}</span>

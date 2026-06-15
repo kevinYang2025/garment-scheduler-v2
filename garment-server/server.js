@@ -2592,6 +2592,61 @@ app.post('/api/visual-schedule/unassign', (req, res) => {
   }
 });
 
+// 移动排班：从旧产线移到新产线（取消旧排班 + 在新产线重新排）
+app.post('/api/visual-schedule/move', (req, res) => {
+  try {
+    const { scheduleId, newWorkshop, newLineTeam } = req.body;
+    if (!scheduleId || !newWorkshop || !newLineTeam) return res.status(400).json({ error: '参数不完整' });
+    // 查原排程记录
+    const sm = db.get('SELECT * FROM schedule_master WHERE id = ?', [scheduleId]);
+    if (!sm) return res.status(404).json({ error: '排程记录不存在' });
+    const newLineNum = String(newLineTeam).replace(/班$/, '');
+    // 删除旧 schedule_master
+    db.run('DELETE FROM schedule_master WHERE id = ?', [scheduleId]);
+    // 查新产线日产量
+    const lineId = db.get('SELECT id FROM production_lines WHERE line_name = ?', [newLineTeam]);
+    let dailyTarget = 0;
+    if (lineId) {
+      const cat = db.get('SELECT daily_output FROM line_style_categories WHERE line_id = ? ORDER BY sort_order LIMIT 1', [lineId.id]);
+      dailyTarget = cat?.daily_output || 0;
+    }
+    // 查新产线最后一个任务的结束日期
+    const lastTask = db.get(`SELECT plan_end FROM schedule_master
+      WHERE schedule_type = 'sewing' AND workshop = ? AND line_team = ?
+      ORDER BY plan_end DESC LIMIT 1`, [newWorkshop, newLineNum]);
+    const today = fmtLocal(new Date());
+    let sewingStart = today;
+    if (lastTask && lastTask.plan_end) {
+      const nextDay = new Date(lastTask.plan_end + 'T00:00:00');
+      nextDay.setDate(nextDay.getDate() + 1);
+      const nextDayStr = fmtLocal(nextDay);
+      if (nextDayStr > today) sewingStart = nextDayStr;
+    }
+    // 计算下线时间
+    let sewingEnd = sewingStart;
+    if (dailyTarget > 0 && sm.plan_qty > 0) {
+      const daysNeeded = Math.ceil(sm.plan_qty / dailyTarget);
+      sewingEnd = db.addWorkdays(sewingStart, daysNeeded - 1);
+    }
+    // 插入新 schedule_master
+    if (sewingStart <= sewingEnd) {
+      db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
+        plan_qty, plan_start, plan_end, workshop, line_team, daily_target, cutting_plan_qty, due_date)
+        VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [sm.style_id, sm.style_no, sm.product_name, sm.color || '', sm.size_spec || '',
+         sm.plan_qty, sewingStart, sewingEnd, newWorkshop, newLineNum, dailyTarget, sm.plan_qty, sm.due_date || '']);
+    }
+    // 更新 main_plan
+    db.run('UPDATE main_plan SET workshop = ?, line_team = ?, sewing_start = ?, sewing_end = ? WHERE style_id = ?',
+      [newWorkshop, newLineNum, sewingStart, sewingEnd, sm.style_id]);
+    broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
+    res.json({ ok: true, sewingStart, sewingEnd, dailyTarget });
+  } catch (e) {
+    console.error('POST /api/visual-schedule/move error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ============================================================
 // GLOBAL ERROR HANDLER [fix#12]
 // ============================================================

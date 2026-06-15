@@ -23,6 +23,7 @@ import SchedulingStrategy from './views/SchedulingStrategy.vue'
 import FabricLoadingList from './views/FabricLoadingList.vue'
 import SewingWorkshopManage from './views/SewingWorkshopManage.vue'
 import EntryHome from './views/EntryHome.vue'
+import BasicDataHome from './views/BasicDataHome.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
@@ -56,6 +57,7 @@ const navSections = [
   {
     label: '基础数据',
     items: [
+      { key: 'basicData', label: '基础数据总览', icon: 'grid' },
       { key: 'styles', label: '款式管理', icon: 'tag' },
       { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
       { key: 'sewingWorkshop', label: '缝制车间管理', icon: 'factory' },
@@ -291,6 +293,9 @@ function getIcon(name) {
         <KeepAlive :max="8">
           <!-- 入口页面 -->
           <EntryHome v-if="currentModule === 'home' && DB" key="home" @navigate="enterModule" />
+
+          <!-- 基础数据入口 -->
+          <BasicDataHome v-else-if="currentModule === 'basicData' && DB" key="basicData" @navigate="enterModule" />
 
           <!-- 工作台 / 数据看板 -->
           <div v-else-if="currentModule === 'dashboard' && DB" key="dashboard">

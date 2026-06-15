@@ -116,6 +116,7 @@ export default {
   getVisualDateRange: () => api.get('/visual-schedule/date-range'),
   assignVisual: (data) => api.post('/visual-schedule/assign', data),
   unassignVisual: (data) => api.post('/visual-schedule/unassign', data),
+  moveVisual: (data) => api.post('/visual-schedule/move', data),
 
   // 配置
   getCapacityConfig: () => api.get('/config/capacity'),
