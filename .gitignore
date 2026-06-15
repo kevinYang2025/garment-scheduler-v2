@@ -13,3 +13,4 @@ dist/
 *.xlsx~
 .DS_Store
 Thumbs.db
+.claude/worktrees/
