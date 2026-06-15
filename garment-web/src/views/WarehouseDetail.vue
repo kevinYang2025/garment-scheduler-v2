@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import ExcelTable from '../components/ExcelTable.vue'
 
 const props = defineProps({
   warehouseType: { type: String, required: true },
@@ -49,6 +50,89 @@ function fmtLocal(d) {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+// --- Column definitions ---
+const inventoryCols = computed(() => isFabric.value
+  ? [
+      { field: 'supplier', label: '供应商', width: 120, type: 'text' },
+      { field: 'customer', label: '客户', width: 120, type: 'text' },
+      { field: 'style_no', label: '款号', width: 140, type: 'text' },
+      { field: 'pot_no', label: '锅号', width: 140, type: 'text' },
+      { field: 'fabric_name', label: '面料名称', width: 180, type: 'text' },
+      { field: 'width', label: '幅宽', width: 80, type: 'text' },
+      { field: 'weight', label: '克重', width: 80, type: 'number' },
+      { field: 'color', label: '颜色', width: 120, type: 'text' },
+      { field: 'current_qty', label: '当前库存', width: 100, type: 'number' },
+      { field: 'unit', label: '单位', width: 70, type: 'text' },
+      { field: 'total_pcs', label: '总匹数', width: 80, type: 'number' },
+      { field: 'unit2', label: '单位2', width: 70, type: 'text' },
+      { field: 'updated_at', label: '更新时间', width: 160, type: 'date' },
+    ]
+  : [
+      { field: 'style_no', label: '款号', width: 120, type: 'text' },
+      { field: 'color', label: '颜色', width: 100, type: 'text' },
+      { field: 'size_spec', label: '规格', width: 100, type: 'text' },
+      { field: 'current_qty', label: '当前库存', width: 120, type: 'number' },
+      { field: 'updated_at', label: '更新时间', width: 180, type: 'date' },
+    ]
+)
+
+const inboundCols = computed(() => isFabric.value
+  ? [
+      { field: 'inbound_date', label: '入库日期', width: 110, type: 'date' },
+      { field: 'order_no', label: '入库单号', width: 160, type: 'text' },
+      { field: 'supplier', label: '供应商', width: 120, type: 'text' },
+      { field: 'customer', label: '客户', width: 120, type: 'text' },
+      { field: 'style_no', label: '款号', width: 140, type: 'text' },
+      { field: 'pot_no', label: '锅号', width: 140, type: 'text' },
+      { field: 'fabric_name', label: '面料名称', width: 180, type: 'text' },
+      { field: 'width', label: '幅宽', width: 80, type: 'text' },
+      { field: 'weight', label: '克重', width: 80, type: 'number' },
+      { field: 'color', label: '颜色', width: 120, type: 'text' },
+      { field: 'qty', label: '数量', width: 90, type: 'number' },
+      { field: 'unit', label: '单位', width: 70, type: 'text' },
+      { field: 'loading_qty', label: '装柜数量', width: 90, type: 'number' },
+      { field: 'total_pcs', label: '总匹数', width: 80, type: 'number' },
+      { field: 'unit2', label: '单位2', width: 70, type: 'text' },
+      { field: 'remark', label: '备注', width: 150, type: 'text' },
+    ]
+  : [
+      { field: 'inbound_date', label: '日期', width: 120, type: 'date' },
+      { field: 'style_no', label: '款号', width: 120, type: 'text' },
+      { field: 'color', label: '颜色', width: 100, type: 'text' },
+      { field: 'size_spec', label: '规格', width: 100, type: 'text' },
+      { field: 'qty', label: '数量', width: 100, type: 'number' },
+      { field: 'operator', label: '操作人', width: 100, type: 'text' },
+    ]
+)
+
+const outboundCols = computed(() => isFabric.value
+  ? [
+      { field: 'outbound_date', label: '出库日期', width: 110, type: 'date' },
+      { field: 'order_no', label: '出库单号', width: 160, type: 'text' },
+      { field: 'supplier', label: '供应商', width: 120, type: 'text' },
+      { field: 'customer', label: '客户', width: 120, type: 'text' },
+      { field: 'style_no', label: '款号', width: 140, type: 'text' },
+      { field: 'pot_no', label: '锅号', width: 140, type: 'text' },
+      { field: 'fabric_name', label: '面料名称', width: 180, type: 'text' },
+      { field: 'width', label: '幅宽', width: 80, type: 'text' },
+      { field: 'weight', label: '克重', width: 80, type: 'number' },
+      { field: 'color', label: '颜色', width: 120, type: 'text' },
+      { field: 'qty', label: '数量', width: 90, type: 'number' },
+      { field: 'unit', label: '单位', width: 70, type: 'text' },
+      { field: 'total_pcs', label: '总匹数', width: 80, type: 'number' },
+      { field: 'unit2', label: '单位2', width: 70, type: 'text' },
+      { field: 'remark', label: '备注', width: 150, type: 'text' },
+    ]
+  : [
+      { field: 'outbound_date', label: '日期', width: 120, type: 'date' },
+      { field: 'style_no', label: '款号', width: 120, type: 'text' },
+      { field: 'color', label: '颜色', width: 100, type: 'text' },
+      { field: 'size_spec', label: '规格', width: 100, type: 'text' },
+      { field: 'qty', label: '数量', width: 100, type: 'number' },
+      { field: 'operator', label: '操作人', width: 100, type: 'text' },
+    ]
+)
 
 // 款式下拉数据（远程搜索）
 const styleOptions = ref([])
@@ -425,91 +509,27 @@ onMounted(loadAll)
     <!-- 标签页 -->
     <el-tabs v-model="currentTab" class="detail-tabs">
       <el-tab-pane label="动态库存" name="inventory">
-        <el-table :data="inventory" size="small" border stripe>
-          <template v-if="isFabric">
-            <el-table-column prop="supplier" label="供应商" width="120" />
-            <el-table-column prop="customer" label="客户" width="120" />
-            <el-table-column prop="style_no" label="款号" width="140" />
-            <el-table-column prop="pot_no" label="锅号" width="140" />
-            <el-table-column prop="fabric_name" label="面料名称" width="180" />
-            <el-table-column prop="width" label="幅宽" width="80" />
-            <el-table-column prop="weight" label="克重" width="80" />
-            <el-table-column prop="color" label="颜色" width="120" />
-            <el-table-column prop="current_qty" label="当前库存" width="100" />
-            <el-table-column prop="unit" label="单位" width="70" />
-            <el-table-column prop="total_pcs" label="总匹数" width="80" />
-            <el-table-column prop="unit2" label="单位2" width="70" />
-            <el-table-column prop="updated_at" label="更新时间" width="160" />
-          </template>
-          <template v-else>
-            <el-table-column prop="style_no" label="款号" width="120" />
-            <el-table-column prop="color" label="颜色" width="100" />
-            <el-table-column prop="size_spec" label="规格" width="100" />
-            <el-table-column prop="current_qty" label="当前库存" width="120" />
-            <el-table-column prop="updated_at" label="更新时间" width="180" />
-          </template>
-        </el-table>
+        <ExcelTable
+          :columns="inventoryCols"
+          :data="inventory"
+          row-key="id"
+        />
       </el-tab-pane>
 
       <el-tab-pane label="入库记录" name="inbound">
-        <el-table :data="inbound" size="small" border stripe>
-          <template v-if="isFabric">
-            <el-table-column prop="inbound_date" label="入库日期" width="110" />
-            <el-table-column prop="order_no" label="入库单号" width="160" />
-            <el-table-column prop="supplier" label="供应商" width="120" />
-            <el-table-column prop="customer" label="客户" width="120" />
-            <el-table-column prop="style_no" label="款号" width="140" />
-            <el-table-column prop="pot_no" label="锅号" width="140" />
-            <el-table-column prop="fabric_name" label="面料名称" width="180" />
-            <el-table-column prop="width" label="幅宽" width="80" />
-            <el-table-column prop="weight" label="克重" width="80" />
-            <el-table-column prop="color" label="颜色" width="120" />
-            <el-table-column prop="qty" label="数量" width="90" />
-            <el-table-column prop="unit" label="单位" width="70" />
-            <el-table-column prop="loading_qty" label="装柜数量" width="90" />
-            <el-table-column prop="total_pcs" label="总匹数" width="80" />
-            <el-table-column prop="unit2" label="单位2" width="70" />
-            <el-table-column prop="remark" label="备注" width="150" />
-          </template>
-          <template v-else>
-            <el-table-column prop="inbound_date" label="日期" width="120" />
-            <el-table-column prop="style_no" label="款号" width="120" />
-            <el-table-column prop="color" label="颜色" width="100" />
-            <el-table-column prop="size_spec" label="规格" width="100" />
-            <el-table-column prop="qty" label="数量" width="100" />
-            <el-table-column prop="operator" label="操作人" width="100" />
-          </template>
-        </el-table>
+        <ExcelTable
+          :columns="inboundCols"
+          :data="inbound"
+          row-key="id"
+        />
       </el-tab-pane>
 
       <el-tab-pane label="出库记录" name="outbound">
-        <el-table :data="outbound" size="small" border stripe>
-          <template v-if="isFabric">
-            <el-table-column prop="outbound_date" label="出库日期" width="110" />
-            <el-table-column prop="order_no" label="出库单号" width="160" />
-            <el-table-column prop="supplier" label="供应商" width="120" />
-            <el-table-column prop="customer" label="客户" width="120" />
-            <el-table-column prop="style_no" label="款号" width="140" />
-            <el-table-column prop="pot_no" label="锅号" width="140" />
-            <el-table-column prop="fabric_name" label="面料名称" width="180" />
-            <el-table-column prop="width" label="幅宽" width="80" />
-            <el-table-column prop="weight" label="克重" width="80" />
-            <el-table-column prop="color" label="颜色" width="120" />
-            <el-table-column prop="qty" label="数量" width="90" />
-            <el-table-column prop="unit" label="单位" width="70" />
-            <el-table-column prop="total_pcs" label="总匹数" width="80" />
-            <el-table-column prop="unit2" label="单位2" width="70" />
-            <el-table-column prop="remark" label="备注" width="150" />
-          </template>
-          <template v-else>
-            <el-table-column prop="outbound_date" label="日期" width="120" />
-            <el-table-column prop="style_no" label="款号" width="120" />
-            <el-table-column prop="color" label="颜色" width="100" />
-            <el-table-column prop="size_spec" label="规格" width="100" />
-            <el-table-column prop="qty" label="数量" width="100" />
-            <el-table-column prop="operator" label="操作人" width="100" />
-          </template>
-        </el-table>
+        <ExcelTable
+          :columns="outboundCols"
+          :data="outbound"
+          row-key="id"
+        />
       </el-tab-pane>
     </el-tabs>
 
