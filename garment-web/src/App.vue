@@ -89,6 +89,7 @@ const navSections = [
   {
     label: '报工管理',
     items: [
+      { key: 'dispatch', label: '报工总览', icon: 'data-analysis' },
       { key: 'cutting-dispatch', label: '裁剪报工', icon: 'cut' },
       { key: 'printing-dispatch', label: '印花报工', icon: 'printer' },
       { key: 'embroidery-dispatch', label: '刺绣报工', icon: 'star' },
@@ -206,7 +207,7 @@ function getIcon(name) {
     list: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>`,
     ruler: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>`,
     calendar: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`,
-    scissors: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>`,
+    scissors: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2 12 3.46 8 2 3.62 3.46a2 2 0 0 0-1.34 1.89v13.3a2 2 0 0 0 2.66 1.89L8 19l4-1.46L16 19l4.38-1.46a2 2 0 0 0 1.34-1.89V5.35a2 2 0 0 0-1.34-1.89z"/><line x1="12" x2="12" y1="2" y2="20"/></svg>`,
     palette: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`,
     cut: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>`,
     package: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/></svg>`,
@@ -377,6 +378,46 @@ function getIcon(name) {
           <CapacityConfig v-else-if="currentModule === 'config' && DB" :db="DB" key="capacityConfig" />
           <OperationLogs v-else-if="currentModule === 'logs' && DB" key="logs" />
           <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />
+          <!-- 报工管理卡片首页 -->
+          <div v-else-if="currentModule === 'dispatch' && DB" class="sewing-dispatch-home" key="dispatch-home">
+            <div class="sdh-header">
+              <h2 class="sdh-title">报工管理</h2>
+              <p class="sdh-desc">选择工序或车间进行报工</p>
+            </div>
+            <div class="sdh-grid">
+              <div class="sdh-card" @click="enterModule('cutting-dispatch')">
+                <div class="sdh-card-icon">✂️</div>
+                <div class="sdh-card-name">裁剪报工</div>
+                <div class="sdh-card-arrow">→</div>
+              </div>
+              <div class="sdh-card" @click="enterModule('printing-dispatch')">
+                <div class="sdh-card-icon">🖨️</div>
+                <div class="sdh-card-name">印花报工</div>
+                <div class="sdh-card-arrow">→</div>
+              </div>
+              <div class="sdh-card" @click="enterModule('embroidery-dispatch')">
+                <div class="sdh-card-icon">⭐</div>
+                <div class="sdh-card-name">刺绣报工</div>
+                <div class="sdh-card-arrow">→</div>
+              </div>
+              <div class="sdh-card" @click="enterModule('template-dispatch')">
+                <div class="sdh-card-icon">📋</div>
+                <div class="sdh-card-name">模板报工</div>
+                <div class="sdh-card-arrow">→</div>
+              </div>
+              <div class="sdh-card" @click="enterModule('ironing-dispatch')">
+                <div class="sdh-card-icon">🔥</div>
+                <div class="sdh-card-name">烫标报工</div>
+                <div class="sdh-card-arrow">→</div>
+              </div>
+              <div class="sdh-card sdh-card-sewing" @click="enterModule('sewing-dispatch')">
+                <div class="sdh-card-icon">🧵</div>
+                <div class="sdh-card-name">缝制报工</div>
+                <div class="sdh-card-sub">一车间 · 二车间 · 三车间 · 四车间 · 五车间</div>
+                <div class="sdh-card-arrow">→</div>
+              </div>
+            </div>
+          </div>
           <DispatchReport v-else-if="currentModule === 'cutting-dispatch' && DB" schedule-type="cutting" key="cutting-dispatch" />
           <DispatchReport v-else-if="currentModule === 'printing-dispatch' && DB" schedule-type="secondary" secondary-type="印花" key="printing-dispatch" />
           <DispatchReport v-else-if="currentModule === 'embroidery-dispatch' && DB" schedule-type="secondary" secondary-type="刺绣" key="embroidery-dispatch" />
@@ -902,6 +943,8 @@ body {
   transition: opacity 0.2s;
 }
 .sdh-card:hover .sdh-card-arrow { opacity: 1; color: var(--primary); }
+.sdh-card-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; }
+.sdh-card-sewing { grid-column: span 2; }
 .empty-state {
   display: flex;
   flex-direction: column;

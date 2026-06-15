@@ -293,9 +293,9 @@ onMounted(loadData)
         <p class="page-desc">{{ pageDesc }}</p>
       </div>
       <div class="header-actions">
-        <el-button @click="openAdd" type="primary" size="default">+ 录入</el-button>
-        <el-button @click="showImport = true">导入</el-button>
-        <el-button @click="handleExport">导出</el-button>
+        <el-button @click="openAdd" type="primary" size="large" class="btn-add-record">+ 录入报工</el-button>
+        <el-button @click="showImport = true" size="default">导入</el-button>
+        <el-button @click="handleExport" size="default">导出</el-button>
       </div>
     </div>
 
@@ -465,7 +465,18 @@ onMounted(loadData)
 .page-header-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .page-heading { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .page-desc { font-size: 13px; color: var(--text-secondary); }
-.header-actions { display: flex; gap: 8px; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.btn-add-record {
+  font-size: 16px !important;
+  padding: 12px 28px !important;
+  font-weight: 700 !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 4px 12px rgba(124,58,237,0.3) !important;
+}
+.btn-add-record:hover {
+  box-shadow: 0 6px 20px rgba(124,58,237,0.4) !important;
+  transform: translateY(-1px);
+}
 
 .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .summary-card {

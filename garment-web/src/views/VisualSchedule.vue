@@ -340,6 +340,8 @@ onMounted(loadGantt)
           </div>
           <!-- 任务行 -->
           <template v-for="workshop in filteredWorkshops" :key="'r-'+workshop.name">
+            <!-- 车间空行，与左侧车间标题对齐 -->
+            <div class="gantt-right-workshop-placeholder"></div>
             <div
               v-for="line in workshop.lines"
               :key="'r-'+line.name"
@@ -658,6 +660,11 @@ onMounted(loadGantt)
 
 .gantt-right-row:hover {
   background: var(--bg);
+}
+
+.gantt-right-workshop-placeholder {
+  min-height: 32px;
+  border-bottom: 1px solid var(--border);
 }
 
 /* ===== 通用样式 ===== */
