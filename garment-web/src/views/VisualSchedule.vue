@@ -575,13 +575,13 @@ onMounted(loadGantt)
   font-size: 13px;
 }
 
-/* ===== 甘特图布局：固定左列 + 可滚动右侧 ===== */
+/* ===== 甘特图布局：单一滚动容器 + sticky ===== */
 .gantt-wrapper {
   flex: 1;
-  display: flex;
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  display: flex;
 }
 
 /* 左侧固定列 */
@@ -591,13 +591,13 @@ onMounted(loadGantt)
   flex-shrink: 0;
   border-right: 2px solid var(--border);
   background: var(--card);
-  overflow-y: auto;
-  overflow-x: hidden;
-  z-index: 2;
+  z-index: 3;
+  position: sticky;
+  left: 0;
 }
 
 .gantt-left-header {
-  height: 40px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -608,53 +608,62 @@ onMounted(loadGantt)
   border-bottom: 2px solid var(--border);
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 4;
 }
 
 .gantt-left-workshop {
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
   padding: 6px 10px;
   background: var(--primary-light);
   font-weight: 600;
   font-size: 13px;
   color: var(--primary-dark);
   border-bottom: 1px solid var(--border);
+  overflow: hidden;
 }
 
 .gantt-left-row {
-  min-height: 40px;
-  padding: 4px 8px;
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  padding: 2px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 0;
   border-bottom: 1px solid var(--border);
   text-align: center;
+  overflow: hidden;
 }
 
 .gantt-left-row:hover {
   background: var(--bg);
 }
 
-/* 右侧可滚动区 */
+/* 右侧区域 */
 .gantt-right {
   flex: 1;
-  overflow: auto;
+  min-width: 0;
 }
 
 .gantt-right-header {
   display: flex;
-  height: 40px;
+  height: 36px;
   background: var(--bg);
   border-bottom: 2px solid var(--border);
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .gantt-right-row {
   position: relative;
-  min-height: 40px;
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -663,47 +672,52 @@ onMounted(loadGantt)
 }
 
 .gantt-right-workshop-placeholder {
+  height: 32px;
   min-height: 32px;
+  max-height: 32px;
   border-bottom: 1px solid var(--border);
 }
 
 /* ===== 通用样式 ===== */
 .line-name {
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .line-categories {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 1px;
   justify-content: center;
 }
 
 .cat-tag {
-  font-size: 10px;
-  padding: 1px 4px;
+  font-size: 9px;
+  padding: 0 3px;
   background: var(--primary-light, #eef2ff);
   color: var(--primary-dark, #3730a3);
   border-radius: 3px;
   white-space: nowrap;
   font-weight: 500;
+  line-height: 1.4;
 }
 
 .output-tag {
-  font-size: 10px;
-  padding: 1px 4px;
+  font-size: 9px;
+  padding: 0 3px;
   background: #fef3c7;
   color: #92400e;
   border-radius: 3px;
   white-space: nowrap;
   font-weight: 500;
+  line-height: 1.4;
 }
 
 .date-cell {
   width: 28px;
   min-width: 28px;
-  height: 40px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -726,7 +740,7 @@ onMounted(loadGantt)
 
 .tasks-area {
   position: relative;
-  min-height: 40px;
+  min-height: 56px;
   overflow: hidden;
 }
 
@@ -753,7 +767,7 @@ onMounted(loadGantt)
 
 .gantt-bar {
   position: absolute;
-  top: 8px;
+  top: 16px;
   height: 24px;
   background: var(--primary);
   border-radius: 4px;
