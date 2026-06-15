@@ -641,6 +641,40 @@ app.post('/api/main-plan', (req, res) => {
   }
 });
 
+app.put('/api/main-plan/:id', (req, res) => {
+  try {
+    const p = req.body;
+    const id = req.params.id;
+    const existing = db.get('SELECT * FROM main_plan WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ error: '计划不存在' });
+    // 未传的字段保留原值
+    const style_id = p.style_id ?? existing.style_id;
+    const style_no = p.style_no ?? existing.style_no;
+    const product_name = p.product_name ?? existing.product_name;
+    const plan_qty = p.plan_qty ?? existing.plan_qty;
+    const due_date = p.due_date ?? existing.due_date;
+    const cutting_start = p.cutting_start ?? existing.cutting_start;
+    const cutting_end = p.cutting_end ?? existing.cutting_end;
+    const secondary_start = p.secondary_start ?? existing.secondary_start;
+    const secondary_end = p.secondary_end ?? existing.secondary_end;
+    const sewing_remind_date = p.sewing_remind_date ?? existing.sewing_remind_date;
+    const sewing_start = p.sewing_start ?? existing.sewing_start;
+    const sewing_end = p.sewing_end ?? existing.sewing_end;
+    const pipeline_count = p.pipeline_count ?? existing.pipeline_count ?? 1;
+    const is_scheduled = p.is_scheduled !== undefined ? (p.is_scheduled ? 1 : 0) : existing.is_scheduled;
+    const workshop = p.workshop ?? existing.workshop ?? '';
+    const line_team = p.line_team ?? existing.line_team ?? '';
+    db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
+      [style_id, style_no, product_name, plan_qty, due_date, cutting_start, cutting_end, secondary_start, secondary_end, sewing_remind_date, sewing_start, sewing_end, pipeline_count, is_scheduled, workshop, line_team, id]);
+    broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
+    db.logOperation('main_plan', 'update', id, style_no);
+    res.json({ ok: true, id });
+  } catch (e) {
+    console.error('PUT /api/main-plan/:id error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.delete('/api/main-plan/:id', (req, res) => {
   try {
     const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [req.params.id]);
