@@ -539,6 +539,9 @@ function migrateStyles() {
     if (!apCols.includes('end_time')) {
       db.prepare("ALTER TABLE actual_production ADD COLUMN end_time TEXT DEFAULT ''").run();
     }
+    if (!apCols.includes('secondary_type')) {
+      db.prepare("ALTER TABLE actual_production ADD COLUMN secondary_type TEXT DEFAULT ''").run();
+    }
   } catch (e) { console.log('actual_production migration skip:', e.message); }
 
   try {

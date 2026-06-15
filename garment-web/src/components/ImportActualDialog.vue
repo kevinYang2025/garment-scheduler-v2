@@ -6,6 +6,9 @@ import * as XLSX from 'xlsx'
 
 const props = defineProps({
   modelValue: Boolean,
+  scheduleType: { type: String, default: '' },
+  secondaryType: { type: String, default: '' },
+  workshop: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue', 'imported'])
@@ -25,12 +28,13 @@ function onFileChange(e) {
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws)
       previewData.value = rows.map(r => ({
-        schedule_type: r['类型'] || r['schedule_type'] || 'sewing',
+        schedule_type: props.scheduleType || r['类型'] || r['schedule_type'] || 'sewing',
+        secondary_type: props.secondaryType || r['工序'] || r['secondary_type'] || '',
         style_no: r['款号'] || r['style_no'] || '',
         production_date: r['日期'] || r['production_date'] || '',
         completed_qty: parseInt(r['完成数量'] || r['completed_qty'] || 0),
         defect_qty: parseInt(r['次品数量'] || r['defect_qty'] || 0),
-        workshop: r['车间'] || r['workshop'] || '',
+        workshop: props.workshop || r['车间'] || r['workshop'] || '',
         line_team: r['班组'] || r['line_team'] || '',
         remark: r['备注'] || r['remark'] || '',
       })).filter(r => r.style_no && r.production_date)

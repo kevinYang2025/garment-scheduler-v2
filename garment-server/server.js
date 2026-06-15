@@ -1015,9 +1015,9 @@ app.post('/api/actual', (req, res) => {
     if (!r.style_no) return res.status(400).json({ error: '款号不能为空' });
     if (!r.production_date) return res.status(400).json({ error: '日期不能为空' });
 
-    const result = db.run(`INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [r.schedule_type, r.style_id, r.style_no, r.color, r.size_spec, r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '', r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '']);
+    const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [r.schedule_type, r.secondary_type || '', r.style_id, r.style_no, r.color, r.size_spec, r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '', r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '']);
 
     syncActualToDaily(r);
     // 自动重算任务状态
@@ -1035,7 +1035,7 @@ app.post('/api/actual', (req, res) => {
 // ---------- 报工汇总 ----------
 app.get('/api/dispatch-summary', (req, res) => {
   try {
-    const { schedule_type, style_no, date_from, date_to, group_by = 'date' } = req.query;
+    const { schedule_type, secondary_type, workshop, style_no, date_from, date_to, group_by = 'date' } = req.query;
     let groupExpr, selectExtra;
     switch (group_by) {
       case 'style':
@@ -1048,7 +1048,7 @@ app.get('/api/dispatch-summary', (req, res) => {
         groupExpr = 'production_date, style_no'; selectExtra = 'production_date, style_no,';
     }
     let sql = `SELECT ${selectExtra}
-      workshop, line_team,
+      workshop, line_team, secondary_type,
       COUNT(*) as record_count,
       SUM(completed_qty) as total_completed,
       SUM(defect_qty) as total_defects,
@@ -1056,6 +1056,8 @@ app.get('/api/dispatch-summary', (req, res) => {
     FROM actual_production WHERE 1=1`;
     const params = [];
     if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
+    if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
     if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
@@ -1088,10 +1090,11 @@ app.put('/api/actual/:id', (req, res) => {
     const oldStyleId = existing.style_id;
     const newStyleId = r.style_id || oldStyleId;
 
-    db.run(`UPDATE actual_production SET schedule_type=?, style_id=?, style_no=?, color=?, size_spec=?,
+    db.run(`UPDATE actual_production SET schedule_type=?, secondary_type=?, style_id=?, style_no=?, color=?, size_spec=?,
       production_date=?, completed_qty=?, defect_qty=?, workshop=?, line_team=?, remark=?,
       worker_name=?, start_time=?, end_time=? WHERE id=?`,
-      [r.schedule_type || existing.schedule_type, newStyleId, r.style_no || existing.style_no,
+      [r.schedule_type || existing.schedule_type, r.secondary_type ?? existing.secondary_type,
+       newStyleId, r.style_no || existing.style_no,
        r.color ?? existing.color, r.size_spec ?? existing.size_spec,
        r.production_date || existing.production_date, r.completed_qty ?? existing.completed_qty,
        r.defect_qty ?? existing.defect_qty, r.workshop ?? existing.workshop,
@@ -1144,9 +1147,9 @@ app.post('/api/actual/batch', (req, res) => {
     const styleIds = new Set();
     for (const r of records) {
       if (!r.style_no || !r.production_date) continue;
-      const result = db.run(`INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [r.schedule_type || '', r.style_id || 0, r.style_no, r.color || '', r.size_spec || '',
+      const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [r.schedule_type || '', r.secondary_type || '', r.style_id || 0, r.style_no, r.color || '', r.size_spec || '',
          r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '',
          r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '']);
       syncActualToDaily(r);
@@ -1165,10 +1168,13 @@ app.post('/api/actual/batch', (req, res) => {
 // ---------- 每日完成量趋势 ----------
 app.get('/api/dispatch-daily-trend', (req, res) => {
   try {
-    const { style_no, date_from, date_to } = req.query;
+    const { schedule_type, secondary_type, workshop, style_no, date_from, date_to } = req.query;
     let sql = `SELECT production_date, SUM(completed_qty) as total_completed, SUM(defect_qty) as total_defects
       FROM actual_production WHERE 1=1`;
     const params = [];
+    if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
+    if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
     if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
@@ -1238,12 +1244,14 @@ app.get('/api/dispatch-alerts', (req, res) => {
 // ---------- 报工导出 Excel ----------
 app.get('/api/dispatch-export', async (req, res) => {
   try {
-    const { schedule_type, style_no, date_from, date_to } = req.query;
-    let sql = `SELECT production_date, style_no, color, size_spec, completed_qty, defect_qty,
+    const { schedule_type, secondary_type, workshop, style_no, date_from, date_to } = req.query;
+    let sql = `SELECT production_date, style_no, secondary_type, color, size_spec, completed_qty, defect_qty,
       workshop, line_team, worker_name, remark, recorded_at
       FROM actual_production WHERE 1=1`;
     const params = [];
     if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
+    if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
     if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
@@ -1255,6 +1263,7 @@ app.get('/api/dispatch-export', async (req, res) => {
     ws.columns = [
       { header: '生产日期', key: 'production_date', width: 14 },
       { header: '款号', key: 'style_no', width: 25 },
+      { header: '工序', key: 'secondary_type', width: 10 },
       { header: '颜色', key: 'color', width: 12 },
       { header: '尺码', key: 'size_spec', width: 10 },
       { header: '完成数量', key: 'completed_qty', width: 12 },

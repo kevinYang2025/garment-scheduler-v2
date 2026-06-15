@@ -1,9 +1,15 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import ActualEntryDialog from '../components/ActualEntryDialog.vue'
 import ImportActualDialog from '../components/ImportActualDialog.vue'
+
+const props = defineProps({
+  scheduleType: { type: String, default: '' },
+  secondaryType: { type: String, default: '' },
+  workshop: { type: String, default: '' },
+})
 
 // ---- 数据 ----
 const reports = ref([])
@@ -13,17 +19,10 @@ const activeTab = ref('list')
 
 // ---- 筛选 ----
 const filters = ref({
-  schedule_type: '',
   style_no: '',
   date_from: '',
   date_to: '',
 })
-const scheduleTypes = [
-  { value: '', label: '全部类型' },
-  { value: 'sewing', label: '缝制' },
-  { value: 'cutting', label: '裁剪' },
-  { value: 'secondary', label: '二次加工' },
-]
 
 // ---- 录入/编辑 ----
 const showEntry = ref(false)
@@ -54,7 +53,9 @@ async function loadReports() {
   loading.value = true
   try {
     const params = {}
-    if (filters.value.schedule_type) params.schedule_type = filters.value.schedule_type
+    if (props.scheduleType) params.schedule_type = props.scheduleType
+    if (props.secondaryType) params.secondary_type = props.secondaryType
+    if (props.workshop) params.workshop = props.workshop
     if (filters.value.style_no) params.style_no = filters.value.style_no
     if (filters.value.date_from) params.date_from = filters.value.date_from
     if (filters.value.date_to) params.date_to = filters.value.date_to
@@ -94,6 +95,9 @@ async function loadTrend() {
   trendLoading.value = true
   try {
     const params = {}
+    if (props.scheduleType) params.schedule_type = props.scheduleType
+    if (props.secondaryType) params.secondary_type = props.secondaryType
+    if (props.workshop) params.workshop = props.workshop
     if (filters.value.style_no) params.style_no = filters.value.style_no
     if (filters.value.date_from) params.date_from = filters.value.date_from
     if (filters.value.date_to) params.date_to = filters.value.date_to
@@ -225,7 +229,9 @@ function onImported() {
 async function handleExport() {
   try {
     const params = {}
-    if (filters.value.schedule_type) params.schedule_type = filters.value.schedule_type
+    if (props.scheduleType) params.schedule_type = props.scheduleType
+    if (props.secondaryType) params.secondary_type = props.secondaryType
+    if (props.workshop) params.workshop = props.workshop
     if (filters.value.style_no) params.style_no = filters.value.style_no
     if (filters.value.date_from) params.date_from = filters.value.date_from
     if (filters.value.date_to) params.date_to = filters.value.date_to
@@ -261,6 +267,21 @@ function progressColor(row) {
   return '#ef4444'
 }
 
+const pageTitle = computed(() => {
+  const typeNames = { sewing: '缝制报工', cutting: '裁剪报工', secondary: '报工管理' }
+  const secondaryNames = { '印花': '印花报工', '刺绣': '刺绣报工', '模板': '模板报工', '烫标': '烫标报工' }
+  if (props.secondaryType) return secondaryNames[props.secondaryType] || '报工管理'
+  if (props.workshop) return `缝制报工 · ${props.workshop}`
+  return typeNames[props.scheduleType] || '报工管理'
+})
+
+const pageDesc = computed(() => {
+  if (props.workshop) return `${props.workshop} 生产报工数据`
+  if (props.secondaryType) return `${props.secondaryType} 生产报工数据`
+  const descs = { sewing: '缝制车间生产报工数据', cutting: '裁剪车间生产报工数据', secondary: '生产报工数据' }
+  return descs[props.scheduleType] || '录入、查看和分析生产报工数据'
+})
+
 onMounted(loadData)
 </script>
 
@@ -268,8 +289,8 @@ onMounted(loadData)
   <div class="dispatch-page">
     <div class="page-header-bar">
       <div>
-        <h2 class="page-heading">报工管理</h2>
-        <p class="page-desc">录入、查看和分析生产报工数据</p>
+        <h2 class="page-heading">{{ pageTitle }}</h2>
+        <p class="page-desc">{{ pageDesc }}</p>
       </div>
       <div class="header-actions">
         <el-button @click="openAdd" type="primary" size="default">+ 录入</el-button>
@@ -300,9 +321,6 @@ onMounted(loadData)
 
     <!-- 筛选 -->
     <div class="filter-bar">
-      <el-select v-model="filters.schedule_type" placeholder="类型" clearable style="width:120px" @change="handleFilter">
-        <el-option v-for="o in scheduleTypes" :key="o.value" :label="o.label" :value="o.value" />
-      </el-select>
       <el-input v-model="filters.style_no" placeholder="款号" clearable style="width:150px" @change="handleFilter" />
       <el-date-picker v-model="filters.date_from" type="date" placeholder="开始" value-format="YYYY-MM-DD" style="width:130px" @change="handleFilter" />
       <el-date-picker v-model="filters.date_to" type="date" placeholder="结束" value-format="YYYY-MM-DD" style="width:130px" @change="handleFilter" />
@@ -425,12 +443,18 @@ onMounted(loadData)
     <ActualEntryDialog
       v-model="showEntry"
       :edit-record="editRecord"
+      :schedule-type="scheduleType"
+      :secondary-type="secondaryType"
+      :workshop="workshop"
       @saved="onSaved"
     />
 
     <!-- 批量导入对话框 -->
     <ImportActualDialog
       v-model="showImport"
+      :schedule-type="scheduleType"
+      :secondary-type="secondaryType"
+      :workshop="workshop"
       @imported="onImported"
     />
   </div>

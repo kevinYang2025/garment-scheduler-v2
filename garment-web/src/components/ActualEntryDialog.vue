@@ -7,6 +7,8 @@ const props = defineProps({
   modelValue: Boolean,
   editRecord: { type: Object, default: null },
   scheduleType: { type: String, default: '' },
+  secondaryType: { type: String, default: '' },
+  workshop: { type: String, default: '' },
   styleNo: { type: String, default: '' },
   color: { type: String, default: '' },
   sizeSpec: { type: String, default: '' },
@@ -21,6 +23,7 @@ const saving = ref(false)
 
 const form = ref({
   schedule_type: 'sewing',
+  secondary_type: '',
   style_no: '',
   style_id: 0,
   color: '',
@@ -39,6 +42,13 @@ const scheduleTypes = [
   { value: 'secondary', label: '二次加工' },
 ]
 
+const secondaryTypes = [
+  { value: '印花', label: '印花' },
+  { value: '刺绣', label: '刺绣' },
+  { value: '模板', label: '模板' },
+  { value: '烫标', label: '烫标' },
+]
+
 watch(() => props.modelValue, async (visible) => {
   if (visible) {
     if (props.editRecord) {
@@ -47,6 +57,7 @@ watch(() => props.modelValue, async (visible) => {
       const isFromGantt = !!props.styleNo
       form.value = {
         schedule_type: props.scheduleType || 'sewing',
+        secondary_type: props.secondaryType || '',
         style_no: props.styleNo || '',
         style_id: 0,
         color: props.color || '',
@@ -54,7 +65,7 @@ watch(() => props.modelValue, async (visible) => {
         production_date: props.date || new Date().toISOString().slice(0, 10),
         completed_qty: 0,
         defect_qty: 0,
-        workshop: isFromGantt ? (localStorage.getItem('last_workshop') || '') : (localStorage.getItem('last_workshop') || ''),
+        workshop: props.workshop || localStorage.getItem('last_workshop') || '',
         line_team: isFromGantt ? (localStorage.getItem('last_line_team') || '') : (localStorage.getItem('last_line_team') || ''),
         remark: '',
       }
@@ -121,9 +132,15 @@ function close() {
     :close-on-click-modal="false"
   >
     <el-form :model="form" label-width="70px" size="large">
-      <el-form-item label="类型">
+      <el-form-item v-if="!props.scheduleType" label="类型">
         <el-select v-model="form.schedule_type" style="width: 100%">
           <el-option v-for="o in scheduleTypes" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item v-if="form.schedule_type === 'secondary' && !props.secondaryType" label="工序">
+        <el-select v-model="form.secondary_type" style="width: 100%">
+          <el-option v-for="o in secondaryTypes" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </el-form-item>
 

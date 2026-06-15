@@ -283,6 +283,7 @@ onMounted(loadGantt)
             class="unscheduled-item"
             draggable="true"
             @dragstart="onDragStart(item)"
+            @dragend="onDragEnd"
           >
             <div class="item-no">{{ item.styleNo }}</div>
             <div class="item-name">{{ item.productName }}</div>
@@ -373,6 +374,7 @@ onMounted(loadGantt)
         <span class="legend-color" style="background: var(--primary)"></span>
         缝制任务
       </span>
+      <span class="legend-item">拖拽任务条可移动到其他产线</span>
       <span class="legend-item">双击任务条可取消排班</span>
       <span class="legend-item">从左侧拖拽款式到产线完成排班</span>
     </div>
@@ -751,7 +753,7 @@ onMounted(loadGantt)
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: grab;
   transition: var(--transition);
   z-index: 1;
 }

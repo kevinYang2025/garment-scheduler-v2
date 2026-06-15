@@ -24,6 +24,7 @@ import FabricLoadingList from './views/FabricLoadingList.vue'
 import SewingWorkshopManage from './views/SewingWorkshopManage.vue'
 import EntryHome from './views/EntryHome.vue'
 import BasicDataHome from './views/BasicDataHome.vue'
+import PlanManagementHome from './views/PlanManagementHome.vue'
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const currentModule = ref('home')
@@ -31,6 +32,7 @@ const currentGroup = ref(null) // 当前所在的导航组
 const warehouseActiveType = ref('')
 const secondaryActiveType = ref('')
 const sewingActiveType = ref('')
+const sewingActiveWorkshop = ref('')
 const prefetchedStyles = ref(null)
 const sidebarCollapsed = ref(false)
 
@@ -67,6 +69,7 @@ const navSections = [
   {
     label: '计划管理',
     items: [
+      { key: 'planManagement', label: '计划管理总览', icon: 'grid' },
       { key: 'mainPlan', label: '主计划', icon: 'calendar' },
       { key: 'sewing', label: '缝制排程', icon: 'scissors' },
       { key: 'secondary', label: '二次加工', icon: 'palette' },
@@ -82,7 +85,12 @@ const navSections = [
   {
     label: '报工管理',
     items: [
-      { key: 'dispatch', label: '报工汇总', icon: 'data-analysis' },
+      { key: 'cutting-dispatch', label: '裁剪报工', icon: 'cut' },
+      { key: 'printing-dispatch', label: '印花报工', icon: 'printer' },
+      { key: 'embroidery-dispatch', label: '刺绣报工', icon: 'star' },
+      { key: 'template-dispatch', label: '模板报工', icon: 'copy' },
+      { key: 'ironing-dispatch', label: '烫标报工', icon: 'flame' },
+      { key: 'sewing-dispatch', label: '缝制报工', icon: 'scissors' },
       { key: 'estimation', label: '交期预估', icon: 'timer' },
       { key: 'shipping', label: '出货计划', icon: 'van' },
     ]
@@ -123,6 +131,9 @@ const breadcrumb = computed(() => {
     const typeNames = { plan: '班组缝制计划', visual: '目视化班组排程' }
     crumbs.push({ label: typeNames[sewingActiveType.value] || '' })
   }
+  if (currentModule.value === 'sewing-dispatch' && sewingActiveWorkshop.value) {
+    crumbs.push({ label: sewingActiveWorkshop.value })
+  }
   return crumbs
 })
 
@@ -134,6 +145,7 @@ function enterModule(key) {
   if (key === 'warehouse') warehouseActiveType.value = ''
   if (key === 'secondary') secondaryActiveType.value = ''
   if (key === 'sewing') sewingActiveType.value = ''
+  if (key === 'sewing-dispatch') sewingActiveWorkshop.value = ''
 }
 
 function goHome() {
@@ -142,6 +154,7 @@ function goHome() {
   warehouseActiveType.value = ''
   secondaryActiveType.value = ''
   sewingActiveType.value = ''
+  sewingActiveWorkshop.value = ''
 }
 
 function enterWarehouse(type) {
@@ -168,6 +181,14 @@ function backToSewingHome() {
   sewingActiveType.value = ''
 }
 
+function enterSewingWorkshop(workshop) {
+  sewingActiveWorkshop.value = workshop
+}
+
+function backToSewingDispatch() {
+  sewingActiveWorkshop.value = ''
+}
+
 
 
 function toggleSidebar() {
@@ -191,6 +212,10 @@ function getIcon(name) {
     chevronDown: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`,
     panelLeft: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>`,
     arrowLeft: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>`,
+    printer: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>`,
+    star: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+    copy: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
+    flame: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
   }
   return icons[name] || ''
 }
@@ -234,18 +259,30 @@ function getIcon(name) {
         <nav class="sidebar-nav">
           <div v-if="currentGroup" class="nav-section">
             <div class="nav-section-label">{{ currentGroup.label }}</div>
-            <div
-              v-for="item in currentGroup.items"
-              :key="item.key"
-              class="nav-item"
-              :class="{ active: currentModule === item.key }"
-              :data-label="item.label"
-              @click="enterModule(item.key)"
-            >
-              <span class="nav-icon" v-html="getIcon(item.icon)"></span>
-              <span class="nav-label">{{ item.label }}</span>
-              <span v-if="currentModule === item.key" class="nav-arrow" v-html="getIcon('chevronRight')"></span>
-            </div>
+            <template v-for="item in currentGroup.items" :key="item.key">
+              <div
+                class="nav-item"
+                :class="{ active: currentModule === item.key && !(item.key === 'sewing-dispatch' && sewingActiveWorkshop) }"
+                :data-label="item.label"
+                @click="enterModule(item.key)"
+              >
+                <span class="nav-icon" v-html="getIcon(item.icon)"></span>
+                <span class="nav-label">{{ item.label }}</span>
+                <span v-if="currentModule === item.key" class="nav-arrow" v-html="getIcon(currentModule === item.key && sewingActiveWorkshop && item.key === 'sewing-dispatch' ? 'chevronDown' : 'chevronRight')"></span>
+              </div>
+              <!-- 缝制报工子项：车间列表 -->
+              <div v-if="item.key === 'sewing-dispatch' && currentModule === 'sewing-dispatch'" class="nav-sub-items">
+                <div
+                  v-for="ws in ['一车间','二车间','三车间','四车间','五车间']"
+                  :key="ws"
+                  class="nav-item nav-sub-item"
+                  :class="{ active: sewingActiveWorkshop === ws }"
+                  @click="enterSewingWorkshop(ws)"
+                >
+                  <span class="nav-label">{{ ws }}</span>
+                </div>
+              </div>
+            </template>
           </div>
         </nav>
       </div>
@@ -297,6 +334,9 @@ function getIcon(name) {
           <!-- 基础数据入口 -->
           <BasicDataHome v-else-if="currentModule === 'basicData' && DB" key="basicData" @navigate="enterModule" />
 
+          <!-- 计划管理入口 -->
+          <PlanManagementHome v-else-if="currentModule === 'planManagement' && DB" key="planManagement" @navigate="enterModule" />
+
           <!-- 工作台 / 数据看板 -->
           <div v-else-if="currentModule === 'dashboard' && DB" key="dashboard">
             <Dashboard :db="DB" @navigate="enterModule" />
@@ -331,7 +371,19 @@ function getIcon(name) {
           <CapacityConfig v-else-if="currentModule === 'config' && DB" :db="DB" key="capacityConfig" />
           <OperationLogs v-else-if="currentModule === 'logs' && DB" key="logs" />
           <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />
-          <DispatchReport v-else-if="currentModule === 'dispatch' && DB" key="dispatch" />
+          <DispatchReport v-else-if="currentModule === 'cutting-dispatch' && DB" schedule-type="cutting" key="cutting-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'printing-dispatch' && DB" schedule-type="secondary" secondary-type="印花" key="printing-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'embroidery-dispatch' && DB" schedule-type="secondary" secondary-type="刺绣" key="embroidery-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'template-dispatch' && DB" schedule-type="secondary" secondary-type="模板" key="template-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'ironing-dispatch' && DB" schedule-type="secondary" secondary-type="烫标" key="ironing-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'sewing-dispatch' && sewingActiveWorkshop && DB" schedule-type="sewing" :workshop="sewingActiveWorkshop" :key="'sewing-dispatch-' + sewingActiveWorkshop" />
+          <div v-else-if="currentModule === 'sewing-dispatch' && !sewingActiveWorkshop && DB" class="placeholder-page" key="sewing-dispatch-select">
+            <div style="text-align:center; padding:80px 0; color:var(--text-tertiary)">
+              <div style="font-size:48px; margin-bottom:16px">🏭</div>
+              <div style="font-size:16px; font-weight:600; margin-bottom:8px; color:var(--text)">请选择车间</div>
+              <div style="font-size:13px">点击左侧菜单选择具体车间查看报工数据</div>
+            </div>
+          </div>
           <DeliveryEstimation v-else-if="currentModule === 'estimation' && DB" key="estimation" />
           <ShippingPlan v-else-if="currentModule === 'shipping' && DB" key="shipping" />
           <SchedulingStrategy v-else-if="currentModule === 'strategy' && DB" key="strategy" />
@@ -589,6 +641,17 @@ body {
   color: var(--text);
 }
 .nav-item.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.nav-sub-items {
+  padding-left: 20px;
+}
+.nav-sub-item {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+.nav-sub-item.active {
   background: var(--primary-light);
   color: var(--primary);
 }
