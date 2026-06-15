@@ -167,7 +167,9 @@
       "Bash(start cmd *)",
       "Bash(node -e \"require\\('./server.js'\\)\")",
       "Bash(taskkill //F //PID 32996)",
-      "Bash(python -m json.tool)"
+      "Bash(python -m json.tool)",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\('/tmp/gantt.json','utf8'\\)\\); console.log\\('Workshops:', d.workshops.length\\); d.workshops.forEach\\(ws => ws.lines.slice\\(0,2\\).forEach\\(l => console.log\\(ws.name+'/'+l.name, 'cats:', l.categories\\)\\)\\);\")",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(process.env.TEMP+'/gantt.json','utf8'\\)\\); console.log\\('Workshops:', d.workshops.length\\); d.workshops.forEach\\(ws => ws.lines.slice\\(0,2\\).forEach\\(l => console.log\\(ws.name+'/'+l.name, 'cats:', JSON.stringify\\(l.categories\\)\\)\\)\\);\")"
     ]
   }
 }
