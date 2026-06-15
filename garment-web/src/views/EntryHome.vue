@@ -100,19 +100,15 @@ onMounted(loadStats)
 
 <template>
   <div class="entry-page">
-    <!-- 顶部品牌 -->
-    <div class="brand-bar">
-      <div class="brand-logo">
-        <div class="logo-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-        </div>
-        <span class="brand-text">EUC 排程系统</span>
-      </div>
-    </div>
-
-    <!-- 顶部欢迎区 -->
+    <!-- 欢迎区（含品牌） -->
     <div class="welcome-section">
       <div class="welcome-left">
+        <div class="brand-logo">
+          <div class="logo-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+          </div>
+          <span class="brand-text">EUC 排程系统</span>
+        </div>
         <h1 class="welcome-title">欢迎回来 👋</h1>
         <p class="welcome-date">{{ today }} 星期{{ weekday }}</p>
       </div>
@@ -166,33 +162,6 @@ onMounted(loadStats)
   margin: 0 auto;
 }
 
-.brand-bar {
-  display: flex;
-  align-items: center;
-  margin-bottom: 20px;
-}
-.brand-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.brand-logo .logo-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #6e3ff3, #aa8ef9);
-  color: white;
-}
-.brand-text {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -.3px;
-}
-
 .welcome-section {
   display: flex;
   justify-content: space-between;
@@ -202,6 +171,32 @@ onMounted(loadStats)
   background: linear-gradient(135deg, #6e3ff3 0%, #a78bfa 100%);
   border-radius: 16px;
   color: white;
+}
+.welcome-left {
+  display: flex;
+  flex-direction: column;
+}
+.brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.brand-logo .logo-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: rgba(255,255,255,0.2);
+  color: white;
+}
+.brand-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: .5px;
 }
 .welcome-title {
   font-size: 28px;
