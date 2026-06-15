@@ -297,7 +297,6 @@ onMounted(loadGantt)
           </div>
           <!-- 任务行 -->
           <template v-for="workshop in filteredWorkshops" :key="'r-'+workshop.name">
-            <div class="gantt-right-workshop"></div>
             <div
               v-for="line in workshop.lines"
               :key="'r-'+line.name"
@@ -602,12 +601,6 @@ onMounted(loadGantt)
   position: sticky;
   top: 0;
   z-index: 1;
-}
-
-.gantt-right-workshop {
-  height: 32px;
-  background: var(--primary-light);
-  border-bottom: 1px solid var(--border);
 }
 
 .gantt-right-row {

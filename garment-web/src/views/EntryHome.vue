@@ -36,345 +36,296 @@ const weekdays = ['日','一','二','三','四','五','六']
 const weekday = weekdays[_d.getDay()]
 
 const modules = [
-  {
-    key: 'dashboard', label: '工作台', icon: '📊',
-    gradient: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-    desc: '数据看板与生产概览',
-    stats: [
-      { label: '款式总数', value: () => stats.value.styles, unit: '个' },
-      { label: '主计划', value: () => stats.value.mainPlan, unit: '个' },
-    ],
-  },
-  {
-    key: 'styles', label: '基础数据', icon: '📋',
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
-    desc: '款式、面料、车间管理',
-    stats: [
-      { label: '款式总数', value: () => stats.value.styles, unit: '个' },
-      { label: '面料装柜', value: () => '-', unit: '条' },
-    ],
-  },
-  {
-    key: 'mainPlan', label: '计划管理', icon: '📅',
-    gradient: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
-    desc: '主计划、排程、二次加工',
-    stats: [
-      { label: '主计划', value: () => stats.value.mainPlan, unit: '个' },
-      { label: '缝制待排', value: () => stats.value.sewingPending, unit: '个' },
-    ],
-  },
-  {
-    key: 'warehouse', label: '仓库管理', icon: '📦',
-    gradient: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
-    desc: '面料、辅料、裁片、成品',
-    stats: [
-      { label: '面料库存', value: () => stats.value.warehouseTotal, unit: 'KG' },
-      { label: '仓库类型', value: () => 4, unit: '个' },
-    ],
-  },
-  {
-    key: 'dispatch', label: '报工管理', icon: '📝',
-    gradient: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
-    desc: '生产报工、产量统计',
-    stats: [
-      { label: '今日报工', value: () => stats.value.todayDispatch, unit: '条' },
-      { label: '完成率', value: () => stats.value.dispatchRate, unit: '%' },
-    ],
-  },
-  {
-    key: 'config', label: '系统设置', icon: '⚙️',
-    gradient: 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)',
-    desc: '工作日历、产能、排产策略',
-    stats: [
-      { label: '系统状态', value: () => '正常', unit: '' },
-      { label: '在线人数', value: () => 1, unit: '人' },
-    ],
-  },
+  { key: 'dashboard', label: '工作台', icon: '📊', color: '#7c5cfc', bg: '#f0ecff', desc: '数据看板与生产概览' },
+  { key: 'styles', label: '基础数据', icon: '📋', color: '#4a9eff', bg: '#eaf3ff', desc: '款式、面料、车间管理' },
+  { key: 'mainPlan', label: '计划管理', icon: '📅', color: '#f5a623', bg: '#fff6e8', desc: '主计划、排程、二次加工' },
+  { key: 'warehouse', label: '仓库管理', icon: '📦', color: '#34c77b', bg: '#e8faf0', desc: '面料、辅料、裁片、成品' },
+  { key: 'dispatch', label: '报工管理', icon: '📝', color: '#a78bfa', bg: '#f3eeff', desc: '生产报工、产量统计' },
+  { key: 'config', label: '系统设置', icon: '⚙️', color: '#8e99a4', bg: '#f4f5f7', desc: '工作日历、产能、排产策略' },
 ]
 
-function enterModule(key) {
-  emit('navigate', key)
+const cardStats = {
+  dashboard: [
+    { label: '款式', value: () => stats.value.styles, unit: '个' },
+    { label: '计划', value: () => stats.value.mainPlan, unit: '个' },
+  ],
+  styles: [
+    { label: '款式', value: () => stats.value.styles, unit: '个' },
+    { label: '装柜', value: () => '-', unit: '条' },
+  ],
+  mainPlan: [
+    { label: '计划', value: () => stats.value.mainPlan, unit: '个' },
+    { label: '待排', value: () => stats.value.sewingPending, unit: '个' },
+  ],
+  warehouse: [
+    { label: '面料', value: () => stats.value.warehouseTotal, unit: 'KG' },
+    { label: '仓库', value: () => 4, unit: '个' },
+  ],
+  dispatch: [
+    { label: '报工', value: () => stats.value.todayDispatch, unit: '条' },
+    { label: '完成率', value: () => stats.value.dispatchRate, unit: '%' },
+  ],
+  config: [
+    { label: '状态', value: () => '正常', unit: '' },
+    { label: '在线', value: () => 1, unit: '人' },
+  ],
 }
 
-function fmtNum(v) {
-  return typeof v === 'number' ? v.toLocaleString() : v
-}
+function enterModule(key) { emit('navigate', key) }
+function fmtNum(v) { return typeof v === 'number' ? v.toLocaleString() : v }
 
 onMounted(loadStats)
 </script>
 
 <template>
-  <div class="entry-page">
-    <!-- 欢迎横幅 -->
-    <div class="welcome-banner">
-      <div class="welcome-content">
-        <div class="brand">
-          <span class="brand-icon">🌐</span>
-          <span class="brand-name">EUC 排程系统</span>
-        </div>
-        <div class="welcome-text">
-          <h1>欢迎回来 <span class="wave">👋</span></h1>
-          <p class="date">{{ today }} 星期{{ weekday }}</p>
-        </div>
-      </div>
-      <div class="welcome-stats">
-        <div class="ws-item" v-for="s in [
-          { v: stats.styles, l: '款式', color: '#c4b5fd' },
-          { v: stats.mainPlan, l: '计划', color: '#fde68a' },
-          { v: stats.sewingPending, l: '排程', color: '#a7f3d0' },
-        ]" :key="s.l">
-          <div class="ws-value">{{ fmtNum(s.v) }}</div>
-          <div class="ws-label">{{ s.l }}</div>
-        </div>
-      </div>
-    </div>
+  <div class="entry-bg">
+    <div class="entry-container">
 
-    <!-- 模块卡片 -->
-    <div class="module-grid">
-      <div
-        v-for="m in modules"
-        :key="m.key"
-        class="module-card"
-        @click="enterModule(m.key)"
-      >
-        <div class="mc-top">
-          <div class="mc-icon-wrap" :style="{ background: m.gradient }">
-            <span class="mc-icon">{{ m.icon }}</span>
+      <!-- 顶部横幅 -->
+      <div class="banner">
+        <div class="banner-left">
+          <div class="brand">
+            <span class="brand-dot"></span>
+            <span class="brand-name">EUC 排程系统</span>
           </div>
-          <div class="mc-arrow">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </div>
+          <h1 class="greeting">欢迎回来 <span class="wave">👋</span></h1>
+          <p class="sub-date">{{ today }} 星期{{ weekday }}</p>
         </div>
-        <div class="mc-body">
-          <h3>{{ m.label }}</h3>
-          <p>{{ m.desc }}</p>
-        </div>
-        <div class="mc-stats">
-          <div class="mc-stat" v-for="s in m.stats" :key="s.label">
-            <span class="mc-sv">{{ fmtNum(s.value()) }}<small>{{ s.unit }}</small></span>
-            <span class="mc-sl">{{ s.label }}</span>
+        <div class="banner-right">
+          <div class="pill" v-for="s in [
+            { v: stats.styles, l: '款式', c: '#c4b5fd' },
+            { v: stats.mainPlan, l: '计划', c: '#fde68a' },
+            { v: stats.sewingPending, l: '排程', c: '#a7f3d0' },
+          ]" :key="s.l">
+            <span class="pill-val">{{ fmtNum(s.v) }}</span>
+            <span class="pill-lbl">{{ s.l }}</span>
           </div>
         </div>
       </div>
+
+      <!-- 模块卡片 -->
+      <div class="cards">
+        <div
+          v-for="m in modules"
+          :key="m.key"
+          class="card"
+          @click="enterModule(m.key)"
+        >
+          <div class="card-top">
+            <div class="card-icon" :style="{ background: m.bg, color: m.color }">
+              <span>{{ m.icon }}</span>
+            </div>
+            <svg class="card-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" :stroke="m.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </div>
+          <div class="card-body">
+            <h3>{{ m.label }}</h3>
+            <p>{{ m.desc }}</p>
+          </div>
+          <div class="card-footer">
+            <div class="cf-item" v-for="s in cardStats[m.key]" :key="s.label">
+              <span class="cf-val">{{ fmtNum(s.value()) }}<small>{{ s.unit }}</small></span>
+              <span class="cf-lbl">{{ s.label }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
 
 <style scoped>
-.entry-page {
-  max-width: 1060px;
-  margin: 0 auto;
-  padding: 32px 24px;
+/* ── 背景 ── */
+.entry-bg {
+  min-height: 100vh;
+  background: linear-gradient(160deg, #f5f0ff 0%, #fdf2f8 40%, #fefce8 100%);
+  padding: 32px;
+  display: flex;
+  justify-content: center;
 }
 
-/* ── 欢迎横幅 ── */
-.welcome-banner {
+.entry-container {
+  width: 100%;
+  max-width: 1040px;
+  background: #f3f4f6;
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.04);
+}
+
+/* ── 横幅 ── */
+.banner {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 32px 36px;
-  margin-bottom: 36px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
   border-radius: 20px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+  background: linear-gradient(135deg, #7c5cfc 0%, #a78bfa 60%, #c4b5fd 100%);
   color: #fff;
-  box-shadow: 0 8px 32px rgba(99, 102, 241, .35);
   position: relative;
   overflow: hidden;
 }
-.welcome-banner::before {
+.banner::before {
   content: '';
   position: absolute;
-  right: -60px;
-  top: -60px;
-  width: 220px;
-  height: 220px;
-  background: rgba(255,255,255,0.08);
+  width: 200px; height: 200px;
+  right: -40px; top: -40px;
+  background: rgba(255,255,255,.08);
   border-radius: 50%;
 }
-.welcome-banner::after {
+.banner::after {
   content: '';
   position: absolute;
-  right: 120px;
-  bottom: -80px;
-  width: 180px;
-  height: 180px;
-  background: rgba(255,255,255,0.05);
+  width: 140px; height: 140px;
+  right: 100px; bottom: -60px;
+  background: rgba(255,255,255,.05);
   border-radius: 50%;
 }
 
-.welcome-content { position: relative; z-index: 1; }
-
+.banner-left { position: relative; z-index: 1; }
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
 }
-.brand-icon {
-  font-size: 18px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255,255,255,0.18);
-  border-radius: 8px;
-  backdrop-filter: blur(4px);
+.brand-dot {
+  width: 10px; height: 10px;
+  background: #fff;
+  border-radius: 3px;
+  opacity: .9;
 }
 .brand-name {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 1px;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  opacity: 0.85;
+  opacity: .8;
 }
 
-.welcome-text h1 {
-  font-size: 30px;
-  font-weight: 700;
-  margin-bottom: 4px;
+.greeting {
+  font-size: 28px; font-weight: 700;
+  margin-bottom: 2px;
   line-height: 1.2;
 }
-.wave { display: inline-block; animation: wave .8s ease-in-out; }
+.wave { display: inline-block; animation: wave 1s ease-in-out; }
 @keyframes wave {
-  0%, 100% { transform: rotate(0); }
-  25% { transform: rotate(20deg); }
-  75% { transform: rotate(-10deg); }
+  0%,100% { transform: rotate(0); }
+  20% { transform: rotate(16deg); }
+  60% { transform: rotate(-8deg); }
 }
-.date {
-  font-size: 14px;
-  opacity: 0.75;
+.sub-date {
+  font-size: 13px; opacity: .7;
 }
 
-.welcome-stats {
-  display: flex;
-  gap: 16px;
-  position: relative;
-  z-index: 1;
+.banner-right {
+  display: flex; gap: 12px;
+  position: relative; z-index: 1;
 }
-.ws-item {
-  background: rgba(255,255,255,0.15);
+.pill {
+  background: rgba(255,255,255,.15);
   backdrop-filter: blur(8px);
   border-radius: 14px;
-  padding: 16px 22px;
-  min-width: 88px;
+  padding: 14px 20px;
+  min-width: 76px;
   text-align: center;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,.12);
 }
-.ws-value {
-  font-size: 26px;
-  font-weight: 700;
+.pill-val {
+  display: block;
+  font-size: 22px; font-weight: 700;
   line-height: 1.1;
 }
-.ws-label {
-  font-size: 11px;
-  opacity: 0.7;
-  margin-top: 4px;
-  letter-spacing: .5px;
+.pill-lbl {
+  display: block;
+  font-size: 11px; opacity: .65;
+  margin-top: 3px;
 }
 
-/* ── 模块卡片 ── */
-.module-grid {
+/* ── 卡片网格 ── */
+.cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  gap: 16px;
 }
 
-.module-card {
+.card {
   background: #fff;
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 18px;
+  padding: 22px;
   cursor: pointer;
   transition: all .25s cubic-bezier(.4,0,.2,1);
-  border: 1px solid #f0f0f0;
-  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  box-shadow: 0 1px 4px rgba(0,0,0,.03);
   display: flex;
   flex-direction: column;
+  border: 1px solid rgba(0,0,0,.04);
 }
-.module-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px rgba(0,0,0,.08);
-  border-color: transparent;
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(0,0,0,.07);
 }
 
-.mc-top {
+.card-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
-.mc-icon-wrap {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,0,0,.1);
+.card-icon {
+  width: 44px; height: 44px;
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
 }
-.mc-icon {
-  font-size: 22px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,.15));
-}
-.mc-arrow {
-  color: #d1d5db;
+.card-arrow {
+  opacity: 0;
+  transform: translateX(-4px);
   transition: all .25s;
 }
-.module-card:hover .mc-arrow {
-  color: #6366f1;
-  transform: translateX(3px);
+.card:hover .card-arrow {
+  opacity: 1;
+  transform: translateX(0);
 }
 
-.mc-body {
+.card-body {
   flex: 1;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
-.mc-body h3 {
-  font-size: 17px;
-  font-weight: 700;
-  color: #1f2937;
-  margin-bottom: 4px;
+.card-body h3 {
+  font-size: 16px; font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 3px;
 }
-.mc-body p {
-  font-size: 13px;
-  color: #9ca3af;
-  line-height: 1.4;
+.card-body p {
+  font-size: 12px; color: #94a3b8;
 }
 
-.mc-stats {
-  display: flex;
-  gap: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #f3f4f6;
+.card-footer {
+  display: flex; gap: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
 }
-.mc-stat {
-  display: flex;
-  flex-direction: column;
-}
-.mc-sv {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1f2937;
+.cf-item { display: flex; flex-direction: column; }
+.cf-val {
+  font-size: 18px; font-weight: 700;
+  color: #1e293b;
   font-variant-numeric: tabular-nums;
 }
-.mc-sv small {
-  font-size: 11px;
-  font-weight: 500;
-  color: #9ca3af;
-  margin-left: 2px;
+.cf-val small {
+  font-size: 10px; font-weight: 500;
+  color: #94a3b8; margin-left: 2px;
 }
-.mc-sl {
-  font-size: 11px;
-  color: #9ca3af;
-  margin-top: 2px;
+.cf-lbl {
+  font-size: 10px; color: #94a3b8;
+  margin-top: 1px;
 }
 
 /* ── 响应式 ── */
 @media (max-width: 900px) {
-  .module-grid { grid-template-columns: repeat(2, 1fr); }
-  .welcome-banner { flex-direction: column; gap: 20px; text-align: center; }
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  .banner { flex-direction: column; gap: 20px; text-align: center; }
+  .banner-right { justify-content: center; }
 }
 @media (max-width: 600px) {
-  .module-grid { grid-template-columns: 1fr; }
+  .cards { grid-template-columns: 1fr; }
+  .entry-bg { padding: 16px; }
+  .entry-container { padding: 16px; border-radius: 20px; }
 }
 </style>

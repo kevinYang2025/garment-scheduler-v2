@@ -1,17 +1,23 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import ActualEntryDialog from '../components/ActualEntryDialog.vue'
+import ImportActualDialog from '../components/ImportActualDialog.vue'
 
+// ---- 数据 ----
 const reports = ref([])
+const summary = ref({ totalCompleted: 0, totalDefects: 0, qualityRate: 0, alertCount: 0 })
 const loading = ref(true)
+const activeTab = ref('list')
+
+// ---- 筛选 ----
 const filters = ref({
   schedule_type: '',
   style_no: '',
   date_from: '',
   date_to: '',
 })
-
 const scheduleTypes = [
   { value: '', label: '全部类型' },
   { value: 'sewing', label: '缝制' },
@@ -19,9 +25,31 @@ const scheduleTypes = [
   { value: 'secondary', label: '二次加工' },
 ]
 
-// 汇总统计
-const summary = ref({ totalCompleted: 0, totalDefects: 0, qualityRate: 0, recordCount: 0 })
+// ---- 录入/编辑 ----
+const showEntry = ref(false)
+const editRecord = ref(null)
+const showImport = ref(false)
 
+// ---- 趋势图数据 ----
+const trendData = ref([])
+const trendLoading = ref(false)
+
+// ---- 计划vs实际 ----
+const planVsActual = ref([])
+const pvaLoading = ref(false)
+
+// ---- 预警 ----
+const alerts = ref([])
+
+// ---- 分页 ----
+const currentPage = ref(1)
+const pageSize = ref(50)
+const pagedReports = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return reports.value.slice(start, start + pageSize.value)
+})
+
+// ---- 加载报工列表 ----
 async function loadReports() {
   loading.value = true
   try {
@@ -32,7 +60,6 @@ async function loadReports() {
     if (filters.value.date_to) params.date_to = filters.value.date_to
     const { data } = await api.getDispatchSummary(params)
     reports.value = data || []
-    // 计算汇总
     let totalCompleted = 0, totalDefects = 0
     for (const r of reports.value) {
       totalCompleted += r.total_completed || 0
@@ -44,26 +71,211 @@ async function loadReports() {
       qualityRate: totalCompleted + totalDefects > 0
         ? Math.round(totalCompleted * 100 / (totalCompleted + totalDefects) * 10) / 10
         : 0,
-      recordCount: reports.value.length,
+      alertCount: alerts.value.length,
     }
+    currentPage.value = 1
   } catch {
-    ElMessage.error('加载报工汇总失败')
+    ElMessage.error('加载报工数据失败')
   }
   loading.value = false
 }
 
-function handleFilter() {
-  loadReports()
+// ---- 加载预警 ----
+async function loadAlerts() {
+  try {
+    const { data } = await api.getDispatchAlerts()
+    alerts.value = data || []
+    summary.value.alertCount = alerts.value.length
+  } catch { /* ignore */ }
 }
 
-onMounted(loadReports)
+// ---- 加载趋势 ----
+async function loadTrend() {
+  trendLoading.value = true
+  try {
+    const params = {}
+    if (filters.value.style_no) params.style_no = filters.value.style_no
+    if (filters.value.date_from) params.date_from = filters.value.date_from
+    if (filters.value.date_to) params.date_to = filters.value.date_to
+    const { data } = await api.getDispatchDailyTrend(params)
+    trendData.value = data || []
+    renderTrendChart()
+  } catch {
+    ElMessage.error('加载趋势数据失败')
+  }
+  trendLoading.value = false
+}
+
+// ---- 渲染趋势图 ----
+function renderTrendChart() {
+  const el = document.getElementById('trend-chart')
+  if (!el) return
+  if (!window.echarts) {
+    import('echarts').then(m => { window.echarts = m.default || m; doRenderTrend(el) })
+  } else {
+    doRenderTrend(el)
+  }
+}
+
+let trendChart = null
+function doRenderTrend(el) {
+  if (trendChart) trendChart.dispose()
+  trendChart = window.echarts.init(el)
+  const dates = trendData.value.map(d => d.production_date)
+  const completed = trendData.value.map(d => d.total_completed)
+  const defects = trendData.value.map(d => d.total_defects)
+  trendChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['完成量', '次品'], bottom: 0 },
+    grid: { left: 60, right: 20, top: 20, bottom: 40 },
+    xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 11 } },
+    series: [
+      { name: '完成量', type: 'line', data: completed, smooth: true, itemStyle: { color: '#3b82f6' }, areaStyle: { color: 'rgba(59,130,246,0.1)' } },
+      { name: '次品', type: 'line', data: defects, smooth: true, itemStyle: { color: '#ef4444' } },
+    ],
+  })
+}
+
+// ---- 加载计划vs实际 ----
+async function loadPlanVsActual() {
+  pvaLoading.value = true
+  try {
+    const params = {}
+    if (filters.value.date_from) params.date_from = filters.value.date_from
+    if (filters.value.date_to) params.date_to = filters.value.date_to
+    const { data } = await api.getDispatchPlanVsActual(params)
+    planVsActual.value = data || []
+    renderPvaChart()
+  } catch {
+    ElMessage.error('加载对比数据失败')
+  }
+  pvaLoading.value = false
+}
+
+function renderPvaChart() {
+  const el = document.getElementById('pva-chart')
+  if (!el) return
+  if (!window.echarts) {
+    import('echarts').then(m => { window.echarts = m.default || m; doRenderPva(el) })
+  } else {
+    doRenderPva(el)
+  }
+}
+
+let pvaChart = null
+function doRenderPva(el) {
+  if (pvaChart) pvaChart.dispose()
+  pvaChart = window.echarts.init(el)
+  const labels = planVsActual.value.map(d => d.style_no + (d.schedule_type === 'sewing' ? '' : `(${d.schedule_type})`))
+  const planQty = planVsActual.value.map(d => d.plan_qty)
+  const actualQty = planVsActual.value.map(d => d.actual_total)
+  pvaChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['计划量', '实际完成'], bottom: 0 },
+    grid: { left: 80, right: 20, top: 20, bottom: 40 },
+    xAxis: { type: 'category', data: labels, axisLabel: { fontSize: 10, rotate: 30 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 11 } },
+    series: [
+      { name: '计划量', type: 'bar', data: planQty, itemStyle: { color: '#94a3b8' } },
+      { name: '实际完成', type: 'bar', data: actualQty, itemStyle: { color: '#3b82f6' },
+        label: { show: true, position: 'top', fontSize: 10, formatter: '{c}' } },
+    ],
+  })
+}
+
+// ---- 操作 ----
+function handleFilter() {
+  loadReports()
+  if (activeTab.value === 'trend') loadTrend()
+  if (activeTab.value === 'pva') loadPlanVsActual()
+}
+
+function openAdd() {
+  editRecord.value = null
+  showEntry.value = true
+}
+
+function openEdit(row) {
+  editRecord.value = { ...row }
+  showEntry.value = true
+}
+
+async function handleDelete(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除 ${row.style_no} 在 ${row.production_date} 的报工记录？`,
+      '确认删除',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    await api.deleteActual(row.id || row.record_id)
+    ElMessage.success('删除成功')
+    loadData()
+  } catch { /* cancel */ }
+}
+
+function onSaved() {
+  loadData()
+}
+
+function onImported() {
+  loadData()
+}
+
+async function handleExport() {
+  try {
+    const params = {}
+    if (filters.value.schedule_type) params.schedule_type = filters.value.schedule_type
+    if (filters.value.style_no) params.style_no = filters.value.style_no
+    if (filters.value.date_from) params.date_from = filters.value.date_from
+    if (filters.value.date_to) params.date_to = filters.value.date_to
+    const { data } = await api.exportDispatchReport(params)
+    const url = URL.createObjectURL(new Blob([data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '报工明细.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch {
+    ElMessage.error('导出失败')
+  }
+}
+
+function onTabChange(tab) {
+  if (tab === 'trend') loadTrend()
+  if (tab === 'pva') loadPlanVsActual()
+}
+
+function loadData() {
+  loadReports()
+  loadAlerts()
+}
+
+function progressColor(row) {
+  if (!row.plan_qty || row.plan_qty === 0) return ''
+  const pct = (row.actual_total || 0) * 100 / row.plan_qty
+  if (pct >= 100) return '#22c55e'
+  if (pct >= 70) return '#3b82f6'
+  if (pct >= 40) return '#eab308'
+  return '#ef4444'
+}
+
+onMounted(loadData)
 </script>
 
 <template>
   <div class="dispatch-page">
     <div class="page-header-bar">
-      <h2 class="page-heading">报工汇总</h2>
-      <p class="page-desc">按日期/款号/班组汇总生产数据</p>
+      <div>
+        <h2 class="page-heading">报工管理</h2>
+        <p class="page-desc">录入、查看和分析生产报工数据</p>
+      </div>
+      <div class="header-actions">
+        <el-button @click="openAdd" type="primary" size="default">+ 录入</el-button>
+        <el-button @click="showImport = true">导入</el-button>
+        <el-button @click="handleExport">导出</el-button>
+      </div>
     </div>
 
     <!-- 汇总卡片 -->
@@ -74,15 +286,15 @@ onMounted(loadReports)
       </div>
       <div class="summary-card">
         <div class="card-value" style="color:#ef4444">{{ summary.totalDefects.toLocaleString() }}</div>
-        <div class="card-label">总次品数</div>
+        <div class="card-label">总次品</div>
       </div>
       <div class="summary-card">
         <div class="card-value" style="color:#22c55e">{{ summary.qualityRate }}%</div>
         <div class="card-label">合格率</div>
       </div>
-      <div class="summary-card">
-        <div class="card-value">{{ summary.recordCount }}</div>
-        <div class="card-label">记录数</div>
+      <div class="summary-card" :class="{ 'alert-card': summary.alertCount > 0 }">
+        <div class="card-value" :style="{ color: summary.alertCount > 0 ? '#ef4444' : '' }">{{ summary.alertCount }}</div>
+        <div class="card-label">滞后款数</div>
       </div>
     </div>
 
@@ -91,45 +303,145 @@ onMounted(loadReports)
       <el-select v-model="filters.schedule_type" placeholder="类型" clearable style="width:120px" @change="handleFilter">
         <el-option v-for="o in scheduleTypes" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
-      <el-input v-model="filters.style_no" placeholder="款号搜索" clearable style="width:160px" @change="handleFilter" />
-      <el-date-picker v-model="filters.date_from" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" style="width:140px" @change="handleFilter" />
-      <el-date-picker v-model="filters.date_to" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" style="width:140px" @change="handleFilter" />
-      <el-button @click="loadReports" :icon="'Refresh'" circle />
+      <el-input v-model="filters.style_no" placeholder="款号" clearable style="width:150px" @change="handleFilter" />
+      <el-date-picker v-model="filters.date_from" type="date" placeholder="开始" value-format="YYYY-MM-DD" style="width:130px" @change="handleFilter" />
+      <el-date-picker v-model="filters.date_to" type="date" placeholder="结束" value-format="YYYY-MM-DD" style="width:130px" @change="handleFilter" />
+      <el-button @click="loadData" :icon="'Refresh'" circle />
     </div>
 
-    <!-- 表格 -->
-    <el-table :data="reports" v-loading="loading" stripe size="small" style="width:100%">
-      <el-table-column prop="production_date" label="日期" width="110" />
-      <el-table-column prop="style_no" label="款号" min-width="120" show-overflow-tooltip />
-      <el-table-column prop="workshop" label="车间" width="80" />
-      <el-table-column prop="line_team" label="班组" width="80" />
-      <el-table-column prop="total_completed" label="完成量" width="90" align="right">
-        <template #default="{ row }">
-          <span style="font-weight:600">{{ row.total_completed?.toLocaleString() }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="total_defects" label="次品" width="80" align="right">
-        <template #default="{ row }">
-          <span :style="{ color: row.total_defects > 0 ? '#ef4444' : '' }">{{ row.total_defects }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="quality_rate" label="合格率" width="90" align="right">
-        <template #default="{ row }">
-          <span :style="{ color: row.quality_rate >= 95 ? '#22c55e' : row.quality_rate >= 90 ? '#eab308' : '#ef4444', fontWeight: 600 }">
-            {{ row.quality_rate }}%
-          </span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="record_count" label="记录数" width="70" align="right" />
-    </el-table>
+    <!-- Tab 切换 -->
+    <el-tabs v-model="activeTab" @tab-change="onTabChange" style="margin-bottom: 12px">
+      <el-tab-pane label="报工列表" name="list" />
+      <el-tab-pane label="趋势分析" name="trend" />
+      <el-tab-pane label="计划 vs 实际" name="pva" />
+    </el-tabs>
+
+    <!-- 报工列表 -->
+    <div v-if="activeTab === 'list'">
+      <el-table :data="pagedReports" v-loading="loading" stripe size="small" style="width:100%">
+        <el-table-column prop="production_date" label="日期" width="110" />
+        <el-table-column prop="style_no" label="款号" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="workshop" label="车间" width="80" />
+        <el-table-column prop="line_team" label="班组" width="80" />
+        <el-table-column prop="total_completed" label="完成量" width="90" align="right">
+          <template #default="{ row }">
+            <span style="font-weight:600">{{ row.total_completed?.toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="total_defects" label="次品" width="80" align="right">
+          <template #default="{ row }">
+            <span :style="{ color: row.total_defects > 0 ? '#ef4444' : '' }">{{ row.total_defects }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="quality_rate" label="合格率" width="90" align="right">
+          <template #default="{ row }">
+            <span :style="{ color: row.quality_rate >= 95 ? '#22c55e' : row.quality_rate >= 90 ? '#eab308' : '#ef4444', fontWeight: 600 }">
+              {{ row.quality_rate }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="pagination-bar" v-if="reports.length > pageSize">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="reports.length"
+          :page-size="pageSize"
+          :current-page="currentPage"
+          @current-change="currentPage = $event"
+        />
+      </div>
+    </div>
+
+    <!-- 趋势分析 -->
+    <div v-if="activeTab === 'trend'">
+      <div v-loading="trendLoading" id="trend-chart" style="width:100%; height:400px"></div>
+      <div v-if="!trendLoading && trendData.length === 0" class="empty-state">暂无趋势数据</div>
+    </div>
+
+    <!-- 计划 vs 实际 -->
+    <div v-if="activeTab === 'pva'">
+      <div v-loading="pvaLoading" id="pva-chart" style="width:100%; height:400px"></div>
+      <div v-if="!pvaLoading && planVsActual.length === 0" class="empty-state">暂无对比数据</div>
+      <el-table v-if="planVsActual.length > 0" :data="planVsActual" size="small" stripe style="width:100%; margin-top:16px">
+        <el-table-column prop="style_no" label="款号" min-width="120" />
+        <el-table-column prop="schedule_type" label="类型" width="80">
+          <template #default="{ row }">
+            {{ row.schedule_type === 'sewing' ? '缝制' : row.schedule_type === 'cutting' ? '裁剪' : '二次' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="plan_qty" label="计划量" width="90" align="right" />
+        <el-table-column prop="actual_total" label="实际量" width="90" align="right">
+          <template #default="{ row }">
+            <span style="font-weight:600">{{ row.actual_total?.toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="进度" width="160">
+          <template #default="{ row }">
+            <div style="display:flex; align-items:center; gap:6px">
+              <el-progress
+                :percentage="row.progress_pct || 0"
+                :color="progressColor(row)"
+                :stroke-width="12"
+                style="flex:1"
+              />
+              <span style="font-size:12px; color:var(--text-secondary); min-width:36px">{{ row.progress_pct || 0 }}%</span>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <!-- 滞后款预警列表 -->
+    <div v-if="activeTab === 'list' && alerts.length > 0" style="margin-top: 20px">
+      <h3 style="font-size:15px; font-weight:600; color:#ef4444; margin-bottom:10px">
+        滞后款预警 ({{ alerts.length }})
+      </h3>
+      <el-table :data="alerts" size="small" stripe style="width:100%" :row-style="{ background: '#fef2f2' }">
+        <el-table-column prop="style_no" label="款号" min-width="120" />
+        <el-table-column prop="schedule_type" label="类型" width="80">
+          <template #default="{ row }">
+            {{ row.schedule_type === 'sewing' ? '缝制' : row.schedule_type === 'cutting' ? '裁剪' : '二次' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="plan_qty" label="计划量" width="90" align="right" />
+        <el-table-column prop="actual_total" label="实际量" width="90" align="right" />
+        <el-table-column prop="progress_pct" label="进度" width="80" align="right">
+          <template #default="{ row }">
+            <span style="color:#ef4444; font-weight:600">{{ row.progress_pct }}%</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="plan_end" label="计划完成" width="110" />
+      </el-table>
+    </div>
+
+    <!-- 录入/编辑对话框 -->
+    <ActualEntryDialog
+      v-model="showEntry"
+      :edit-record="editRecord"
+      @saved="onSaved"
+    />
+
+    <!-- 批量导入对话框 -->
+    <ImportActualDialog
+      v-model="showImport"
+      @imported="onImported"
+    />
   </div>
 </template>
 
 <style scoped>
-.dispatch-page { max-width: 1100px; }
-.page-header-bar { margin-bottom: 20px; }
+.dispatch-page { max-width: 1200px; }
+.page-header-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .page-heading { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .page-desc { font-size: 13px; color: var(--text-secondary); }
+.header-actions { display: flex; gap: 8px; }
 
 .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .summary-card {
@@ -139,8 +451,18 @@ onMounted(loadReports)
   padding: 20px;
   text-align: center;
 }
+.summary-card.alert-card { border-color: #fca5a5; background: #fef2f2; }
 .card-value { font-size: 28px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .card-label { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
 
 .filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+
+.pagination-bar { margin-top: 16px; display: flex; justify-content: center; }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
 </style>
