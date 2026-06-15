@@ -188,7 +188,10 @@
       "Bash(taskkill //F //PID 6852)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"车间数: {len\\(d['workshops']\\)}, 待排: {len\\(d['unscheduled']\\)}\\\\\"\\)\")",
       "Bash(python -c ' *)",
-      "Bash(taskkill //F //PID 38492)"
+      "Bash(taskkill //F //PID 38492)",
+      "Bash(curl -s http://localhost:3001/api/work-calendar)",
+      "Bash(curl -s http://localhost:3001/api/work-calendars)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('workDays:', d.get\\('workDays','?'\\)\\)\")"
     ]
   }
 }

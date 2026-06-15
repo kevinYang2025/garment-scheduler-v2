@@ -2489,7 +2489,10 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       LEFT JOIN styles s ON mp.style_id = s.id
       WHERE mp.is_scheduled = 0 OR mp.is_scheduled IS NULL
       ORDER BY mp.due_date`);
-    res.json({ workshops, unscheduled });
+    // 工作日历：返回当前启用的工作日模式
+    const cal = db.get('SELECT work_days, start_date, end_date FROM work_calendars WHERE enabled = 1 ORDER BY priority DESC LIMIT 1');
+    const workDays = cal ? cal.work_days : '1111100' // 默认周一~周五
+    res.json({ workshops, unscheduled, workDays });
   } catch (e) {
     console.error('GET /api/visual-schedule/gantt error:', e);
     res.status(500).json({ error: 'Internal server error' });

@@ -15,6 +15,15 @@ const ganttRightRef = ref(null)
 const filterWorkshop = ref('')
 const filterLine = ref('')
 const weekOffset = ref(0) // 周偏移量，0 = 默认视图
+const workDays = ref('1111100') // 工作日模式：默认周一~周五
+
+// 判断某天是否为工作日（基于工作日历）
+function isRestDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const dayOfWeek = d.getDay() // 0=周日, 1=周一, ..., 6=周六
+  const idx = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // 转为 0=周一, ..., 6=周日
+  return workDays.value[idx] !== '1'
+}
 
 // 筛选后的车间列表
 const filteredWorkshops = computed(() => {
@@ -117,6 +126,7 @@ async function loadGantt() {
     ])
     workshops.value = ganttRes.data.workshops || []
     unscheduled.value = ganttRes.data.unscheduled || []
+    if (ganttRes.data.workDays) workDays.value = ganttRes.data.workDays
     if (configRes.data?.sewing) {
       ganttConfig.value = configRes.data.sewing
     }
@@ -288,7 +298,7 @@ onMounted(loadGantt)
               :key="date"
               class="date-cell"
               :class="{
-                weekend: new Date(date).getDay() === 0 || new Date(date).getDay() === 6,
+                weekend: isRestDay(date),
                 today: date === todayStr
               }"
             >
