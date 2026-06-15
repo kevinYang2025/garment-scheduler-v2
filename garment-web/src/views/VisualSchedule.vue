@@ -243,11 +243,32 @@ onMounted(loadGantt)
       </div>
 
       <!-- 右侧：甘特图 -->
-      <div class="gantt-container">
-        <!-- 日期标题 -->
-        <div class="gantt-header">
-          <div class="line-label header-label">产线</div>
-          <div class="dates-row">
+      <div class="gantt-wrapper">
+        <!-- 左侧固定列：行标签 -->
+        <div class="gantt-left">
+          <div class="gantt-left-header">产线</div>
+          <template v-for="workshop in filteredWorkshops" :key="'l-'+workshop.name">
+            <div class="gantt-left-workshop">{{ workshop.name }}</div>
+            <div
+              v-for="line in workshop.lines"
+              :key="'l-'+line.name"
+              class="gantt-left-row"
+              :class="{ 'fault-line': line.status === '故障' }"
+            >
+              <div class="line-name">{{ line.name }}
+                <span v-if="line.status === '故障'" class="fault-badge">故障</span>
+              </div>
+              <div v-if="line.categories && line.categories.length" class="line-categories">
+                <span v-for="cat in line.categories" :key="cat.name" class="cat-tag">{{ cat.name }}</span>
+                <span class="output-tag">{{ line.categories.reduce((s, c) => s + c.dailyOutput, 0) }}件/天</span>
+              </div>
+            </div>
+          </template>
+        </div>
+        <!-- 右侧可滚动区：日期 + 任务条 -->
+        <div class="gantt-right" ref="ganttRightRef">
+          <!-- 日期标题（sticky top） -->
+          <div class="gantt-right-header">
             <div
               v-for="date in dates"
               :key="date"
@@ -260,29 +281,17 @@ onMounted(loadGantt)
               {{ formatDate(date) }}
             </div>
           </div>
-        </div>
-
-        <!-- 车间/产线行 -->
-        <div class="gantt-body">
-          <template v-for="workshop in filteredWorkshops" :key="workshop.name">
-            <div class="workshop-header">{{ workshop.name }}</div>
+          <!-- 任务行 -->
+          <template v-for="workshop in filteredWorkshops" :key="'r-'+workshop.name">
+            <div class="gantt-right-workshop"></div>
             <div
               v-for="line in workshop.lines"
-              :key="line.name"
-              class="gantt-row"
+              :key="'r-'+line.name"
+              class="gantt-right-row"
               :class="{ 'fault-line': line.status === '故障' }"
               @dragover.prevent
               @drop="line.status !== '故障' && onDrop(workshop, line)"
             >
-              <div class="line-label">
-                <div class="line-name">{{ line.name }}
-                  <span v-if="line.status === '故障'" class="fault-badge">故障</span>
-                </div>
-                <div v-if="line.categories && line.categories.length" class="line-categories">
-                  <span v-for="cat in line.categories" :key="cat.name" class="cat-tag">{{ cat.name }}</span>
-                  <span class="output-tag">{{ line.categories.reduce((s, c) => s + c.dailyOutput, 0) }}件/天</span>
-                </div>
-              </div>
               <div class="tasks-area" :style="{ minWidth: datesWidth + 'px' }">
                 <div
                   v-for="task in line.tasks"
@@ -504,40 +513,100 @@ onMounted(loadGantt)
   font-size: 13px;
 }
 
-.gantt-container {
+/* ===== 甘特图布局：固定左列 + 可滚动右侧 ===== */
+.gantt-wrapper {
   flex: 1;
-  overflow: auto;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
-.gantt-header {
+/* 左侧固定列 */
+.gantt-left {
+  width: 110px;
+  min-width: 110px;
+  flex-shrink: 0;
+  border-right: 2px solid var(--border);
+  background: var(--card);
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 2;
+}
+
+.gantt-left-header {
+  height: 40px;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border-bottom: 2px solid var(--border);
   position: sticky;
   top: 0;
-  background: var(--bg);
-  z-index: 10;
+  z-index: 3;
+}
+
+.gantt-left-workshop {
+  padding: 6px 10px;
+  background: var(--primary-light);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--primary-dark);
   border-bottom: 1px solid var(--border);
 }
 
-.line-label {
-  width: 100px;
-  min-width: 100px;
-  padding: 6px 8px;
-  font-weight: 600;
-  font-size: 12px;
-  text-align: center;
-  border-right: 1px solid var(--border);
-  color: var(--text);
+.gantt-left-row {
+  min-height: 40px;
+  padding: 4px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  position: sticky;
-  left: 0;
-  background: var(--card);
-  z-index: 5;
   gap: 2px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
 }
 
+.gantt-left-row:hover {
+  background: var(--bg);
+}
+
+/* 右侧可滚动区 */
+.gantt-right {
+  flex: 1;
+  overflow: auto;
+}
+
+.gantt-right-header {
+  display: flex;
+  height: 40px;
+  background: var(--bg);
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.gantt-right-workshop {
+  height: 32px;
+  background: var(--primary-light);
+  border-bottom: 1px solid var(--border);
+}
+
+.gantt-right-row {
+  position: relative;
+  min-height: 40px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gantt-right-row:hover {
+  background: var(--bg);
+}
+
+/* ===== 通用样式 ===== */
 .line-name {
   font-weight: 600;
   font-size: 12px;
@@ -570,23 +639,17 @@ onMounted(loadGantt)
   font-weight: 500;
 }
 
-.header-label {
-  font-size: 13px;
-  background: var(--bg);
-}
-
-.dates-row {
-  display: flex;
-}
-
 .date-cell {
   width: 28px;
   min-width: 28px;
-  padding: 4px 2px;
-  text-align: center;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
   color: var(--text-secondary);
   border-right: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .date-cell.weekend {
@@ -600,30 +663,9 @@ onMounted(loadGantt)
   font-weight: 700;
 }
 
-.gantt-body {
-  /* 不设 overflow，让 gantt-container 统一滚动 */
-}
-
-.workshop-header {
-  padding: 8px 12px;
-  background: var(--primary-light);
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--primary-dark);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  left: 0;
-  z-index: 4;
-}
-
-.gantt-row {
-  display: flex;
+.tasks-area {
+  position: relative;
   min-height: 40px;
-  border-bottom: 1px solid var(--border);
-}
-
-.gantt-row:hover {
-  background: var(--bg);
 }
 
 .fault-line {
@@ -645,13 +687,6 @@ onMounted(loadGantt)
   padding: 1px 4px;
   border-radius: 4px;
   border: 1px solid #fecaca;
-}
-
-.tasks-area {
-  position: relative;
-  flex: 1;
-  min-height: 40px;
-  overflow: hidden;
 }
 
 .gantt-bar {

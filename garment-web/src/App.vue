@@ -77,7 +77,7 @@ const navSections = [
     ]
   },
   {
-    label: '报工',
+    label: '报工管理',
     items: [
       { key: 'dispatch', label: '报工汇总', icon: 'data-analysis' },
       { key: 'estimation', label: '交期预估', icon: 'timer' },

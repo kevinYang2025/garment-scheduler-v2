@@ -74,7 +74,7 @@ const modules = [
     ],
   },
   {
-    key: 'dispatch', label: '报工中心', icon: '📝', color: '#8b5cf6',
+    key: 'dispatch', label: '报工管理', icon: '📝', color: '#8b5cf6',
     desc: '生产报工、产量统计',
     stats: [
       { label: '今日报工', value: () => stats.value.todayDispatch, unit: '条' },
