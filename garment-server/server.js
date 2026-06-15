@@ -2173,7 +2173,13 @@ app.post('/api/inventory', (req, res) => {
 // ---------- 目视化排程 ----------
 app.get('/api/visual-schedule/gantt', (req, res) => {
   try {
-    // 直接从 schedule_master 取所有缝制排程，按 workshop/line_team 分组
+    // 先加载所有车间和产线
+    const allWorkshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
+    for (const ws of allWorkshops) {
+      ws.lines = db.all('SELECT * FROM production_lines WHERE workshop_id = ? ORDER BY sort_order', [ws.id]);
+    }
+
+    // 加载所有缝制排程数据
     const allTasks = db.all(`SELECT sm.id as planId, sm.style_no as styleNo,
       sm.product_name as productName, sm.color, sm.size_spec as sizeSpec,
       sm.plan_qty as planQty, sm.plan_start as sewingStart, sm.plan_end as sewingEnd,
@@ -2181,19 +2187,27 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       FROM schedule_master sm WHERE sm.schedule_type = 'sewing'
       ORDER BY sm.workshop, sm.line_team, sm.plan_start`);
 
-    // 按 workshop → line_team 分组构建甘特行
-    const wsMap = {}
+    // 按 workshop+line_team 建索引（schedule_master 中 line_team 是纯数字如 "20"，line_name 是 "20班"）
+    const taskIndex = {}
     for (const t of allTasks) {
-      const wsName = t.workshop || '未分配车间'
-      const lineName = t.line_team || '未分配班组'
-      if (!wsMap[wsName]) wsMap[wsName] = { name: wsName, lines: {} }
-      if (!wsMap[wsName].lines[lineName]) wsMap[wsName].lines[lineName] = { name: lineName, tasks: [] }
-      wsMap[wsName].lines[lineName].tasks.push(t)
+      const key = (t.workshop || '') + '|' + (t.line_team || '')
+      if (!taskIndex[key]) taskIndex[key] = []
+      taskIndex[key].push(t)
     }
-    // 转为数组
-    const workshops = Object.values(wsMap).map(ws => ({
-      ...ws,
-      lines: Object.values(ws.lines)
+
+    // 以车间产线为骨架，关联排程数据
+    const workshops = allWorkshops.map(ws => ({
+      name: ws.name,
+      lines: ws.lines.map(line => {
+        // schedule_master.line_team 是纯数字，line_name 末尾去掉"班"匹配
+        const lineNum = line.line_name.replace(/班$/, '')
+        const key = ws.name + '|' + lineNum
+        return {
+          name: line.line_name,
+          status: line.status,
+          tasks: taskIndex[key] || []
+        }
+      })
     }))
 
     // 未排班项：main_plan 中尚未排程的（JOIN styles 获取颜色/规格）
@@ -2230,8 +2244,19 @@ app.post('/api/visual-schedule/assign', (req, res) => {
     const plan = db.get('SELECT * FROM main_plan WHERE id = ?', [planId]);
     if (!plan) return res.status(404).json({ error: '计划不存在' });
     if (plan.is_scheduled) return res.status(400).json({ error: '该计划已排班' });
+    // lineTeam 从前端传可能是 "20班"，strip "班" 后缀存纯数字
+    const lineNum = String(lineTeam).replace(/班$/, '')
     db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 1 WHERE id = ?',
-      [workshop, lineTeam, planId]);
+      [workshop, lineNum, planId]);
+    // 同时在 schedule_master 创建缝制排程记录，让甘特图能显示
+    const style = db.get('SELECT * FROM styles WHERE style_no = ? LIMIT 1', [plan.style_no]);
+    if (style) {
+      db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
+        plan_qty, plan_start, plan_end, workshop, line_team)
+        VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [style.id, plan.style_no, plan.product_name, style.color || '', style.size_spec || '',
+         plan.plan_qty, plan.sewing_start, plan.sewing_end, workshop, lineNum]);
+    }
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     res.json({ ok: true });
   } catch (e) {
