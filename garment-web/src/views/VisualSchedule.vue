@@ -15,6 +15,7 @@ const ganttLeftRef = ref(null)
 const ganttRightRef = ref(null)
 const filterWorkshop = ref('')
 const filterLine = ref('')
+const filterCategory = ref('')
 const weekOffset = ref(0) // 周偏移量，0 = 默认视图
 const workDays = ref('1111100') // 工作日模式：默认周一~周五
 
@@ -33,12 +34,36 @@ const filteredWorkshops = computed(() => {
     result = result.filter(ws => ws.name === filterWorkshop.value)
   }
   if (filterLine.value) {
+    const q = filterLine.value.toLowerCase()
     result = result.map(ws => ({
       ...ws,
-      lines: ws.lines.filter(l => l.name.includes(filterLine.value))
+      lines: ws.lines.filter(l => {
+        // 搜索班组名
+        if (l.name.toLowerCase().includes(q)) return true
+        // 搜索服装类别
+        if (l.categories && l.categories.some(c => c.name.toLowerCase().includes(q))) return true
+        return false
+      })
+    })).filter(ws => ws.lines.length > 0)
+  }
+  if (filterCategory.value) {
+    result = result.map(ws => ({
+      ...ws,
+      lines: ws.lines.filter(l => l.categories && l.categories.some(c => c.name === filterCategory.value))
     })).filter(ws => ws.lines.length > 0)
   }
   return result
+})
+
+// 所有服装类别（去重）
+const allCategories = computed(() => {
+  const set = new Set()
+  workshops.value.forEach(ws => {
+    ws.lines.forEach(l => {
+      if (l.categories) l.categories.forEach(c => set.add(c.name))
+    })
+  })
+  return [...set]
 })
 const ganttConfig = ref({
   barFields: ['styleNo', 'planQty'],
@@ -256,8 +281,12 @@ onMounted(loadGantt)
           <option value="">全部车间</option>
           <option v-for="ws in workshops" :key="ws.name" :value="ws.name">{{ ws.name }}</option>
         </select>
-        <input v-model="filterLine" class="filter-input" placeholder="搜班组..." />
-        <span v-if="filterWorkshop || filterLine" class="filter-clear" @click="filterWorkshop=''; filterLine=''">✕ 清除</span>
+        <select v-model="filterCategory" class="filter-select">
+          <option value="">全部类别</option>
+          <option v-for="cat in allCategories" :key="cat" :value="cat">{{ cat }}</option>
+        </select>
+        <input v-model="filterLine" class="filter-input" placeholder="搜班组/类别..." />
+        <span v-if="filterWorkshop || filterLine || filterCategory" class="filter-clear" @click="filterWorkshop=''; filterLine=''; filterCategory=''">✕ 清除</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="nav-arrows">

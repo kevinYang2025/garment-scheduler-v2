@@ -244,6 +244,14 @@ const visibleDateCols = computed(() => {
   return dateCols.value.filter(c => c >= wsStr && c <= weStr)
 })
 
+// 时间范围标签
+const dateRangeLabel = computed(() => {
+  if (!visibleDateCols.value.length) return ''
+  const first = visibleDateCols.value[0]
+  const last = visibleDateCols.value[visibleDateCols.value.length - 1]
+  return first.slice(5) + ' ~ ' + last.slice(5)
+})
+
 // 日差异：当天实际-当天计划，仅<=今天有效
 function dailyDiffVal(masterId, date) {
   if (date > today.value) return null
@@ -438,6 +446,14 @@ onUnmounted(() => {
       <div class="header-left">
         <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
       </div>
+      <div class="header-nav">
+        <span class="nav-arrows">
+          <button class="nav-btn" @click="shiftWeek(-1)" title="前一周">◀</button>
+          <button class="nav-btn today-btn" @click="viewOffset=0" title="回到今天">今天</button>
+          <button class="nav-btn" @click="shiftWeek(1)" title="后一周">▶</button>
+        </span>
+        <span class="date-range-label">{{ dateRangeLabel }}</span>
+      </div>
       <div class="header-actions">
         <el-button type="primary" @click="importDialogVisible = true">导入Excel</el-button>
         <el-button @click="doExport">导出Excel</el-button>
@@ -541,11 +557,11 @@ onUnmounted(() => {
             <!-- 合计 -->
             <th class="fix" style="min-width:80px"><div class="col-header"><span>合计</span></div></th>
             <!-- 类型标签 -->
-            <th class="fix" style="min-width:80px"><div class="col-header"><span class="arrow-btn" @click="shiftWeek(-1)" title="往前一周">‹</span><span class="arrow-btn today-btn" @click="viewOffset=0" title="回到今天">◎</span></div></th>
+            <th class="fix" style="min-width:80px"><div class="col-header"><span>类型</span></div></th>
             <!-- 日期列 -->
             <th v-for="d in visibleDateCols" :key="d" class="date-th" :class="{ 'today-col': d === today }">{{ dateLabel(d) }}</th>
             <!-- 操作 -->
-            <th class="fix" style="min-width:60px"><div class="col-header"><span>操作</span><span class="arrow-btn" @click="shiftWeek(1)" title="往后一周">›</span></div></th>
+            <th class="fix" style="min-width:60px"><div class="col-header"><span>操作</span></div></th>
           </tr>
         </thead>
         <tbody>
@@ -702,9 +718,40 @@ onUnmounted(() => {
 <style scoped>
 .sewing-detail { display: flex; flex-direction: column; height: 100%; }
 
-.detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-.header-left { display: flex; align-items: center; }
-.header-actions { display: flex; gap: 8px; }
+.detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); gap: 12px; }
+.header-left { display: flex; align-items: center; flex-shrink: 0; }
+.header-nav { display: flex; align-items: center; gap: 8px; justify-content: center; flex: 1; }
+.header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.nav-arrows { display: flex; align-items: center; gap: 4px; }
+.nav-btn {
+  padding: 6px 12px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--transition);
+  line-height: 1;
+}
+.nav-btn:hover {
+  background: var(--primary-dark);
+}
+.nav-btn.today-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+}
+.date-range-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 120px;
+  text-align: center;
+  margin-left: 4px;
+}
 
 .excel-wrap {
   flex: 1;
@@ -853,34 +900,6 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
   opacity: 0.4;
 }
 
-.arrow-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  transition: all .15s;
-  user-select: none;
-  flex-shrink: 0;
-}
-.arrow-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary);
-}
-.today-btn {
-  font-size: 12px;
-  color: var(--primary);
-  font-weight: 800;
-}
-.today-btn:hover {
-  background: var(--primary);
-  color: white;
-}
 .progress-mini {
   height: 4px;
   background: #e5e7eb;
