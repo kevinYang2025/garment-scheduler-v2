@@ -275,7 +275,8 @@ onMounted(loadGantt)
                   <span v-if="line.status === '故障'" class="fault-badge">故障</span>
                 </div>
                 <div v-if="line.categories && line.categories.length" class="line-categories">
-                  <span v-for="cat in line.categories" :key="cat" class="cat-tag">{{ cat }}</span>
+                  <span v-for="cat in line.categories" :key="cat.name" class="cat-tag">{{ cat.name }}</span>
+                  <span class="output-tag">{{ line.categories.reduce((s, c) => s + c.dailyOutput, 0) }}件/天</span>
                 </div>
               </div>
               <div class="tasks-area">
@@ -548,6 +549,16 @@ onMounted(loadGantt)
   padding: 1px 4px;
   background: var(--primary-light, #eef2ff);
   color: var(--primary-dark, #3730a3);
+  border-radius: 3px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.output-tag {
+  font-size: 10px;
+  padding: 1px 4px;
+  background: #fef3c7;
+  color: #92400e;
   border-radius: 3px;
   white-space: nowrap;
   font-weight: 500;
