@@ -80,6 +80,14 @@ function onInboundDateFilter(f) { inboundDateFilter.value = { validDates: f.vali
 function onLoadingDateFilter(f) { loadingDateFilter.value = { validDates: f.validDates, hasEmpty: f.hasEmpty }; dateFilters.value = { ...dateFilters.value, loading_date: { ...f, applied: true } } }
 function onTextFilter(field, f) { textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } } }
 function onNumFilter(field, f) { numFilters.value = { ...numFilters.value, [field]: { ...f, applied: true } } }
+
+function isFilterActive(field, type) {
+  if (type === 'date') {
+    const df = dateFilters.value[field]
+    return df && (df.validDates?.size > 0 || df.hasEmpty)
+  }
+  return !!textFilters.value[field]?.applied || !!numFilters.value[field]?.applied
+}
 function onSort(field, sortBy, dir) { sortState.value = { field, sortBy, dir } }
 
 const editingId = ref(null)
@@ -402,9 +410,9 @@ onUnmounted(() => {
               </th>
               <th v-for="col in columns" :key="col.field" :style="{ width: col.width + 'px', minWidth: col.width + 'px' }">
                 <div class="col-header">
-                  <DateFilter v-if="col.type==='date'" :data="records" :field="col.field" :label="col.label" @filter="col.field==='inbound_date'?onInboundDateFilter:onLoadingDateFilter" />
-                  <NumberFilter v-else-if="col.type==='number'" :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onNumFilter(col.field, f)" @sort="onSort" />
-                  <TextFilter v-else :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
+                  <DateFilter v-if="col.type==='date'" :data="records" :field="col.field" :label="col.label" @filter="col.field==='inbound_date'?onInboundDateFilter:onLoadingDateFilter" :active="isFilterActive(col.field, 'date')" />
+                  <NumberFilter v-else-if="col.type==='number'" :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onNumFilter(col.field, f)" @sort="onSort" :active="isFilterActive(col.field)" />
+                  <TextFilter v-else :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" :active="isFilterActive(col.field)" />
                 </div>
               </th>
               <th style="width:120px">操作</th>

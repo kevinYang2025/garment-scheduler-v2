@@ -79,6 +79,14 @@ function onOrderDateFilter(f) { orderDateFilter.value = { validDates: f.validDat
 function onDueDateFilter(f) { dueDateFilter.value = { validDates: f.validDates, hasEmpty: f.hasEmpty } }
 function onTextFilter(field, f) { textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } } }
 function onNumFilter(field, f) { numFilters.value = { ...numFilters.value, [field]: { ...f, applied: true } } }
+
+function isFilterActive(field, type) {
+  if (type === 'date') {
+    if (field === 'order_date') return orderDateFilter.value.validDates.size > 0 || orderDateFilter.value.hasEmpty
+    if (field === 'due_date') return dueDateFilter.value.validDates.size > 0 || dueDateFilter.value.hasEmpty
+  }
+  return !!textFilters.value[field]?.applied || !!numFilters.value[field]?.applied
+}
 function onSort(field, sortBy, dir) { sortState.value = { field, sortBy, dir } }
 
 // 导入
@@ -229,6 +237,28 @@ function exportExcel() {
   window.open('/api/style-color-size/export', '_blank')
 }
 
+// 新增
+const createDialogVisible = ref(false)
+const createForm = ref({})
+
+function openCreate() {
+  createForm.value = {
+    order_date: '', style_no: '', due_date: '', product_name: '',
+    size_spec: '', color: '', plan_qty: 0,
+  }
+  createDialogVisible.value = true
+}
+
+async function doCreate() {
+  if (!createForm.value.style_no) { ElMessage.warning('请输入款式'); return }
+  try {
+    await api.post('/style-color-size', createForm.value)
+    ElMessage.success('新增成功')
+    createDialogVisible.value = false
+    await loadRecords()
+  } catch { ElMessage.error('新增失败') }
+}
+
 // 导入
 function triggerImport() { importDialogVisible.value = true; importFile.value = null; importPreview.value = null }
 function onImportFileChange(e) { importFile.value = e.target.files[0] }
@@ -322,6 +352,7 @@ onUnmounted(() => {
   <div class="scs-page">
     <div class="toolbar">
       <el-input v-model="searchKeyword" placeholder="搜索款式、产品名、颜色、规格..." clearable @input="onSearchInput" style="width:300px" />
+      <el-button type="primary" @click="openCreate">+ 新增记录</el-button>
       <el-button @click="exportExcel">导出 Excel</el-button>
       <el-button @click="triggerImport">导入 Excel</el-button>
     </div>
@@ -344,10 +375,10 @@ onUnmounted(() => {
               </th>
               <th v-for="col in columns" :key="col.field" :style="{ width: col.width + 'px', minWidth: col.width + 'px' }">
                 <div class="col-header">
-                  <DateFilter v-if="col.type==='date' && col.field==='order_date'" :data="records" :field="col.field" :label="col.label" @filter="onOrderDateFilter" />
-                  <DateFilter v-else-if="col.type==='date' && col.field==='due_date'" :data="records" :field="col.field" :label="col.label" @filter="onDueDateFilter" />
-                  <NumberFilter v-else-if="col.type==='number'" :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onNumFilter(col.field, f)" @sort="onSort" />
-                  <TextFilter v-else :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
+                  <DateFilter v-if="col.type==='date' && col.field==='order_date'" :data="records" :field="col.field" :label="col.label" @filter="onOrderDateFilter" :active="isFilterActive('order_date', 'date')" />
+                  <DateFilter v-else-if="col.type==='date' && col.field==='due_date'" :data="records" :field="col.field" :label="col.label" @filter="onDueDateFilter" :active="isFilterActive('due_date', 'date')" />
+                  <NumberFilter v-else-if="col.type==='number'" :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onNumFilter(col.field, f)" @sort="onSort" :active="isFilterActive(col.field)" />
+                  <TextFilter v-else :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" :active="isFilterActive(col.field)" />
                 </div>
               </th>
               <th style="width:120px">操作</th>
@@ -386,6 +417,29 @@ onUnmounted(() => {
         </table>
       </div>
     </div>
+
+    <!-- 新增弹窗 -->
+    <el-dialog v-model="createDialogVisible" title="新增分色分尺码" width="700px" destroy-on-close>
+      <el-form :model="createForm" label-width="80px" label-position="right">
+        <el-row :gutter="12">
+          <el-col :span="8"><el-form-item label="订单日期"><el-input v-model="createForm.order_date" type="date" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="交期"><el-input v-model="createForm.due_date" type="date" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="产品名"><el-input v-model="createForm.product_name" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="款式" required><el-input v-model="createForm.style_no" placeholder="必填" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="规格"><el-input v-model="createForm.size_spec" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="原单量"><el-input-number v-model="createForm.plan_qty" :min="0" style="width:100%" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="24"><el-form-item label="颜色"><el-input v-model="createForm.color" /></el-form-item></el-col>
+        </el-row>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="doCreate">创建</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 导入弹窗 -->
     <el-dialog v-model="importDialogVisible" title="导入分色分尺码 Excel" width="600px">

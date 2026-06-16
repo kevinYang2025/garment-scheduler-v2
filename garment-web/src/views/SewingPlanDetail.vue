@@ -80,6 +80,14 @@ function onTextFilter(field, f) {
 function onDateFilter(field, f) {
   dateFilters.value = { ...dateFilters.value, [field]: { validDates: f.validDates, hasEmpty: f.hasEmpty } }
 }
+
+function isFilterActive(field, type) {
+  if (type === 'date') {
+    const df = dateFilters.value[field]
+    return df && (df.validDates?.size > 0 || df.hasEmpty)
+  }
+  return !!textFilters.value[field]?.applied || !!numFilters.value[field]?.applied
+}
 function onSort(field, sortBy, dir) {
   sortState.value = { field, sortBy, dir }
 }
@@ -479,7 +487,8 @@ onUnmounted(() => {
                 <TextFilter :data="masters" field="workshop" @filter="f => onTextFilter('workshop', f)"
                   :sortField="sortState.field==='workshop' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='workshop' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('workshop')" />
               </div>
             </th>
             <!-- 班组 -->
@@ -488,7 +497,8 @@ onUnmounted(() => {
                 <TextFilter :data="masters" field="line_team" @filter="f => onTextFilter('line_team', f)"
                   :sortField="sortState.field==='line_team' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='line_team' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('line_team')" />
               </div>
             </th>
             <!-- 款号 -->
@@ -498,7 +508,8 @@ onUnmounted(() => {
                 <TextFilter :data="masters" field="style_no" @filter="f => onTextFilter('style_no', f)"
                   :sortField="sortState.field==='style_no' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='style_no' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('style_no')" />
               </div>
             </th>
             <!-- 品名 -->
@@ -507,7 +518,8 @@ onUnmounted(() => {
                 <TextFilter :data="masters" field="product_name" @filter="f => onTextFilter('product_name', f)"
                   :sortField="sortState.field==='product_name' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='product_name' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('product_name')" />
               </div>
             </th>
             <!-- 裁床计划数量 -->
@@ -517,7 +529,8 @@ onUnmounted(() => {
                   @filter="f => onTextFilter('cutting_plan_qty', f)"
                   :sortField="sortState.field==='cutting_plan_qty' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='cutting_plan_qty' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('cutting_plan_qty')" />
               </div>
             </th>
             <!-- 交期 -->
@@ -526,7 +539,8 @@ onUnmounted(() => {
                 <DateFilter :data="masters" field="due_date" @filter="f => onDateFilter('due_date', f)"
                   :sortField="sortState.field==='due_date' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='due_date' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('due_date', 'date')" />
               </div>
             </th>
             <!-- 目标日产量 -->
@@ -536,7 +550,8 @@ onUnmounted(() => {
                   @filter="f => onTextFilter('daily_target', f)"
                   :sortField="sortState.field==='daily_target' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='daily_target' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('daily_target')" />
               </div>
             </th>
             <!-- 缝制开始日期 -->
@@ -545,7 +560,8 @@ onUnmounted(() => {
                 <DateFilter :data="masters" field="plan_start" @filter="f => onDateFilter('plan_start', f)"
                   :sortField="sortState.field==='plan_start' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='plan_start' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('plan_start', 'date')" />
               </div>
             </th>
             <!-- 缝制结束日期 -->
@@ -554,7 +570,8 @@ onUnmounted(() => {
                 <DateFilter :data="masters" field="plan_end" @filter="f => onDateFilter('plan_end', f)"
                   :sortField="sortState.field==='plan_end' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='plan_end' ? sortState.dir : 'asc'"
-                  @sort="e => onSort(e.field, e.sortBy, e.dir)" />
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('plan_end', 'date')" />
               </div>
             </th>
             <!-- 合计 -->

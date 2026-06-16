@@ -447,7 +447,7 @@ onUnmounted(() => {
               </th>
               <th>
                 <div class="col-header">
-                  <TextFilter :data="flatRows" field="teamName" label="班组" :precomputed="precomputedOptions.teamName" @filter="f => onTextFilter('teamName', f)" @sort="onSort" />
+                  <TextFilter :data="flatRows" field="teamName" label="班组" :precomputed="precomputedOptions.teamName" :active="isFilterActive('teamName')" @filter="f => onTextFilter('teamName', f)" @sort="onSort" />
                 </div>
               </th>
               <th>
