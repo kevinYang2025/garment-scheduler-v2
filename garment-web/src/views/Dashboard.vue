@@ -26,9 +26,6 @@ const kpiCards = computed(() => [
   {
     label: '款式总数',
     value: stats.value.styles,
-    change: '+12%',
-    changeLabel: 'vs 上月',
-    isPositive: true,
     icon: 'tag',
     color: '#6e3ff3',
     bg: '#f3f0ff',
@@ -37,9 +34,6 @@ const kpiCards = computed(() => [
     label: '生产中产线',
     value: stats.value.busyLines,
     total: stats.value.lines,
-    change: '+8%',
-    changeLabel: 'vs 上月',
-    isPositive: true,
     icon: 'activity',
     color: '#22c55e',
     bg: '#f0fdf4',
@@ -47,9 +41,6 @@ const kpiCards = computed(() => [
   {
     label: '预排总计划数',
     value: stats.value.mainPlan,
-    change: '-3%',
-    changeLabel: 'vs 上月',
-    isPositive: false,
     icon: 'calendar',
     color: '#3b82f6',
     bg: '#eff6ff',
@@ -57,9 +48,6 @@ const kpiCards = computed(() => [
   {
     label: '车间数',
     value: stats.value.workshops,
-    change: '0%',
-    changeLabel: 'vs 上月',
-    isPositive: true,
     icon: 'building',
     color: '#f59e0b',
     bg: '#fffbeb',
@@ -119,7 +107,7 @@ const barOption = computed(() => {
         type: 'bar',
         barWidth: 14,
         itemStyle: { borderRadius: [4, 4, 0, 0], color: '#6e3ff3' },
-        data: months.map(() => Math.floor(planCount * (0.6 + Math.random() * 0.8))),
+        data: months.map((_, i) => Math.floor(planCount * (0.3 + i * 0.12))),
       },
       {
         name: '完成数',
@@ -129,7 +117,7 @@ const barOption = computed(() => {
         symbolSize: 6,
         lineStyle: { color: '#22c55e', width: 2 },
         itemStyle: { color: '#22c55e' },
-        data: months.map(() => Math.floor(planCount * (0.4 + Math.random() * 0.6))),
+        data: months.map((_, i) => Math.floor(planCount * (0.2 + i * 0.1))),
       },
     ],
   }
@@ -188,7 +176,7 @@ function getKpiIcon(name) {
               {{ card.value }}
               <span v-if="card.total" class="stat-total">/ {{ card.total }}</span>
             </span>
-            <div class="stat-change">
+            <div v-if="card.change" class="stat-change">
               <span :class="card.isPositive ? 'change-positive' : 'change-negative'">
                 {{ card.change }}
               </span>
@@ -323,12 +311,12 @@ function getKpiIcon(name) {
                 <td class="cell-index">{{ i + 1 }}</td>
                 <td>
                   <div class="cell-with-badge">
-                    <span class="plan-badge">{{ (plan.style_name || plan.style_id || '?').toString().slice(0, 2) }}</span>
-                    <span class="cell-name">{{ plan.style_name || plan.style_id }}</span>
+                    <span class="plan-badge">{{ (plan.style_no || plan.style_id || '?').toString().slice(0, 2) }}</span>
+                    <span class="cell-name">{{ plan.style_no || plan.style_id }}</span>
                   </div>
                 </td>
-                <td class="cell-mono">{{ plan.quantity || '-' }}</td>
-                <td class="cell-muted">{{ plan.delivery_date || '-' }}</td>
+                <td class="cell-mono">{{ plan.plan_qty || '-' }}</td>
+                <td class="cell-muted">{{ plan.due_date || '-' }}</td>
               </tr>
               <tr v-if="!recentPlans.length">
                 <td colspan="4" class="cell-empty">暂无计划数据</td>

@@ -16,6 +16,14 @@ function fmtLocal(d) {
   return `${y}-${m}-${day}`;
 }
 
+// [fix#NS-04] 统一错误响应:不返回 e.message(避免泄露数据库结构/文件路径),详情仅记录到服务端
+function sendError(res, endpoint, err) {
+  console.error(`[${endpoint}] error:`, err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+}
+
 // ============================================================
 // INIT
 // ============================================================
@@ -262,8 +270,7 @@ app.post('/api/styles/import', async (req, res) => {
     db.logOperation('styles', 'import', null, `导入${imported}条`);
     res.json({ ok: true, imported, skipped });
   } catch (e) {
-    console.error('POST /api/styles/import error:', e);
-    res.status(500).json({ error: '导入失败: ' + e.message });
+    sendError(res, 'POST /api/styles/import', e);
   }
 });
 
@@ -1070,10 +1077,11 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       });
     }
 
-    // 5. 清空旧数据，写入新计划
-    db.run('DELETE FROM main_plan');
-    for (const r of results) {
-      db.run(`INSERT INTO main_plan
+    // 5. 清空旧数据，写入新计划（事务保护）
+    const rawDb = db.getDb();
+    const writeTxn = rawDb.transaction(() => {
+      rawDb.prepare('DELETE FROM main_plan').run();
+      const stmt = rawDb.prepare(`INSERT INTO main_plan
         (style_id,style_no,product_name,plan_qty,due_date,
          cutting_start,cutting_end,secondary_start,secondary_end,
          printing_start,printing_end,embroidery_start,embroidery_end,
@@ -1081,15 +1089,18 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
          sewing_remind_date,sewing_start,sewing_end,
          ironing_start,ironing_end,conflict_flag,
          pipeline_count,is_scheduled,workshop,line_team)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [r.style_id, r.style_no, r.product_name, r.plan_qty, r.due_date,
-         r.cutting_start, r.cutting_end, r.secondary_start, r.secondary_end,
-         r.printing_start, r.printing_end, r.embroidery_start, r.embroidery_end,
-         r.template_start, r.template_end,
-         r.sewing_remind_date, r.sewing_start, r.sewing_end,
-         r.ironing_start, r.ironing_end, r.conflict_flag,
-         r.pipeline_count, r.is_scheduled, r.workshop, r.line_team]);
-    }
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      for (const r of results) {
+        stmt.run(r.style_id, r.style_no, r.product_name, r.plan_qty, r.due_date,
+          r.cutting_start, r.cutting_end, r.secondary_start, r.secondary_end,
+          r.printing_start, r.printing_end, r.embroidery_start, r.embroidery_end,
+          r.template_start, r.template_end,
+          r.sewing_remind_date, r.sewing_start, r.sewing_end,
+          r.ironing_start, r.ironing_end, r.conflict_flag,
+          r.pipeline_count, r.is_scheduled, r.workshop, r.line_team);
+      }
+    });
+    writeTxn();
 
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     db.logOperation('main_plan', 'auto_schedule', 0, `生成${results.length}条计划`);
@@ -1312,8 +1323,7 @@ app.get('/api/schedule/sewing/export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('班组缝制计划_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
     res.send(Buffer.from(buf));
   } catch (e) {
-    console.error('Sewing export error:', e);
-    res.status(500).json({ error: 'Export failed: ' + e.message });
+    sendError(res, 'GET /api/schedule/sewing/export', e);
   }
 });
 
@@ -1366,8 +1376,7 @@ app.post('/api/schedule/sewing/import', async (req, res) => {
     tx();
     res.json({ ok: true, imported, skipped, errors });
   } catch (e) {
-    console.error('Sewing import error:', e);
-    res.status(500).json({ error: 'Import failed: ' + e.message });
+    sendError(res, 'POST /api/schedule/sewing/import', e);
   }
 });
 
@@ -2430,9 +2439,12 @@ function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
   const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ?',
     [type, styleNo, color || '', sizeSpec || '']);
   if (existing) {
-    const newQty = Math.max(0, existing.current_qty + delta);
+    const newQty = existing.current_qty + delta;
+    if (newQty < 0) {
+      console.warn(`库存不足: ${type}/${styleNo} 当前${existing.current_qty}，出库${Math.abs(delta)}`);
+    }
     db.run(`UPDATE warehouse_inventory SET current_qty = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
-      [newQty, existing.id]);
+      [Math.max(0, newQty), existing.id]);
   } else if (delta > 0) {
     try {
       db.run('INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, current_qty, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -3068,9 +3080,12 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       ORDER BY sm.workshop, sm.line_team, sm.plan_start`);
 
     // 按 workshop+line_team 建索引（schedule_master 中 line_team 是纯数字如 "20"，line_name 是 "20班"）
+    // 车间名映射：一车间→1, 二车间→2, 三车间→3, 四车间→4, 五车间→5
+    const wsNameMap = { '一车间': '1', '二车间': '2', '三车间': '3', '四车间': '4', '五车间': '5' }
     const taskIndex = {}
     for (const t of allTasks) {
-      const key = (t.workshop || '') + '|' + (t.line_team || '')
+      const wsNorm = wsNameMap[t.workshop] || t.workshop || ''
+      const key = wsNorm + '|' + (t.line_team || '')
       if (!taskIndex[key]) taskIndex[key] = []
       taskIndex[key].push(t)
     }

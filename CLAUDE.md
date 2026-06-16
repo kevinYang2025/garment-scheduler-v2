@@ -126,3 +126,36 @@ cd garment-web && npm run dev          # http://localhost:5173
 4. **提交格式** — `类型: 描述`（feat/fix/style/refactor/docs）
 5. **端口** — 后端 3001，前端 5173，不要用 Spring Boot 的端口
 6. **数据库** — 只用 SQLite (data.sqlite)，不用 H2
+
+## Scope Freeze (2026-06-16)
+
+> 本次开发周期内,以下模块 **不主动维护**(代码保留运行,不删不重构):
+> 其他 agent 进入本项目时,先看本章节,避免浪费精力。
+
+### 🟡 仓库功能(暂缓维护)
+
+**范围**:`garment-server/server.js` 中所有 `/api/warehouse/*` 端点 + `garment-web/src/views/WarehouseHome.vue` / `WarehouseDetail.vue` / `FabricLoadingList.vue`
+
+**状态**:工厂在用,功能保留运行;**本次不开发新功能、不审查、不修复 bug**
+
+**原因**:项目 owner 本次开发周期时间紧,仓库功能已满足当前业务,优先保证核心排程稳定。
+
+**恢复条件**:owner 明确说"恢复仓库开发" → 把本章节删掉一行即可。
+
+### 🔴 Java 后端(永久退役)
+
+**范围**:`garment-scheduler/` 整个目录(24 个 Java 文件 + Spring Boot 配置)
+
+**状态**:**永久退役**。详细说明见 `garment-scheduler/DEPRECATED.md`。
+
+**原因**:Node.js 版已完全覆盖功能,Spring Boot + H2 对当前业务规模过度设计,修复成本等同于重写。
+
+**任何引用 Java 后端 API 的代码 → 必须改为调用 Node.js 后端**(`http://localhost:3001`)。
+
+### 代码审查报告处理
+
+`code-review-2026-06-16-v2.md` 中:
+- **JS-*** 编号(Java 后端相关)= **WONTFIX**(Java 已退役)
+- **NS-02** 库存并发、**FG-*** 中仓库视图相关 = **WONTFIX**(仓库 freeze)
+- **本次必修** = X-01 / X-02 / NS-03 / NS-04(非仓库部分)
+- 详见 `.harness/review-checklist.md`

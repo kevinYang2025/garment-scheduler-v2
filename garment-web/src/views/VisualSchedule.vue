@@ -142,6 +142,9 @@ const todayStr = computed(() => {
   return `${y}-${m}-${d}`
 })
 
+// 今天列索引
+const todayIdx = computed(() => dates.value.indexOf(todayStr.value))
+
 // 加载甘特图数据
 async function loadGantt() {
   loading.value = true
@@ -380,6 +383,8 @@ onMounted(loadGantt)
               @drop="line.status !== '故障' && onDrop(workshop, line)"
             >
               <div class="tasks-area" :style="{ minWidth: datesWidth + 'px' }">
+                <!-- 今天竖线 -->
+                <div v-if="todayIdx >= 0" class="today-line" :style="{ left: todayIdx * 28 + 14 + 'px' }"></div>
                 <div
                   v-for="task in line.tasks"
                   :key="task.planId"
@@ -771,6 +776,17 @@ onMounted(loadGantt)
   position: relative;
   min-height: 56px;
   overflow: hidden;
+}
+
+.today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--primary);
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.6;
 }
 
 .fault-line {

@@ -173,7 +173,7 @@ export default {
   deleteStrategy: (id) => api.delete(`/strategies/${id}`),
 
   // 自动排产 & 产能预排
-  autoSchedule: (strategyId) => api.post('/auto-schedule', { strategy_id: strategyId }),
+  autoScheduleWithStrategy: (strategyId) => api.post('/auto-schedule', { strategy_id: strategyId }),
   capacityPrecheck: () => api.get('/capacity-precheck'),
 
   // ASN 到货通知单

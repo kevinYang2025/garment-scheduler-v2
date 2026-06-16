@@ -352,6 +352,7 @@ onMounted(() => {
   }
 })
 onUnmounted(() => {
+  clearTimeout(searchTimer)
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', onDragEnd)
 })

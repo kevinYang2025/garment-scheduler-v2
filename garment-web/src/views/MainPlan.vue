@@ -470,7 +470,10 @@ onMounted(() => {
   }
 })
 onUnmounted(() => {
-  if (bodyRef.value) bodyRef.value.removeEventListener('scroll', syncHeaderScroll)
+  if (bodyRef.value) {
+    bodyRef.value.removeEventListener('scroll', syncHeaderScroll)
+    bodyRef.value.removeEventListener('mousedown', onDragStart)
+  }
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', onDragEnd)
 })
