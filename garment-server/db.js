@@ -564,6 +564,14 @@ function migrateStyles() {
     }
   } catch (e) { console.log('styles priority migration skip:', e.message); }
 
+  // 款式分类字段迁移
+  try {
+    const sccols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
+    if (!sccols.includes('style_category')) {
+      db.prepare("ALTER TABLE styles ADD COLUMN style_category TEXT DEFAULT ''").run();
+    }
+  } catch (e) { console.log('style_category migration skip:', e.message); }
+
   try {
     const mpcols = db.prepare("PRAGMA table_info(main_plan)").all().map(c => c.name);
     if (!mpcols.includes('priority')) {

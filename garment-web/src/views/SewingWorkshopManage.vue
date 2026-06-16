@@ -9,6 +9,7 @@ const loading = ref(false)
 
 // 筛选排序
 const textFilters = ref({})
+const numFilters = ref({})
 const sortState = ref({ field: '', dir: 'asc' })
 const precomputedOptions = shallowRef({})
 
@@ -102,6 +103,14 @@ const filteredRows = computed(() => {
       if (hasVal && !f.checked.has(val)) return false
       if (!hasVal && !f.includeEmpty) return false
     }
+    // 数字筛选
+    for (const [field, f] of Object.entries(numFilters.value)) {
+      if (!f || !f.applied) continue
+      if (f.checked && f.checked.size > 0) {
+        const val = String(r[field] ?? '')
+        if (!f.checked.has(val) && !(f.includeEmpty && !val)) return false
+      }
+    }
     return true
   }).sort((a, b) => {
     if (!sortState.value.field) return 0
@@ -126,18 +135,31 @@ function computeFilterOptions() {
     }
     result[f] = { options: Object.entries(map).map(([text, count]) => ({ text, count })), emptyCount }
   }
+  // 数字字段
+  const numMap = {}
+  let numEmpty = 0
+  for (const row of flatRows.value) {
+    const v = row.daily_output
+    if (v === undefined || v === null || v === 0) { numEmpty++; continue }
+    const key = String(v)
+    numMap[key] = (numMap[key] || 0) + 1
+  }
+  result.daily_output = { options: Object.entries(numMap).map(([text, count]) => ({ text, count })).sort((a, b) => parseFloat(a.text) - parseFloat(b.text)), emptyCount: numEmpty }
   precomputedOptions.value = result
 }
 
 function onTextFilter(field, f) {
   textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } }
 }
+function onNumFilter(field, f) {
+  numFilters.value = { ...numFilters.value, [field]: { ...f, applied: true } }
+}
 function onSort({ field, dir }) {
   sortState.value = { field, dir }
 }
 
 function isFilterActive(field) {
-  return !!textFilters.value[field]?.applied
+  return !!textFilters.value[field]?.applied || !!numFilters.value[field]?.applied
 }
 
 // ====== 通用 ======
@@ -480,8 +502,13 @@ onUnmounted(() => {
                   <TextFilter :data="flatRows" field="categoryName" label="款式分类" :precomputed="precomputedOptions.categoryName" @filter="f => onTextFilter('categoryName', f)" @sort="onSort" />
                 </div>
               </th>
-              <th style="width:100px">
-                <div class="col-header"><span>日产量</span></div>
+              <th style="width:120px">
+                <div class="col-header">
+                  <NumberFilter :data="flatRows" field="daily_output" label="日产量"
+                    :precomputed="precomputedOptions.daily_output"
+                    :active="isFilterActive('daily_output')"
+                    @filter="f => onNumFilter('daily_output', f)" @sort="onSort" />
+                </div>
               </th>
               <th style="width:260px">操作</th>
             </tr>
@@ -534,10 +561,10 @@ onUnmounted(() => {
                 </template>
               </td>
               <!-- 日产量列 -->
-              <td style="text-align:right">
+              <td style="text-align:center">
                 <template v-if="row.type === 'team'">
                   <template v-if="isEditing(rowKey(row))">
-                    <input class="inp" type="number" min="0" :model-value="getEditingOutput(rowKey(row))" @input="setEditingOutput(rowKey(row), $event.target.value)" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:80px;text-align:right" />
+                    <input class="inp" type="number" min="0" :model-value="getEditingOutput(rowKey(row))" @input="setEditingOutput(rowKey(row), $event.target.value)" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:80px;text-align:center" />
                   </template>
                   <template v-else>
                     <span>{{ row.daily_output || 0 }}</span>

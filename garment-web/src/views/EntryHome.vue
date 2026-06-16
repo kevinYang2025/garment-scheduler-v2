@@ -1,8 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import api from '../api'
+import { useWebSocket } from '../composables/useWebSocket'
 
 const emit = defineEmits(['navigate'])
+const { connected, onlineUsers } = useWebSocket()
 
 const stats = ref({
   styles: 0, mainPlan: 0, busyLines: 0, totalLines: 0,
@@ -66,8 +68,8 @@ const cardStats = {
     { label: '完成率', value: () => stats.value.dispatchRate, unit: '%' },
   ],
   config: [
-    { label: '状态', value: () => '正常', unit: '' },
-    { label: '在线', value: () => 1, unit: '人' },
+    { label: '状态', value: () => connected.value ? '服务正常' : '服务异常', unit: '', isStatus: true },
+    { label: '在线', value: () => onlineUsers.value.length || 1, unit: '人' },
   ],
 }
 
@@ -123,7 +125,7 @@ onMounted(loadStats)
           </div>
           <div class="card-footer">
             <div class="cf-item" v-for="s in cardStats[m.key]" :key="s.label">
-              <span class="cf-val">{{ fmtNum(s.value()) }}<small>{{ s.unit }}</small></span>
+              <span class="cf-val"><span v-if="s.isStatus" class="status-dot" :class="connected ? 'online' : 'offline'"></span>{{ fmtNum(s.value()) }}<small>{{ s.unit }}</small></span>
               <span class="cf-lbl">{{ s.label }}</span>
             </div>
           </div>
@@ -317,6 +319,17 @@ onMounted(loadStats)
   font-size: 10px; color: #94a3b8;
   margin-top: 1px;
 }
+
+/* ── 状态圆点 ── */
+.status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.status-dot.online { background: #22c55e; }
+.status-dot.offline { background: #ef4444; }
 
 /* ── 响应式 ── */
 @media (max-width: 900px) {

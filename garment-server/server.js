@@ -154,6 +154,7 @@ app.get('/api/styles/export', async (req, res) => {
       { header: '接单日期', key: 'order_date', width: 14 },
       { header: '款号', key: 'style_no', width: 25 },
       { header: '品名', key: 'product_name', width: 16 },
+      { header: '款式分类', key: 'style_category', width: 12 },
       { header: '面料代号', key: 'fabric_code', width: 28 },
       { header: '成衣计划数量', key: 'plan_qty', width: 14 },
       { header: '交期', key: 'due_date', width: 14 },
@@ -199,7 +200,7 @@ app.post('/api/styles/import', async (req, res) => {
     const ws = workbook.worksheets[0];
     if (!ws || ws.rowCount < 2) return res.status(400).json({ error: '文件为空' });
     const headerMap = {
-      '接单日期': 'order_date', '款号': 'style_no', '品名': 'product_name',
+      '接单日期': 'order_date', '款号': 'style_no', '品名': 'product_name', '款式分类': 'style_category',
       '面料代号': 'fabric_code', '成衣计划数量': 'plan_qty', '交期': 'due_date',
       '是否刺绣': 'embroidery', '刺绣日产量': 'embroidery_daily_output',
       '是否印花': 'printing', '印花日产量': 'printing_daily_output',
@@ -286,15 +287,15 @@ app.post('/api/styles', (req, res) => {
     if (s.id) {
       const existing = db.get('SELECT id FROM styles WHERE id = ?', [s.id]);
       if (!existing) return res.status(404).json({ error: '款式不存在' });
-      db.run(`UPDATE styles SET style_no=?,product_name=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,remarks=? WHERE id=?`,
-        [s.style_no, s.product_name, s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'', s.id]);
+      db.run(`UPDATE styles SET style_no=?,product_name=?,style_category=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,remarks=? WHERE id=?`,
+        [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'', s.id]);
       broadcastSection('styles', db.searchStyles(''));
       db.logOperation('styles', 'update', s.id, s.style_no);
       return res.json({ ok: true, id: s.id });
     }
-    const result = db.run(`INSERT INTO styles (style_no, product_name, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, remarks)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [s.style_no, s.product_name, s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'']);
+    const result = db.run(`INSERT INTO styles (style_no, product_name, style_category, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, remarks)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'']);
     broadcastSection('styles', db.searchStyles(''));
     db.logOperation('styles', 'create', result.lastInsertRowid, s.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });

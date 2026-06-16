@@ -12,6 +12,9 @@ const columns = [
   { field: 'order_date', label: '接单日期', width: 110, type: 'date' },
   { field: 'style_no', label: '款号', width: 150, type: 'text' },
   { field: 'product_name', label: '品名', width: 140, type: 'text' },
+  { field: 'style_category', label: '款式分类', width: 110, type: 'select', options: [
+    '半袖+长袖', '风帽衫', '复杂连衣', '拉链衫', '连衣', '内衣裤', '拼缝连衣', '梭织裤', '梭织上衣', '长裤'
+  ]},
   { field: 'fabric_code', label: '面料代号', width: 280, type: 'text' },
   { field: 'plan_qty', label: '成衣计划数量', width: 100, type: 'number' },
   { field: 'due_date', label: '交期', width: 110, type: 'date' },
@@ -246,7 +249,7 @@ const createDialogVisible = ref(false)
 const createForm = ref({})
 function openCreate() {
   createForm.value = {
-    style_no: '', product_name: '', fabric_code: '',
+    style_no: '', product_name: '', style_category: '', fabric_code: '',
     plan_qty: 0, due_date: '', order_date: '',
     embroidery: '', embroidery_daily_output: 0,
     printing: '', printing_daily_output: 0,
@@ -412,83 +415,93 @@ onUnmounted(() => {
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.product_name" /></template>
               <template v-else><span>{{ row.product_name }}</span></template>
             </td>
-            <!-- 面料代号 -->
+            <!-- 款式分类 -->
             <td :style="{ width: columns[3].width + 'px' }">
+              <template v-if="editingId === row.id">
+                <select class="inp" v-model="editForm.style_category">
+                  <option value="">请选择</option>
+                  <option v-for="opt in columns[3].options" :key="opt" :value="opt">{{ opt }}</option>
+                </select>
+              </template>
+              <template v-else><span>{{ row.style_category }}</span></template>
+            </td>
+            <!-- 面料代号 -->
+            <td :style="{ width: columns[4].width + 'px' }">
               <div class="wrap-cell">
                 <template v-if="editingId === row.id"><input class="inp" v-model="editForm.fabric_code" /></template>
                 <template v-else>{{ row.fabric_code }}</template>
               </div>
             </td>
             <!-- 成衣计划数量 -->
-            <td class="num" :style="{ width: columns[4].width + 'px' }">
+            <td class="num" :style="{ width: columns[5].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.plan_qty" type="number" min="0" /></template>
               <template v-else><span>{{ row.plan_qty }}</span></template>
             </td>
             <!-- 交期 -->
-            <td :style="{ width: columns[5].width + 'px' }">
+            <td :style="{ width: columns[6].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.due_date" type="date" /></template>
               <template v-else><span>{{ fmtDate(row.due_date) }}</span></template>
             </td>
             <!-- 是否刺绣 -->
-            <td :style="{ width: columns[6].width + 'px' }">
+            <td :style="{ width: columns[7].width + 'px' }">
               <template v-if="editingId === row.id">
                 <select class="inp-select" v-model="editForm.embroidery"><option value="">-</option><option>是</option><option>否</option></select>
               </template>
               <template v-else><span>{{ row.embroidery }}</span></template>
             </td>
             <!-- 刺绣日产量 -->
-            <td class="num" :style="{ width: columns[7].width + 'px' }">
+            <td class="num" :style="{ width: columns[8].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.embroidery_daily_output" type="number" min="0" /></template>
               <template v-else><span>{{ row.embroidery_daily_output }}</span></template>
             </td>
             <!-- 是否印花 -->
-            <td :style="{ width: columns[8].width + 'px' }">
+            <td :style="{ width: columns[9].width + 'px' }">
               <template v-if="editingId === row.id">
                 <select class="inp-select" v-model="editForm.printing"><option value="">-</option><option>是</option><option>否</option></select>
               </template>
               <template v-else><span>{{ row.printing }}</span></template>
             </td>
             <!-- 印花日产量 -->
-            <td class="num" :style="{ width: columns[9].width + 'px' }">
+            <td class="num" :style="{ width: columns[10].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.printing_daily_output" type="number" min="0" /></template>
               <template v-else><span>{{ row.printing_daily_output }}</span></template>
             </td>
             <!-- 是否烫标 -->
-            <td :style="{ width: columns[10].width + 'px' }">
+            <td :style="{ width: columns[11].width + 'px' }">
               <template v-if="editingId === row.id">
                 <select class="inp-select" v-model="editForm.ironing_label"><option value="">-</option><option>是</option><option>否</option></select>
               </template>
               <template v-else><span>{{ row.ironing_label }}</span></template>
             </td>
             <!-- 烫标日产量 -->
-            <td class="num" :style="{ width: columns[11].width + 'px' }">
+            <td class="num" :style="{ width: columns[12].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.ironing_daily_output" type="number" min="0" /></template>
               <template v-else><span>{{ row.ironing_daily_output }}</span></template>
             </td>
             <!-- 是否用模板 -->
-            <td :style="{ width: columns[12].width + 'px' }">
+            <td :style="{ width: columns[13].width + 'px' }">
               <template v-if="editingId === row.id">
                 <select class="inp-select" v-model="editForm.template"><option value="">-</option><option>是</option><option>否</option></select>
               </template>
               <template v-else><span>{{ row.template }}</span></template>
             </td>
             <!-- 模板日产量 -->
-            <td class="num" :style="{ width: columns[13].width + 'px' }">
+            <td class="num" :style="{ width: columns[14].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.template_daily_output" type="number" min="0" /></template>
               <template v-else><span>{{ row.template_daily_output }}</span></template>
             </td>
             <!-- TT时间 -->
-            <td :style="{ width: columns[14].width + 'px' }">
+            <td :style="{ width: columns[15].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.tt_time" /></template>
               <template v-else><span>{{ row.tt_time }}</span></template>
             </td>
             <!-- 缝制目标日产量 -->
-            <td class="num" :style="{ width: columns[15].width + 'px' }">
+            <td class="num" :style="{ width: columns[16].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.target_daily_output" type="number" min="0" /></template>
               <template v-else><span>{{ row.target_daily_output }}</span></template>
             </td>
             <!-- 备注 -->
-            <td class="text-left" :style="{ width: columns[16].width + 'px' }">
+            <td class="text-left" :style="{ width: columns[17].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.remarks" /></template>
               <template v-else><span>{{ row.remarks }}</span></template>
             </td>
@@ -518,8 +531,13 @@ onUnmounted(() => {
     <el-dialog v-model="createDialogVisible" title="新增款式" width="800px" destroy-on-close>
       <el-form :model="createForm" label-width="110px" label-position="right">
         <el-row :gutter="16">
-          <el-col :span="12"><el-form-item label="款号"><el-input v-model="createForm.style_no" placeholder="请输入款号" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="品名"><el-input v-model="createForm.product_name" placeholder="请输入品名" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="款号"><el-input v-model="createForm.style_no" placeholder="请输入款号" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="品名"><el-input v-model="createForm.product_name" placeholder="请输入品名" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="款式分类">
+            <el-select v-model="createForm.style_category" placeholder="请选择" style="width:100%" clearable>
+              <el-option v-for="opt in columns.find(c=>c.field==='style_category').options" :key="opt" :label="opt" :value="opt" />
+            </el-select>
+          </el-form-item></el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="面料代号"><el-input v-model="createForm.fabric_code" placeholder="请输入面料代号" /></el-form-item></el-col>
