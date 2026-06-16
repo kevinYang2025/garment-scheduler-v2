@@ -188,26 +188,35 @@ const filteredRecords = computed(() => {
   }
   for (const [field, f] of Object.entries(numFilters.value)) {
     if (!f.applied) continue
-    if (f.min !== undefined && f.min !== null) list = list.filter(r => Number(r[field]) >= f.min)
-    if (f.max !== undefined && f.max !== null) list = list.filter(r => Number(r[field]) <= f.max)
+    if (f.checked && f.checked.size > 0) {
+      list = list.filter(r => {
+        const v = r[field]
+        const key = v != null ? String(v) : ''
+        return f.checked.has(key) || (f.includeEmpty && !key)
+      })
+    }
   }
   // 排序
   if (sortState.value.field) {
     const { field, sortBy, dir } = sortState.value
     const d = dir === 'asc' ? 1 : -1
-    list = [...list].sort((a, b) => {
-      if (sortBy === 'count') {
-        const ac = list.filter(x => x[field] === a[field]).length
-        const bc = list.filter(x => x[field] === b[field]).length
-        return (ac - bc) * d
+    if (sortBy === 'count') {
+      const countMap = new Map()
+      for (const r of list) {
+        const v = r[field] ?? ''
+        countMap.set(v, (countMap.get(v) || 0) + 1)
       }
-      if (sortBy === 'date') {
-        return ((a[field] || '').localeCompare(b[field] || '')) * d
-      }
-      const av = a[field] ?? '', bv = b[field] ?? ''
-      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * d
-      return String(av).localeCompare(String(bv)) * d
-    })
+      list = [...list].sort((a, b) => (countMap.get(a[field] ?? '') - countMap.get(b[field] ?? '')) * d)
+    } else {
+      list = [...list].sort((a, b) => {
+        if (sortBy === 'date') {
+          return ((a[field] || '').localeCompare(b[field] || '')) * d
+        }
+        const av = a[field] ?? '', bv = b[field] ?? ''
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * d
+        return String(av).localeCompare(String(bv)) * d
+      })
+    }
   }
   return list
 })

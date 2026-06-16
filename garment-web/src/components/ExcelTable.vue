@@ -105,19 +105,23 @@ const filteredRecords = computed(() => {
   if (sortState.value.field) {
     const { field, sortBy, dir } = sortState.value
     const d = dir === 'asc' ? 1 : -1
-    list = [...list].sort((a, b) => {
-      if (sortBy === 'count') {
-        const ac = list.filter(x => x[field] === a[field]).length
-        const bc = list.filter(x => x[field] === b[field]).length
-        return (ac - bc) * d
+    if (sortBy === 'count') {
+      const countMap = new Map()
+      for (const r of list) {
+        const v = r[field] ?? ''
+        countMap.set(v, (countMap.get(v) || 0) + 1)
       }
-      if (sortBy === 'date') {
-        return ((a[field] || '').localeCompare(b[field] || '')) * d
-      }
-      const av = a[field] ?? '', bv = b[field] ?? ''
-      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * d
-      return String(av).localeCompare(String(bv)) * d
-    })
+      list = [...list].sort((a, b) => (countMap.get(a[field] ?? '') - countMap.get(b[field] ?? '')) * d)
+    } else {
+      list = [...list].sort((a, b) => {
+        if (sortBy === 'date') {
+          return ((a[field] || '').localeCompare(b[field] || '')) * d
+        }
+        const av = a[field] ?? '', bv = b[field] ?? ''
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * d
+        return String(av).localeCompare(String(bv)) * d
+      })
+    }
   }
   return list
 })
