@@ -71,201 +71,124 @@ onMounted(loadStats)
   <div class="entry-bg">
     <div class="entry-container">
 
-      <!-- 顶部横幅 -->
+      <!-- 横幅 -->
       <div class="banner">
         <div class="banner-left">
-          <div class="brand">
-            <span class="brand-dot"></span>
-            <span class="brand-name">EUC 排程系统</span>
-          </div>
+          <div class="brand"><span class="brand-dot"></span><span class="brand-name">EUC 排程系统</span></div>
           <h1 class="greeting">欢迎回来 <span class="wave">👋</span></h1>
           <p class="sub-date">{{ today }} 星期{{ weekday }}</p>
         </div>
         <div class="banner-right">
-          <div class="pill" v-for="s in [
-            { v: stats.styles, l: '款式', c: '#c4b5fd' },
-            { v: stats.mainPlan, l: '计划', c: '#fde68a' },
-            { v: stats.sewingPending, l: '排程', c: '#a7f3d0' },
-          ]" :key="s.l">
+          <div class="pill" v-for="s in [{ v: stats.styles, l: '款式' }, { v: stats.mainPlan, l: '计划' }, { v: stats.sewingPending, l: '排程' }]" :key="s.l">
             <span class="pill-val">{{ fmtNum(s.v) }}</span>
             <span class="pill-lbl">{{ s.l }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 主体：左侧工作台 + 右侧模块 -->
+      <!-- 主体 -->
       <div class="main-grid">
-
-        <!-- 左侧：工作台大卡片 -->
-        <div class="workbench-card" @click="enterModule('dashboard')">
-          <div class="wb-header">
-            <div class="wb-icon">📊</div>
-            <div>
-              <h2>工作台</h2>
-              <p>数据看板与生产概览</p>
-            </div>
+        <!-- 左：工作台 -->
+        <div class="wb" @click="enterModule('dashboard')">
+          <div class="wb-head"><span class="wb-icon">📊</span><div><h2>工作台</h2><p>数据看板与生产概览</p></div></div>
+          <div class="wb-rate">
+            <span class="rate-val">{{ stats.mainPlan > 0 ? Math.round((1 - stats.sewingOverdue / (stats.mainPlan * 10)) * 100) : '--' }}<small v-if="stats.mainPlan > 0">%</small></span>
+            <span class="rate-lbl">计划达成率</span>
           </div>
-          <div class="wb-metrics">
-            <div class="wb-metric main-metric">
-              <div class="wb-mv">{{ stats.mainPlan > 0 ? Math.round((1 - stats.sewingOverdue / (stats.mainPlan * 10)) * 100) : '--' }}<small v-if="stats.mainPlan > 0">%</small></div>
-              <div class="wb-ml">计划达成率</div>
-            </div>
-            <div class="wb-metric">
-              <div class="wb-mv">{{ fmtNum(stats.styles) }}<small>个</small></div>
-              <div class="wb-ml">款式总数</div>
-            </div>
-            <div class="wb-metric">
-              <div class="wb-mv">{{ fmtNum(stats.mainPlan) }}<small>个</small></div>
-              <div class="wb-ml">预排总计划</div>
-            </div>
-            <div class="wb-metric">
-              <div class="wb-mv">{{ fmtNum(stats.sewingPending) }}<small>个</small></div>
-              <div class="wb-ml">待排程</div>
-            </div>
+          <div class="wb-row">
+            <div class="wb-num"><span class="wn">{{ fmtNum(stats.styles) }}</span><span class="wl">款式</span></div>
+            <div class="wb-num"><span class="wn">{{ fmtNum(stats.mainPlan) }}</span><span class="wl">计划</span></div>
+            <div class="wb-num"><span class="wn">{{ fmtNum(stats.sewingPending) }}</span><span class="wl">待排</span></div>
           </div>
-          <div class="wb-footer">
-            <span>进入工作台 →</span>
-          </div>
+          <div class="wb-go">进入工作台 →</div>
         </div>
 
-        <!-- 右侧：4个模块卡片 -->
-        <div class="side-cards">
-          <div
-            v-for="m in modules"
-            :key="m.key"
-            class="scard"
-            @click="enterModule(m.key)"
-          >
-            <div class="sc-left">
-              <div class="sc-icon" :style="{ background: m.bg, color: m.color }">
-                <span>{{ m.icon }}</span>
-              </div>
-              <div class="sc-text">
-                <h3>{{ m.label }}</h3>
-                <p>{{ m.desc }}</p>
-              </div>
+        <!-- 右：4卡片 -->
+        <div class="side">
+          <div v-for="m in modules" :key="m.key" class="sc" @click="enterModule(m.key)">
+            <div class="sc-icon" :style="{ background: m.bg, color: m.color }"><span>{{ m.icon }}</span></div>
+            <div class="sc-body">
+              <h3>{{ m.label }}</h3>
+              <p>{{ m.desc }}</p>
             </div>
             <div class="sc-stats">
-              <div class="sc-stat" v-for="s in cardStats[m.key]" :key="s.label">
-                <span class="sc-sv">
-                  <span v-if="s.isStatus" class="status-dot" :class="connected ? 'online' : 'offline'"></span>
-                  {{ typeof s.value() === 'number' ? s.value().toLocaleString() : s.value() }}<small>{{ s.unit }}</small>
-                </span>
-                <span class="sc-sl">{{ s.label }}</span>
+              <div class="ss" v-for="s in cardStats[m.key]" :key="s.label">
+                <span class="sv"><span v-if="s.isStatus" class="dot" :class="connected?'on':'off'"></span>{{ typeof s.value()==='number'?s.value().toLocaleString():s.value() }}<small>{{ s.unit }}</small></span>
+                <span class="sl">{{ s.label }}</span>
               </div>
             </div>
-            <svg class="sc-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" :stroke="m.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            <svg class="sc-arr" width="16" height="16" viewBox="0 0 24 24" fill="none" :stroke="m.color" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </div>
         </div>
-
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.entry-bg {
-  min-height: 100vh;
-  background: linear-gradient(160deg, #f5f0ff 0%, #fdf2f8 40%, #fefce8 100%);
-  padding: 0;
-  display: flex;
-  justify-content: center;
-}
-.entry-container {
-  width: 100%;
-  max-width: 1080px;
-  background: #f3f4f6;
-  border-radius: 0 0 28px 28px;
-  padding: 20px 24px 24px;
-  box-shadow: 0 4px 24px rgba(0,0,0,.04);
-}
+.entry-bg { min-height:100vh; background:linear-gradient(160deg,#f5f0ff 0%,#fdf2f8 40%,#fefce8 100%); display:flex; justify-content:center; }
+.entry-container { width:100%; max-width:1080px; background:#f3f4f6; border-radius:0 0 28px 28px; padding:16px 20px 20px; box-shadow:0 4px 24px rgba(0,0,0,.04); }
 
-/* ── 横幅 ── */
-.banner {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 18px 28px; margin-bottom: 20px; border-radius: 20px;
-  background: linear-gradient(135deg, #7c5cfc 0%, #a78bfa 60%, #c4b5fd 100%);
-  color: #fff; position: relative; overflow: hidden;
-}
-.banner::before { content:''; position:absolute; width:200px; height:200px; right:-40px; top:-40px; background:rgba(255,255,255,.08); border-radius:50%; }
-.banner::after { content:''; position:absolute; width:140px; height:140px; right:100px; bottom:-60px; background:rgba(255,255,255,.05); border-radius:50%; }
+/* 横幅 */
+.banner { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; margin-bottom:14px; border-radius:16px; background:linear-gradient(135deg,#7c5cfc,#a78bfa 60%,#c4b5fd); color:#fff; position:relative; overflow:hidden; }
+.banner::before { content:''; position:absolute; width:160px; height:160px; right:-30px; top:-30px; background:rgba(255,255,255,.08); border-radius:50%; }
 .banner-left { position:relative; z-index:1; }
-.brand { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
-.brand-dot { width:10px; height:10px; background:#fff; border-radius:3px; opacity:.9; }
-.brand-name { font-size:12px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; opacity:.8; }
-.greeting { font-size:28px; font-weight:700; margin-bottom:2px; line-height:1.2; }
+.brand { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+.brand-dot { width:8px; height:8px; background:#fff; border-radius:2px; opacity:.9; }
+.brand-name { font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; opacity:.8; }
+.greeting { font-size:24px; font-weight:700; margin-bottom:2px; line-height:1.2; }
 .wave { display:inline-block; animation:wave 1s ease-in-out; }
 @keyframes wave { 0%,100%{transform:rotate(0)} 20%{transform:rotate(16deg)} 60%{transform:rotate(-8deg)} }
-.sub-date { font-size:13px; opacity:.7; }
-.banner-right { display:flex; gap:12px; position:relative; z-index:1; }
-.pill { background:rgba(255,255,255,.15); backdrop-filter:blur(8px); border-radius:14px; padding:14px 20px; min-width:76px; text-align:center; border:1px solid rgba(255,255,255,.12); }
-.pill-val { display:block; font-size:22px; font-weight:700; line-height:1.1; }
-.pill-lbl { display:block; font-size:11px; opacity:.65; margin-top:3px; }
+.sub-date { font-size:12px; opacity:.7; }
+.banner-right { display:flex; gap:10px; position:relative; z-index:1; }
+.pill { background:rgba(255,255,255,.15); backdrop-filter:blur(8px); border-radius:12px; padding:10px 16px; min-width:64px; text-align:center; border:1px solid rgba(255,255,255,.12); }
+.pill-val { display:block; font-size:20px; font-weight:700; line-height:1.1; }
+.pill-lbl { display:block; font-size:10px; opacity:.65; margin-top:2px; }
 
-/* ── 主体网格 ── */
-.main-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
+/* 主体 */
+.main-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 
-/* ── 左侧工作台 ── */
-.workbench-card {
-  background: #fff; border-radius: 18px; padding: 24px;
-  cursor: pointer; transition: all .25s cubic-bezier(.4,0,.2,1);
-  box-shadow: 0 1px 4px rgba(0,0,0,.03); border: 1px solid rgba(0,0,0,.04);
-  display: flex; flex-direction: column;
-}
-.workbench-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,.08); }
+/* 工作台 */
+.wb { background:#fff; border-radius:16px; padding:18px; cursor:pointer; transition:all .25s; box-shadow:0 1px 4px rgba(0,0,0,.03); border:1px solid rgba(0,0,0,.04); display:flex; flex-direction:column; }
+.wb:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.07); }
+.wb-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+.wb-icon { font-size:22px; width:36px; height:36px; display:flex; align-items:center; justify-content:center; background:#f0ecff; border-radius:10px; }
+.wb-head h2 { font-size:16px; font-weight:700; color:#1e293b; }
+.wb-head p { font-size:11px; color:#94a3b8; }
 
-.wb-header { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
-.wb-icon { font-size:28px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; background:#f0ecff; border-radius:14px; }
-.wb-header h2 { font-size:18px; font-weight:700; color:#1e293b; margin-bottom:2px; }
-.wb-header p { font-size:12px; color:#94a3b8; }
+.wb-rate { background:linear-gradient(135deg,#ede9fe,#f0ecff); border-radius:12px; padding:14px; text-align:center; margin-bottom:12px; }
+.rate-val { display:block; font-size:36px; font-weight:700; color:#6366f1; }
+.rate-val small { font-size:16px; font-weight:500; color:#94a3b8; }
+.rate-lbl { display:block; font-size:11px; color:#94a3b8; margin-top:2px; }
 
-.wb-metrics { display:grid; grid-template-columns:1fr 1fr; gap:16px; flex:1; margin-bottom:16px; }
-.wb-metric { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; background:#f8f9fa; border-radius:14px; }
-.wb-metric.main-metric { grid-column:1/3; background:linear-gradient(135deg, #ede9fe, #f0ecff); }
-.wb-mv { font-size:32px; font-weight:700; color:#1e293b; font-variant-numeric:tabular-nums; }
-.main-metric .wb-mv { font-size:48px; color:#6366f1; }
-.wb-mv small { font-size:14px; font-weight:500; color:#94a3b8; margin-left:2px; }
-.main-metric .wb-mv small { font-size:18px; }
-.wb-ml { font-size:12px; color:#94a3b8; margin-top:4px; }
+.wb-row { display:flex; gap:8px; margin-bottom:10px; }
+.wb-num { flex:1; background:#f8f9fa; border-radius:10px; padding:10px; text-align:center; }
+.wn { display:block; font-size:18px; font-weight:700; color:#1e293b; }
+.wl { display:block; font-size:10px; color:#94a3b8; margin-top:2px; }
 
-.wb-footer { text-align:center; padding-top:12px; border-top:1px solid #f1f5f9; font-size:13px; color:#6366f1; font-weight:500; }
+.wb-go { text-align:center; font-size:12px; color:#6366f1; font-weight:500; padding-top:8px; border-top:1px solid #f1f5f9; }
 
-/* ── 右侧模块卡片 ── */
-.side-cards { display:flex; flex-direction:column; gap:12px; }
-.scard {
-  background:#fff; border-radius:16px; padding:18px 20px;
-  cursor:pointer; transition:all .25s cubic-bezier(.4,0,.2,1);
-  box-shadow:0 1px 4px rgba(0,0,0,.03); border:1px solid rgba(0,0,0,.04);
-  display:flex; align-items:center; gap:14px;
-}
-.scard:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.07); }
+/* 右侧卡片 */
+.side { display:flex; flex-direction:column; gap:10px; }
+.sc { background:#fff; border-radius:14px; padding:14px 16px; cursor:pointer; transition:all .25s; box-shadow:0 1px 4px rgba(0,0,0,.03); border:1px solid rgba(0,0,0,.04); display:flex; align-items:center; gap:12px; flex:1; }
+.sc:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.06); }
 
-.sc-left { display:flex; align-items:center; gap:12px; flex:1; min-width:0; }
-.sc-icon { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
-.sc-text h3 { font-size:14px; font-weight:700; color:#1e293b; margin-bottom:1px; }
-.sc-text p { font-size:11px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sc-icon { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+.sc-body { flex:1; min-width:0; }
+.sc-body h3 { font-size:14px; font-weight:700; color:#1e293b; margin-bottom:1px; }
+.sc-body p { font-size:11px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-.sc-stats { display:flex; gap:16px; flex-shrink:0; }
-.sc-stat { display:flex; flex-direction:column; align-items:flex-end; }
-.sc-sv { font-size:16px; font-weight:700; color:#1e293b; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:4px; }
-.sc-sv small { font-size:10px; font-weight:500; color:#94a3b8; }
-.sc-sl { font-size:10px; color:#94a3b8; }
+.sc-stats { display:flex; gap:14px; flex-shrink:0; }
+.ss { display:flex; flex-direction:column; align-items:flex-end; }
+.sv { font-size:14px; font-weight:700; color:#1e293b; display:flex; align-items:center; gap:3px; }
+.sv small { font-size:9px; font-weight:500; color:#94a3b8; }
+.sl { font-size:9px; color:#94a3b8; }
+.dot { width:5px; height:5px; border-radius:50%; }
+.dot.on { background:#22c55e; }
+.dot.off { background:#ef4444; }
 
-.sc-arrow { flex-shrink:0; opacity:0; transform:translateX(-4px); transition:all .25s; }
-.scard:hover .sc-arrow { opacity:1; transform:translateX(0); }
+.sc-arr { flex-shrink:0; opacity:0; transform:translateX(-3px); transition:all .25s; }
+.sc:hover .sc-arr { opacity:1; transform:translateX(0); }
 
-.status-dot { width:6px; height:6px; border-radius:50%; }
-.status-dot.online { background:#22c55e; }
-.status-dot.offline { background:#ef4444; }
-
-/* ── 响应式 ── */
-@media (max-width: 800px) {
-  .main-grid { grid-template-columns:1fr; }
-  .banner { flex-direction:column; gap:16px; text-align:center; }
-  .banner-right { justify-content:center; }
-}
+@media (max-width:800px) { .main-grid { grid-template-columns:1fr; } .banner { flex-direction:column; gap:12px; text-align:center; } .banner-right { justify-content:center; } }
 </style>

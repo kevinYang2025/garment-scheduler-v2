@@ -251,7 +251,7 @@ async function autoCalcDates() {
   if (!form.value.due_date) return
   await loadConfig()
   const c = configCache.value
-  const due = new Date(form.value.due_date)
+  const due = new Date(form.value.due_date + 'T00:00:00')
   const qty = form.value.plan_qty || 0
 
   const sewingEnd = new Date(due)

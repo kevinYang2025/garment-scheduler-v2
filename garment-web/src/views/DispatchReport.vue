@@ -315,7 +315,7 @@ async function handleExport() {
   try {
     const params = buildParams()
     const { data } = await api.exportDispatchReport(params)
-    const url = URL.createObjectURL(new Blob([data]))
+    const url = URL.createObjectURL(data)
     const a = document.createElement('a')
     a.href = url
     a.download = '报工明细.xlsx'
