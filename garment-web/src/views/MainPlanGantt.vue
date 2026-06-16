@@ -32,24 +32,27 @@ async function loadGantt() {
   loading.value = false
 }
 
-// 日期列（基于 weekOffset 滚动）
+// 日期列（基于 weekOffset 滚动，默认显示今天所在的周）
 const visibleDateCols = computed(() => {
   if (!dateRange.value.start) return []
-  const start = new Date(dateRange.value.start + 'T00:00:00')
-  // 加上周偏移
-  start.setDate(start.getDate() + weekOffset.value * 21) // 每次偏移3周
+  // 默认从今天前3天开始显示
+  const baseDate = new Date()
+  baseDate.setDate(baseDate.getDate() - 3 + weekOffset.value * 21)
+  // 对齐到周一
+  const dow = (baseDate.getDay() + 6) % 7
+  baseDate.setDate(baseDate.getDate() - dow)
   const cols = []
   for (let i = 0; i < 28; i++) { // 显示4周
-    const d = new Date(start)
+    const d = new Date(baseDate)
     d.setDate(d.getDate() + i)
     const ds = fmtDate(d)
-    const dow = d.getDay()
+    const dayOfWeek = d.getDay()
     cols.push({
       date: ds,
       day: d.getDate(),
       month: d.getMonth() + 1,
-      dow: ['日','一','二','三','四','五','六'][dow],
-      isWeekend: dow === 0 || dow === 6,
+      dow: ['日','一','二','三','四','五','六'][dayOfWeek],
+      isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
       isToday: ds === today,
     })
   }

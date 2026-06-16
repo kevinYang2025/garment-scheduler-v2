@@ -906,7 +906,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       { key: 'embroidery', flag: 'embroidery', dailyField: 'embroidery_daily_output', standard: cap.embroidery || 8000, prefix: 'embroidery' },
       { key: 'template', flag: 'template', dailyField: 'template_daily_output', standard: cap.template || 3000, prefix: 'template' },
     ];
-    const secondaryResults = {}; // style_no -> { printing_end, embroidery_end, template_end }
+    const secondaryResults = {}; // style_no -> { printing_start, printing_end, embroidery_start, ... }
 
     for (const sec of secTypes) {
       const items = styleNos
@@ -934,6 +934,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
           curDay = item.start;
           remain = sec.standard;
         }
+        const styleStart = curDay; // 记录该款式开工日
         let styleRemain = item.qty;
         while (styleRemain > 0) {
           const todayCap = Math.min(item.style_max, remain);
@@ -947,6 +948,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
           remain -= produce;
           if (styleRemain === 0) {
             if (!secondaryResults[item.style_no]) secondaryResults[item.style_no] = {};
+            secondaryResults[item.style_no][sec.prefix + '_start'] = styleStart;
             secondaryResults[item.style_no][sec.prefix + '_end'] = curDay;
           } else {
             curDay = addDays(curDay, 1);

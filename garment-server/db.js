@@ -592,6 +592,12 @@ function migrateStyles() {
     if (!mpcols2.includes('ironing_start')) db.prepare("ALTER TABLE main_plan ADD COLUMN ironing_start TEXT DEFAULT ''").run();
     if (!mpcols2.includes('ironing_end')) db.prepare("ALTER TABLE main_plan ADD COLUMN ironing_end TEXT DEFAULT ''").run();
     if (!mpcols2.includes('conflict_flag')) db.prepare("ALTER TABLE main_plan ADD COLUMN conflict_flag INTEGER DEFAULT 0").run();
+    if (!mpcols2.includes('printing_start')) db.prepare("ALTER TABLE main_plan ADD COLUMN printing_start TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('printing_end')) db.prepare("ALTER TABLE main_plan ADD COLUMN printing_end TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('embroidery_start')) db.prepare("ALTER TABLE main_plan ADD COLUMN embroidery_start TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('embroidery_end')) db.prepare("ALTER TABLE main_plan ADD COLUMN embroidery_end TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('template_start')) db.prepare("ALTER TABLE main_plan ADD COLUMN template_start TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('template_end')) db.prepare("ALTER TABLE main_plan ADD COLUMN template_end TEXT DEFAULT ''").run();
   } catch (e) { console.log('main_plan ironing/conflict migration skip:', e.message); }
 
   const cols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
