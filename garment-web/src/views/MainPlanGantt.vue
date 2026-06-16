@@ -123,7 +123,6 @@ onMounted(loadGantt)
       </div>
       <div class="legend">
         <span class="leg-item"><span class="leg-dot" style="background:#3b82f6"></span>裁剪</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#f59e0b"></span>二次加工</span>
         <span class="leg-item"><span class="leg-dot" style="background:#10b981"></span>缝制</span>
         <span class="leg-item"><span class="leg-dot" style="background:#ef4444;height:2px;width:12px;border-radius:0"></span>交期</span>
       </div>
@@ -178,15 +177,6 @@ onMounted(loadGantt)
               :title="'裁剪: ' + plan.cutting_start + ' ~ ' + plan.cutting_end"
             >
               <span class="bar-text">裁剪</span>
-            </div>
-            <!-- 二次加工条 -->
-            <div
-              v-if="plan.secondary_start && plan.secondary_end"
-              class="gantt-bar secondary"
-              :style="getTaskStyle(plan.secondary_start, plan.secondary_end)"
-              :title="'二次加工: ' + plan.secondary_start + ' ~ ' + plan.secondary_end"
-            >
-              <span class="bar-text">二次</span>
             </div>
             <!-- 缝制条 -->
             <div

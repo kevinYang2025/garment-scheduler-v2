@@ -911,6 +911,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       { key: 'printing', flag: 'printing', dailyField: 'printing_daily_output', standard: cap.printing || 10000, prefix: 'printing' },
       { key: 'embroidery', flag: 'embroidery', dailyField: 'embroidery_daily_output', standard: cap.embroidery || 8000, prefix: 'embroidery' },
       { key: 'template', flag: 'template', dailyField: 'template_daily_output', standard: cap.template || 3000, prefix: 'template' },
+      { key: 'ironing', flag: 'ironing_label', dailyField: 'ironing_daily_output', standard: cap.ironing || 6000, prefix: 'ironing' },
     ];
     const secondaryResults = {}; // style_no -> { printing_start, printing_end, embroidery_start, ... }
 
@@ -964,7 +965,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       }
     }
 
-    // ========== Step 3 & 4: 缝制 + 烫标（倒推） ==========
+    // ========== Step 3 & 4: 缝制（倒推） + 冲突检测 ==========
     const results = [];
     for (const sn of styleNos) {
       const st = styleMap[sn];
@@ -981,52 +982,18 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       const sewingEnd = addDays(st.due_date, -15);
       let dailyTarget = parseInt(st.target_daily_output) || 0;
       if (dailyTarget <= 0) {
-        // 按款式分类从 production_lines 找兜底日产量
         const cat = st.product_name || '';
         const pl = db.get("SELECT daily_output FROM production_lines WHERE line_name = ? AND daily_output > 0 LIMIT 1", [cat]);
         if (pl) dailyTarget = parseInt(pl.daily_output) || 0;
       }
       const sewingDays = dailyTarget > 0 ? Math.ceil(qty / dailyTarget) + 1 : 1;
       const sewingStart = addDays(sewingEnd, -(sewingDays - 1));
+      const sewingRemind = addDays(sewingStart, -10);
 
-      // 烫标倒推（仅 ironing_label = '是'）
-      let ironingStart = '', ironingEnd = '';
-      let sewingRemind = addDays(sewingStart, -10);
-
-      if (st.ironing_label === '是') {
-        ironingEnd = addDays(sewingStart, -3);
-        const ironingMax = parseInt(st.ironing_daily_output) || 0;
-        const ironingStandard = cap.ironing || 6000;
-        if (ironingMax > 0 && ironingStandard > 0) {
-          // 倒推排程
-          let curDay = ironingEnd;
-          let remain = ironingStandard;
-          let styleRemain = qty;
-          while (styleRemain > 0) {
-            const todayCap = Math.min(ironingMax, remain);
-            if (todayCap <= 0) {
-              curDay = addDays(curDay, -1);
-              remain = ironingStandard;
-              continue;
-            }
-            const produce = Math.min(styleRemain, todayCap);
-            styleRemain -= produce;
-            remain -= produce;
-            if (styleRemain > 0) {
-              curDay = addDays(curDay, -1);
-              remain = ironingStandard;
-            }
-          }
-          ironingStart = curDay;
-          sewingRemind = addDays(ironingStart, -10);
-        }
-      }
-
-      // 冲突检测
-      const secEnds = [sr.printing_end, sr.embroidery_end, sr.template_end].filter(Boolean);
+      // 冲突检测：二次加工/烫标 最晚下线日 > 缝制上线日 → 冲突
+      const secEnds = [sr.printing_end, sr.embroidery_end, sr.template_end, sr.ironing_end].filter(Boolean);
       const maxSecEnd = secEnds.length > 0 ? secEnds.reduce((a, b) => a > b ? a : b) : '';
-      const refStart = ironingStart || sewingStart;
-      const conflict = maxSecEnd && refStart && refStart < maxSecEnd ? 1 : 0;
+      const conflict = maxSecEnd && sewingStart && sewingStart < maxSecEnd ? 1 : 0;
 
       results.push({
         style_id: st.id,
@@ -1047,8 +1014,8 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
         sewing_remind_date: sewingRemind,
         sewing_start: sewingStart,
         sewing_end: sewingEnd,
-        ironing_start: ironingStart,
-        ironing_end: ironingEnd,
+        ironing_start: sr.ironing_start || '',
+        ironing_end: sr.ironing_end || '',
         conflict_flag: conflict,
         pipeline_count: 1,
         is_scheduled: 0,
