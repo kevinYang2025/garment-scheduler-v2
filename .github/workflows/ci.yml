@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [master, 'feature/**']
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 前端构建检查
+      - name: Install frontend dependencies
+        working-directory: garment-web
+        run: npm install
+
+      - name: Build frontend
+        working-directory: garment-web
+        run: npm run build
+
+      # 后端依赖检查
+      - name: Install backend dependencies
+        working-directory: garment-server
+        run: npm install
+
+      - name: Check backend syntax
+        working-directory: garment-server
+        run: node --check server.js
