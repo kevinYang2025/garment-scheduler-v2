@@ -618,6 +618,9 @@ function migrateStyles() {
   try { db.prepare("ALTER TABLE warehouse_inbound ADD COLUMN order_no TEXT DEFAULT ''").run() } catch {}
   try { db.prepare("ALTER TABLE warehouse_inbound ADD COLUMN loading_qty REAL DEFAULT 0").run() } catch {}
   try { db.prepare("ALTER TABLE warehouse_outbound ADD COLUMN order_no TEXT DEFAULT ''").run() } catch {}
+
+  // 迁移：产线加日产量字段
+  try { db.prepare("ALTER TABLE production_lines ADD COLUMN daily_output INTEGER DEFAULT 0").run() } catch {}
 }
 
 function seedDefaultData() {

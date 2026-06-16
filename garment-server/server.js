@@ -389,7 +389,7 @@ app.get('/api/sewing-workshop-tree', (req, res) => {
     const tree = workshops.map(w => ({
       id: w.id, name: w.name, type: 'workshop', sort_order: w.sort_order,
       children: lines.filter(l => l.workshop_id === w.id).map(l => ({
-        id: l.id, name: l.line_name, type: 'team', workshop_id: l.workshop_id, sort_order: l.sort_order, status: l.status,
+        id: l.id, name: l.line_name, type: 'team', workshop_id: l.workshop_id, sort_order: l.sort_order, status: l.status, daily_output: l.daily_output || 0,
         children: categories.filter(c => c.line_id === l.id).map(c => ({
           id: c.id, name: c.name, type: 'category', line_id: c.line_id, sort_order: c.sort_order
         }))
@@ -460,12 +460,12 @@ app.put('/api/sewing-workshop-tree/batch', (req, res) => {
 
 app.put('/api/sewing-workshop-tree/:id', (req, res) => {
   try {
-    const { type, name } = req.body;
+    const { type, name, daily_output } = req.body;
     if (!type || !name) return res.status(400).json({ error: 'type和name必填' });
     if (type === 'workshop') {
       db.run('UPDATE workshops SET name = ? WHERE id = ?', [name, req.params.id]);
     } else if (type === 'team') {
-      db.run('UPDATE production_lines SET line_name = ? WHERE id = ?', [name, req.params.id]);
+      db.run('UPDATE production_lines SET line_name = ?, daily_output = ? WHERE id = ?', [name, parseInt(daily_output) || 0, req.params.id]);
     } else if (type === 'category') {
       db.run('UPDATE line_style_categories SET name = ? WHERE id = ?', [name, req.params.id]);
     } else {
@@ -541,6 +541,7 @@ app.get('/api/sewing-workshop-tree/export', async (req, res) => {
     ws.columns = [
       { header: '车间', key: 'workshop', width: 15 },
       { header: '班组', key: 'team', width: 15 },
+      { header: '日产量', key: 'daily_output', width: 12 },
       { header: '款式分类', key: 'category', width: 30 },
     ];
     ws.getRow(1).font = { bold: true };
@@ -548,18 +549,17 @@ app.get('/api/sewing-workshop-tree/export', async (req, res) => {
       const wLines = lines.filter(l => l.workshop_id === w.id);
       const wCats = categories.filter(c => wLines.some(l => l.id === c.line_id));
       if (wCats.length === 0) {
-        // 车间无分类，仍输出车间+班组
         for (const l of wLines) {
-          ws.addRow({ workshop: w.name, team: l.line_name, category: '' });
+          ws.addRow({ workshop: w.name, team: l.line_name, daily_output: l.daily_output || 0, category: '' });
         }
       } else {
         for (const l of wLines) {
           const lCats = categories.filter(c => c.line_id === l.id);
           if (lCats.length === 0) {
-            ws.addRow({ workshop: w.name, team: l.line_name, category: '' });
+            ws.addRow({ workshop: w.name, team: l.line_name, daily_output: l.daily_output || 0, category: '' });
           } else {
             for (const c of lCats) {
-              ws.addRow({ workshop: w.name, team: l.line_name, category: c.name });
+              ws.addRow({ workshop: w.name, team: l.line_name, daily_output: l.daily_output || 0, category: c.name });
             }
           }
         }
@@ -600,11 +600,16 @@ app.post('/api/sewing-workshop-tree/import', async (req, res) => {
         const workshopName = String(row.getCell(1).value || '').trim();
         const teamName = String(row.getCell(2).value || '').trim();
         const categoryName = String(row.getCell(3).value || '').trim();
+        const dailyOutput = parseInt(row.getCell(4).value) || 0;
         if (!workshopName || !teamName || !categoryName) { skipped++; continue; }
         const wsId = wsMap[workshopName];
         if (!wsId) { skipped++; continue; }
         const lineId = lineMap[`${wsId}_${teamName}`];
         if (!lineId) { skipped++; continue; }
+        // 更新班组日产量
+        if (dailyOutput > 0) {
+          db.run('UPDATE production_lines SET daily_output = ? WHERE id = ?', [dailyOutput, lineId]);
+        }
         // 检查是否已存在
         const existing = db.get('SELECT id FROM line_style_categories WHERE line_id = ? AND name = ?', [lineId, categoryName]);
         if (existing) { skipped++; continue; }

@@ -78,13 +78,13 @@ const flatRows = computed(() => {
   function walk(nodes, pw, pt) {
     for (const node of (nodes || [])) {
       if (node.type === 'workshop') {
-        rows.push({ ...node, workshopName: node.name, teamName: '', categoryName: '' })
+        rows.push({ ...node, workshopName: node.name, teamName: '', categoryName: '', daily_output: 0 })
         walk(node.children, node.name, '')
       } else if (node.type === 'team') {
-        rows.push({ ...node, workshopName: pw, teamName: node.name, categoryName: '' })
+        rows.push({ ...node, workshopName: pw, teamName: node.name, categoryName: '', daily_output: node.daily_output || 0 })
         walk(node.children, pw, node.name)
       } else {
-        rows.push({ ...node, workshopName: pw, teamName: pt, categoryName: node.name })
+        rows.push({ ...node, workshopName: pw, teamName: pt, categoryName: node.name, daily_output: 0 })
       }
     }
   }
@@ -178,25 +178,47 @@ function validateName(type, name) {
 
 // ====== 行内编辑 ======
 function startEdit(row) {
-  editingMap.value = { [rowKey(row)]: row.name }
+  if (row.type === 'team') {
+    editingMap.value = { [rowKey(row)]: { name: row.name, daily_output: row.daily_output || 0 } }
+  } else {
+    editingMap.value = { [rowKey(row)]: row.name }
+  }
 }
 function cancelEdit() {
   editingMap.value = {}
 }
 function getEditingName(key) {
-  return editingMap.value[key] ?? ''
+  const v = editingMap.value[key]
+  return typeof v === 'object' ? (v?.name ?? '') : (v ?? '')
 }
 function setEditingName(key, val) {
-  editingMap.value = { ...editingMap.value, [key]: val }
+  const old = editingMap.value[key]
+  if (typeof old === 'object') {
+    editingMap.value = { ...editingMap.value, [key]: { ...old, name: val } }
+  } else {
+    editingMap.value = { ...editingMap.value, [key]: val }
+  }
+}
+function getEditingOutput(key) {
+  const v = editingMap.value[key]
+  return typeof v === 'object' ? (v?.daily_output ?? 0) : 0
+}
+function setEditingOutput(key, val) {
+  const old = editingMap.value[key]
+  if (typeof old === 'object') {
+    editingMap.value = { ...editingMap.value, [key]: { ...old, daily_output: parseInt(val) || 0 } }
+  }
 }
 async function saveEdit(row) {
   const k = rowKey(row)
-  const newName = (editingMap.value[k] || '').trim()
+  const editVal = editingMap.value[k]
+  const newName = (typeof editVal === 'object' ? editVal?.name : editVal || '').trim()
   if (!newName) { ElMessage.warning('名称不能为空'); return }
   if (!validateName(row.type, newName)) return
-  if (newName === row.name) { cancelEdit(); return }
+  const newOutput = typeof editVal === 'object' ? (editVal?.daily_output || 0) : 0
+  if (newName === row.name && newOutput === (row.daily_output || 0)) { cancelEdit(); return }
   try {
-    await api.updateSewingWorkshopNode(row.id, { type: row.type, name: newName })
+    await api.updateSewingWorkshopNode(row.id, { type: row.type, name: newName, daily_output: newOutput })
     ElMessage.success('修改成功')
     cancelEdit()
     loadTree()
@@ -210,11 +232,13 @@ async function saveAllEdits() {
   for (const k of keys) {
     const row = flatRows.value.find(r => rowKey(r) === k)
     if (!row) continue
-    const newName = editingMap.value[k].trim()
-    if (!newName || newName === row.name) continue
+    const editVal = editingMap.value[k]
+    const newName = (typeof editVal === 'object' ? editVal?.name : editVal || '').trim()
+    const newOutput = typeof editVal === 'object' ? (editVal?.daily_output || 0) : 0
+    if (!newName || (newName === row.name && newOutput === (row.daily_output || 0))) continue
     if (!validateName(row.type, newName)) continue
     try {
-      await api.updateSewingWorkshopNode(row.id, { type: row.type, name: newName })
+      await api.updateSewingWorkshopNode(row.id, { type: row.type, name: newName, daily_output: newOutput })
       changed++
     } catch (e) {
       ElMessage.error(`「${row.name}」修改失败：${e.response?.data?.error || e.message}`)
@@ -352,10 +376,10 @@ async function doExport() {
   try {
     if (!filteredRows.value.length) { ElMessage.warning('没有可导出的数据'); return }
     const XLSX = await import('xlsx')
-    const header = ['车间', '班组', '款式分类']
-    const data = filteredRows.value.map(r => [r.workshopName, r.teamName, r.categoryName])
+    const header = ['车间', '班组', '日产量', '款式分类']
+    const data = filteredRows.value.map(r => [r.workshopName, r.teamName, r.daily_output || 0, r.categoryName])
     const ws = XLSX.utils.aoa_to_sheet([header, ...data])
-    ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 20 }]
+    ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 20 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '车间班组款式分类')
     XLSX.writeFile(wb, '车间班组款式分类.xlsx')
@@ -455,6 +479,9 @@ onUnmounted(() => {
                   <TextFilter :data="flatRows" field="categoryName" label="款式分类" :precomputed="precomputedOptions.categoryName" @filter="f => onTextFilter('categoryName', f)" @sort="onSort" />
                 </div>
               </th>
+              <th style="width:100px">
+                <div class="col-header"><span>日产量</span></div>
+              </th>
               <th style="width:260px">操作</th>
             </tr>
           </thead>
@@ -502,6 +529,17 @@ onUnmounted(() => {
                   </template>
                   <template v-else>
                     <span class="node-name">{{ row.categoryName }}</span>
+                  </template>
+                </template>
+              </td>
+              <!-- 日产量列 -->
+              <td style="text-align:right">
+                <template v-if="row.type === 'team'">
+                  <template v-if="isEditing(rowKey(row))">
+                    <input class="inp" type="number" min="0" :model-value="getEditingOutput(rowKey(row))" @input="setEditingOutput(rowKey(row), $event.target.value)" @keyup.enter="saveEdit(row)" @keyup.escape="cancelEdit" style="width:80px;text-align:right" />
+                  </template>
+                  <template v-else>
+                    <span>{{ row.daily_output || 0 }}</span>
                   </template>
                 </template>
               </td>

@@ -477,9 +477,13 @@ onUnmounted(() => {
 .batch-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--primary-light); border-radius: var(--radius); margin-bottom: 12px; }
 .batch-count { font-size: 13px; color: var(--primary); font-weight: 600; }
 .empty-state { text-align: center; padding: 60px; color: var(--text-tertiary); }
-.excel-wrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.excel-wrap { flex: 1; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); display: flex; flex-direction: column; }
 .excel-wrap.dragging, .excel-wrap.dragging td, .excel-wrap.dragging th, .excel-wrap.dragging input { user-select: none !important; }
 .excel-body { overflow: auto; flex: 1; }
+.excel-body::-webkit-scrollbar { height: 8px; width: 8px; }
+.excel-body::-webkit-scrollbar-thumb { background: #c4c4c4; border-radius: 4px; }
+.excel-body::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
+.excel-body::-webkit-scrollbar-track { background: #f0f0f0; }
 .excel-table { border-collapse: collapse; font-size: 13px; color: var(--text); min-width: 100%; width: 100%; }
 .excel-table thead th { padding: 0; background: var(--card); color: var(--text-tertiary); font-size: 11px; font-weight: 500; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 3; }
 .excel-table td { padding: 12px 16px; border-bottom: 1px solid var(--border-light); white-space: nowrap; text-align: center; }
