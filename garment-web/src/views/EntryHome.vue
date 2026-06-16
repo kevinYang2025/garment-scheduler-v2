@@ -126,8 +126,8 @@ onMounted(loadStats)
 </template>
 
 <style scoped>
-.entry-bg { min-height:100vh; background:linear-gradient(160deg,#f5f0ff 0%,#fdf2f8 40%,#fefce8 100%); display:flex; justify-content:center; }
-.entry-container { width:100%; max-width:1080px; background:#f3f4f6; border-radius:0 0 28px 28px; padding:16px 20px 20px; box-shadow:0 4px 24px rgba(0,0,0,.04); }
+.entry-bg { background:linear-gradient(160deg,#f5f0ff 0%,#fdf2f8 40%,#fefce8 100%); display:flex; justify-content:center; }
+.entry-container { width:100%; max-width:1080px; background:#f3f4f6; border-radius:0 0 28px 28px; padding:16px 20px 20px; box-shadow:0 4px 24px rgba(0,0,0,.04); display:flex; flex-direction:column; }
 
 /* 横幅 */
 .banner { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; margin-bottom:14px; border-radius:16px; background:linear-gradient(135deg,#7c5cfc,#a78bfa 60%,#c4b5fd); color:#fff; position:relative; overflow:hidden; }
@@ -146,7 +146,7 @@ onMounted(loadStats)
 .pill-lbl { display:block; font-size:10px; opacity:.65; margin-top:2px; }
 
 /* 主体 */
-.main-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.main-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; flex:1; }
 
 /* 工作台 */
 .wb { background:#fff; border-radius:16px; padding:18px; cursor:pointer; transition:all .25s; box-shadow:0 1px 4px rgba(0,0,0,.03); border:1px solid rgba(0,0,0,.04); display:flex; flex-direction:column; }
