@@ -621,12 +621,10 @@ onMounted(loadGantt)
   width: 110px;
   min-width: 110px;
   flex-shrink: 0;
-  border-right: 2px solid var(--border);
   background: var(--card);
   z-index: 3;
   position: sticky;
   left: 0;
-  align-self: stretch;
 }
 
 .gantt-left-header {
@@ -680,6 +678,7 @@ onMounted(loadGantt)
 .gantt-right {
   flex: 1;
   min-width: 0;
+  border-left: 2px solid var(--border);
 }
 
 .gantt-right-header {
