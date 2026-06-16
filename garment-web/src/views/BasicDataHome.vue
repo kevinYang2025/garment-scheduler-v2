@@ -22,8 +22,9 @@ async function loadStats() {
 
 const cards = [
   { key: 'styles', label: '款式管理', icon: '🏷️', desc: '管理所有款式的颜色、尺码、工艺等信息', color: '#4a9eff', bg: '#eaf3ff', stat: () => stats.value.styles, statLabel: '个款式' },
+  { key: 'fabricList', label: '面料装柜清单', icon: '📑', desc: '导入和管理面料装柜数据，支持批量入库', color: '#f5a623', bg: '#fff6e8', stat: () => stats.value.fabricList, statLabel: '条记录' },
   { key: 'sewingWorkshop', label: '缝制车间管理', icon: '🏭', desc: '管理车间、班组、产线信息', color: '#34c77b', bg: '#e8faf0', stat: () => '-', statLabel: '' },
-  { key: 'preWorkshopOutput', label: '前置车间产量管理', icon: '⚙️', desc: '设置裁剪、印花、刺绣、模板、烫标的标准日产量', color: '#f59e0b', bg: '#fef3c7', stat: () => '-', statLabel: '' },
+  { key: 'preWorkshopOutput', label: '前置车间产量管理', icon: '⚙️', desc: '设置裁剪、印花、刺绣、模板、烫标的标准日产量', color: '#f59e0b', bg: '#fff6e8', stat: () => '-', statLabel: '' },
   { key: 'styleColorSize', label: '分色分尺码', icon: '📐', desc: '按颜色和尺码拆分款式数量', color: '#a78bfa', bg: '#f3eeff', stat: () => '-', statLabel: '' },
 ]
 

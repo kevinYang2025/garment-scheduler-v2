@@ -212,7 +212,8 @@
       "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('排程记录数:',t.length\\);t.slice\\(0,3\\).forEach\\(m=>console.log\\(' ',m.style_no,m.workshop,m.line_team,m.plan_start,m.plan_end\\)\\)}\\)\")",
       "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('总数:',t.length\\);t.forEach\\(m=>console.log\\(m.id,m.style_no,'车间:'+m.workshop,'班组:'+m.line_team,m.plan_start,'~',m.plan_end\\)\\)}\\)\")",
       "Bash(taskkill //PID 32328 //F)",
-      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{try{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('OK, records:',t.length\\)}catch\\(e\\){console.log\\('PARSE ERROR:',d.join\\(''\\).slice\\(0,200\\)\\)}}\\)\")"
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{try{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('OK, records:',t.length\\)}catch\\(e\\){console.log\\('PARSE ERROR:',d.join\\(''\\).slice\\(0,200\\)\\)}}\\)\")",
+      "Bash(curl -s \"http://localhost:5173/api/schedule/sewing\")"
     ]
   }
 }

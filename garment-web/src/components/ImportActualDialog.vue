@@ -16,6 +16,7 @@ const emit = defineEmits(['update:modelValue', 'imported'])
 const importing = ref(false)
 const previewData = ref([])
 const fileName = ref('')
+const fileInputRef = ref(null)
 
 function onFileChange(e) {
   const file = e.target.files?.[0]

@@ -66,7 +66,7 @@ const navSections = [
       { key: 'styles', label: '款式管理', icon: 'tag' },
       { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
       { key: 'sewingWorkshop', label: '缝制车间管理', icon: 'factory' },
-      { key: 'preWorkshopOutput', label: '前置车间产量管理', icon: 'chart' },
+      { key: 'preWorkshopOutput', label: '前置车间产量管理', icon: 'data-analysis' },
       { key: 'styleColorSize', label: '分色分尺码', icon: 'ruler' },
     ]
   },

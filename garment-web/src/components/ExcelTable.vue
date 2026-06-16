@@ -94,8 +94,13 @@ const filteredRecords = computed(() => {
   }
   for (const [field, f] of Object.entries(numFilters.value)) {
     if (!f.applied) continue
-    if (f.min !== undefined && f.min !== null) list = list.filter(r => Number(r[field]) >= f.min)
-    if (f.max !== undefined && f.max !== null) list = list.filter(r => Number(r[field]) <= f.max)
+    if (f.checked && f.checked.size > 0) {
+      list = list.filter(r => {
+        const v = r[field]
+        const key = v != null ? String(v) : ''
+        return f.checked.has(key) || (f.includeEmpty && !key)
+      })
+    }
   }
   if (sortState.value.field) {
     const { field, sortBy, dir } = sortState.value
