@@ -572,6 +572,14 @@ function migrateStyles() {
     }
   } catch (e) { console.log('style_category migration skip:', e.message); }
 
+  // 装柜清单添加成衣数量字段
+  try {
+    const flcols = db.prepare("PRAGMA table_info(fabric_loading_list)").all().map(c => c.name);
+    if (!flcols.includes('garment_qty')) {
+      db.prepare("ALTER TABLE fabric_loading_list ADD COLUMN garment_qty REAL DEFAULT 0").run();
+    }
+  } catch (e) { console.log('garment_qty migration skip:', e.message); }
+
   try {
     const mpcols = db.prepare("PRAGMA table_info(main_plan)").all().map(c => c.name);
     if (!mpcols.includes('priority')) {

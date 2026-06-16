@@ -2257,9 +2257,9 @@ app.post('/api/fabric-loading', (req, res) => {
   try {
     const r = req.body;
     const result = db.run(
-      `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, remark)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.loading_date, r.loading_qty || 0, r.remark]
+      `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, garment_qty, remark)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.loading_date, r.loading_qty || 0, r.garment_qty || 0, r.remark]
     );
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
@@ -2369,6 +2369,7 @@ app.get('/api/fabric-loading/export', async (req, res) => {
       { header: '单位2', key: 'unit2', width: 8 },
       { header: '装柜日期', key: 'loading_date', width: 14 },
       { header: '装柜数量', key: 'loading_qty', width: 12 },
+      { header: '成衣数量', key: 'garment_qty', width: 12 },
       { header: '备注', key: 'remark', width: 20 },
     ];
     ws.getRow(1).font = { bold: true };
@@ -2379,7 +2380,7 @@ app.get('/api/fabric-loading/export', async (req, res) => {
         width: r.width || '', weight: r.weight || '', color: r.color || '',
         qty: r.qty || 0, unit: r.unit || 'KG', total_pcs: r.total_pcs || 0,
         unit2: r.unit2 || '匹', loading_date: r.loading_date || '', loading_qty: r.loading_qty || 0,
-        remark: r.remark || '',
+        garment_qty: r.garment_qty || 0, remark: r.remark || '',
       });
     }
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -2400,9 +2401,9 @@ app.post('/api/fabric-loading/import', (req, res) => {
     const tx = db.getDb().transaction(() => {
       for (const r of records) {
         db.run(
-          `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, remark)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.loading_date, r.loading_qty || 0, r.remark]
+          `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, garment_qty, remark)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.loading_date, r.loading_qty || 0, r.garment_qty || 0, r.remark]
         );
         imported++;
       }

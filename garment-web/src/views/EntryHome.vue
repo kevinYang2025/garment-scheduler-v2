@@ -6,15 +6,20 @@ import api from '../api'
 const emit = defineEmits(['navigate'])
 const { connected } = useWebSocket()
 
-const stats = ref({ styles: 0, mainPlan: 0, sewingPending: 0, sewingOverdue: 0, todayDispatch: 0, dispatchRate: 0 })
+const stats = ref({ styles: 0, mainPlan: 0, sewingPending: 0, sewingOverdue: 0, todayDispatch: 0, dispatchRate: 0, busyLines: 0, totalLines: 0, workshops: 0 })
 
 async function loadStats() {
   try {
-    const [s, p, sw] = await Promise.all([api.getStyles(''), api.getMainPlan(), api.getSewingSummary()])
+    const [s, p, sw, tree] = await Promise.all([api.getStyles(''), api.getMainPlan(), api.getSewingSummary(), api.getSewingWorkshopTree()])
     stats.value.styles = (s.data || []).length
     stats.value.mainPlan = (p.data || []).length
     stats.value.sewingPending = (sw.data || {}).plan?.totalCount || 0
     stats.value.sewingOverdue = (sw.data || {}).plan?.overdue || 0
+    const treeData = tree.data || []
+    stats.value.workshops = treeData.filter(n => n.type === 'workshop').length
+    const teams = treeData.filter(n => n.type === 'team')
+    stats.value.totalLines = teams.length
+    stats.value.busyLines = teams.filter(t => t.status === '生产中').length
   } catch {}
 }
 
@@ -71,9 +76,9 @@ onMounted(loadStats)
             <span class="rl">计划达成率</span>
           </div>
           <div class="wb-row">
-            <div class="wn"><b>{{ fmt(stats.styles) }}</b><span>款式总数</span></div>
-            <div class="wn"><b>{{ fmt(stats.mainPlan) }}</b><span>预排总计划</span></div>
-            <div class="wn"><b>{{ fmt(stats.sewingPending) }}</b><span>待排程</span></div>
+            <div class="wn"><b>{{ fmt(stats.busyLines) }}<small>/{{ fmt(stats.totalLines) }}</small></b><span>生产中产线</span></div>
+            <div class="wn"><b>{{ fmt(stats.workshops) }}</b><span>车间数</span></div>
+            <div class="wn"><b>{{ fmt(stats.totalLines) }}</b><span>总班组数</span></div>
           </div>
           <div class="wb-go">进入工作台 →</div>
         </div>
