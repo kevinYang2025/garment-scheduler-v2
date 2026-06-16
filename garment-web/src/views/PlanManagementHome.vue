@@ -21,7 +21,7 @@ async function loadStats() {
 }
 
 const cards = [
-  { key: 'mainPlan', label: '主计划', icon: '📅', desc: '管理所有款式的生产计划，反算排程日期', color: '#f5a623', bg: '#fff6e8', stat: () => stats.value.mainPlan, statLabel: '个计划' },
+  { key: 'mainPlan', label: '预排总计划', icon: '📅', desc: '管理所有款式的生产计划，反算排程日期', color: '#f5a623', bg: '#fff6e8', stat: () => stats.value.mainPlan, statLabel: '个计划' },
   { key: 'sewing', label: '缝制排程', icon: '🧵', desc: '班组缝制计划与目视化甘特图排班', color: '#7c5cfc', bg: '#f0ecff', stat: () => stats.value.sewingPending, statLabel: '个待排' },
   { key: 'cutting', label: '裁剪排程', icon: '✂️', desc: '裁剪工序排程与产能分配', color: '#4a9eff', bg: '#eaf3ff', stat: () => '-', statLabel: '' },
   { key: 'secondary', label: '二次加工', icon: '🎨', desc: '印花、刺绣、模板、烫标等二次加工排程', color: '#34c77b', bg: '#e8faf0', stat: () => '-', statLabel: '' },
@@ -37,7 +37,7 @@ onMounted(loadStats)
   <div class="plan-home">
     <div class="page-header">
       <h2>计划管理</h2>
-      <p>主计划、缝制排程、二次加工、裁剪排程</p>
+      <p>预排总计划、缝制排程、二次加工、裁剪排程</p>
     </div>
     <div class="card-grid">
       <div v-for="c in cards" :key="c.key" class="pcard" @click="enterCard(c.key)">

@@ -17,7 +17,7 @@ const filters = ref({
 const moduleOptions = [
   { value: '', label: '全部模块' },
   { value: 'styles', label: '款式管理' },
-  { value: 'main_plan', label: '主计划' },
+  { value: 'main_plan', label: '预排总计划' },
   { value: 'schedule_cutting', label: '裁剪排程' },
   { value: 'schedule_secondary', label: '二次加工' },
   { value: 'schedule_sewing', label: '缝制排程' },
@@ -88,7 +88,7 @@ function formatTime(ts) {
 
 const moduleLabels = {
   styles: '款式管理',
-  main_plan: '主计划',
+  main_plan: '预排总计划',
   schedule_cutting: '裁剪排程',
   schedule_secondary: '二次加工',
   schedule_sewing: '缝制排程',

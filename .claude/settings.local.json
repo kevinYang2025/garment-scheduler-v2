@@ -200,7 +200,11 @@
       "Bash(node import_styles.js)",
       "Bash(node --check server.js)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3001/api/styles)",
-      "Bash(curl -s \"http://localhost:3001/socket.io/?EIO=4&transport=polling\")"
+      "Bash(curl -s \"http://localhost:3001/socket.io/?EIO=4&transport=polling\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); teams=[c for w in d for c in w.get\\('children',[]\\)]; print\\(f'车间: {len\\(d\\)}'\\); print\\(f'班组: {len\\(teams\\)}'\\); [print\\(f'  {w[\\\\\"name\\\\\"]}>{t[\\\\\"name\\\\\"]} daily_output={t[\\\\\"daily_output\\\\\"]}'\\) for w in d for t in w.get\\('children',[]\\)]\")",
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);const teams=t.flatMap\\(w=>\\(w.children||[]\\).map\\(c=>\\({w:w.name,t:c.name,o:c.daily_output}\\)\\)\\);console.log\\('班组数:',teams.length\\);teams.slice\\(0,5\\).forEach\\(x=>console.log\\(' ',x.w,'>',x.t,'产量:',x.o\\)\\)}\\)\")",
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);t.forEach\\(w=>console.log\\(w.name,'\\(',w.id,'\\) ->',w.children.map\\(c=>c.name\\).join\\(', '\\)\\)\\)}\\)\")",
+      "Bash(taskkill //PID 29904 //F)"
     ]
   }
 }

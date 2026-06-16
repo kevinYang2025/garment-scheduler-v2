@@ -23,6 +23,7 @@ const dialogForm = ref({ name: '', type: 'workshop', parent_id: null, parentName
 
 // 导入
 const importVisible = ref(false)
+const importMode = ref('replace')
 const importFile = ref(null)
 const importResult = ref(null)
 const importing = ref(false)
@@ -403,7 +404,7 @@ async function doImport() {
   if (!importFile.value) return
   importing.value = true
   try {
-    const { data } = await api.importSewingWorkshopTree(importFile.value)
+    const { data } = await api.importSewingWorkshopTree(importFile.value, importMode.value)
     importResult.value = data
     ElMessage.success(`导入完成：新增 ${data.added} 条，跳过 ${data.skipped} 条`)
     loadTree()
@@ -582,14 +583,23 @@ onUnmounted(() => {
     <!-- 导入弹窗 -->
     <el-dialog v-model="importVisible" title="导入Excel" width="500px">
       <div style="margin-bottom:12px;font-size:13px;color:#666">
-        Excel格式：列顺序为「车间」「班组」「款式分类」，首行为表头。同名分类自动跳过。
+        Excel格式：列顺序为「车间」「班组」「款式分类」「日产量」，首行为表头。
       </div>
+      <el-radio-group v-model="importMode" style="margin-bottom:12px">
+        <el-radio value="replace">覆盖模式（清空后重建）</el-radio>
+        <el-radio value="append">追加模式（跳过重复）</el-radio>
+      </el-radio-group>
       <div style="margin-bottom:12px">
         <input type="file" accept=".xlsx,.xls" @change="onImportFileChange" />
         <span v-if="importFile" style="margin-left:8px;color:#409eff">{{ importFile.name }}</span>
       </div>
       <div v-if="importResult" style="margin-bottom:12px;color:#67c23a">
-        导入完成：新增 {{ importResult.added }} 条，跳过 {{ importResult.skipped }} 条
+        <template v-if="importResult.mode === 'replace'">
+          覆盖导入完成：车间 {{ importResult.workshops }} 个，班组 {{ importResult.teams }} 个，款式分类 {{ importResult.categories }} 个
+        </template>
+        <template v-else>
+          导入完成：新增 {{ importResult.added }} 条，跳过 {{ importResult.skipped }} 条
+        </template>
       </div>
       <template #footer>
         <el-button @click="importVisible = false">关闭</el-button>

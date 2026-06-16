@@ -80,7 +80,7 @@ onMounted(loadPlans)
     <div class="page-header-bar">
       <h2 class="page-heading">出货计划</h2>
       <div style="display:flex;gap:8px">
-        <el-button type="primary" @click="generateFromMainPlan" :loading="generating">从主计划自动生成</el-button>
+        <el-button type="primary" @click="generateFromMainPlan" :loading="generating">从预排总计划自动生成</el-button>
         <el-button @click="openCreate">手动新建</el-button>
       </div>
     </div>

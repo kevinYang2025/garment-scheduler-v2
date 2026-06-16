@@ -51,7 +51,7 @@ function toggleSelectAll() {
 
 async function batchDelete() {
   try {
-    await ElMessageBox.confirm(`确定删除选中的 ${selectedIds.value.size} 条主计划？`, '批量删除', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除选中的 ${selectedIds.value.size} 条预排总计划？`, '批量删除', { type: 'warning' })
     const ids = [...selectedIds.value]
     let ok = 0, fail = 0
     for (const id of ids) {
@@ -184,7 +184,7 @@ async function load() {
     plans.value = data
     computeFilterOptions()
   } catch (e) {
-    ElMessage.error('加载主计划失败')
+    ElMessage.error('加载预排总计划失败')
   } finally {
     loading.value = false
   }
@@ -210,7 +210,7 @@ async function saveEdit() {
 }
 async function remove(id) {
   try {
-    await ElMessageBox.confirm('确定删除该主计划?', '提示', { type: 'warning' })
+    await ElMessageBox.confirm('确定删除该预排总计划?', '提示', { type: 'warning' })
     await api.deleteMainPlan(id)
     ElMessage.success('已删除')
     load()
@@ -325,7 +325,7 @@ async function save() {
       line_team: form.value.line_team || '',
     }
     await api.saveMainPlan(payload)
-    ElMessage.success('已添加到主计划')
+    ElMessage.success('已添加到预排总计划')
     dialogVisible.value = false
     load()
   } catch (e) {
@@ -349,8 +349,8 @@ async function exportExcel() {
     const ws = XLSX.utils.aoa_to_sheet([header, ...data])
     ws['!cols'] = columns.map(c => ({ wch: Math.max(c.label.length * 2, Math.floor(c.width / 8)) }))
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '主计划')
-    XLSX.writeFile(wb, '主计划.xlsx')
+    XLSX.utils.book_append_sheet(wb, ws, '预排总计划')
+    XLSX.writeFile(wb, '预排总计划.xlsx')
     ElMessage.success(`导出成功：${filteredPlans.value.length} 条`)
   } catch (e) {
     ElMessage.error('导出失败')
@@ -447,7 +447,7 @@ onUnmounted(() => {
       <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="handleImport" />
     </div>
 
-    <div v-if="!plans.length && !loading" class="empty-state">暂无主计划数据，点击上方按钮新增</div>
+    <div v-if="!plans.length && !loading" class="empty-state">暂无预排总计划数据，点击上方按钮新增</div>
 
     <!-- 批量操作栏 -->
     <div v-if="selectedCount > 0" class="batch-bar">
@@ -586,7 +586,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 新增计划弹窗 -->
-    <el-dialog v-model="dialogVisible" title="新增主计划" width="680px">
+    <el-dialog v-model="dialogVisible" title="新增预排总计划" width="680px">
       <el-form label-width="90px" size="small">
         <el-form-item label="选择款式">
           <StylePicker ref="stylePickerRef" :model-value="selectedStyle" @select="onStyleSelect" />

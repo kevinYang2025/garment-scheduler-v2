@@ -577,7 +577,7 @@ app.get('/api/sewing-workshop-tree/export', async (req, res) => {
 
 app.post('/api/sewing-workshop-tree/import', async (req, res) => {
   try {
-    const { file } = req.body;
+    const { file, mode } = req.body; // mode: 'append' (default) or 'replace'
     if (!file) return res.status(400).json({ error: '请上传文件' });
     const buffer = Buffer.from(file, 'base64');
     const wb = new ExcelJS.Workbook();
@@ -585,45 +585,85 @@ app.post('/api/sewing-workshop-tree/import', async (req, res) => {
     const ws = wb.worksheets[0];
     if (!ws || ws.rowCount < 2) return res.status(400).json({ error: '文件为空' });
 
-    // 建立车间/班组名称→ID映射
-    const workshops = db.all('SELECT * FROM workshops');
-    const lines = db.all('SELECT * FROM production_lines');
-    const wsMap = {}; // name→id
-    for (const w of workshops) wsMap[w.name] = w.id;
-    const lineMap = {}; // "workshopId_lineName"→id
-    for (const l of lines) lineMap[`${l.workshop_id}_${l.line_name}`] = l.id;
-
-    let added = 0, skipped = 0;
-    const txn = db.getDb().transaction(() => {
-      for (let i = 2; i <= ws.rowCount; i++) {
-        const row = ws.getRow(i);
-        const workshopName = String(row.getCell(1).value || '').trim();
-        const teamName = String(row.getCell(2).value || '').trim();
-        const categoryName = String(row.getCell(3).value || '').trim();
-        const dailyOutput = parseInt(row.getCell(4).value) || 0;
-        if (!workshopName || !teamName || !categoryName) { skipped++; continue; }
-        const wsId = wsMap[workshopName];
-        if (!wsId) { skipped++; continue; }
-        const lineId = lineMap[`${wsId}_${teamName}`];
-        if (!lineId) { skipped++; continue; }
-        // 更新班组日产量
-        if (dailyOutput > 0) {
-          db.run('UPDATE production_lines SET daily_output = ? WHERE id = ?', [dailyOutput, lineId]);
+    if (mode === 'replace') {
+      // 清空旧树，用 Excel 数据重建
+      let workshopsCreated = 0, teamsCreated = 0, catsCreated = 0;
+      const txn = db.getDb().transaction(() => {
+        db.run('DELETE FROM line_style_categories');
+        db.run('DELETE FROM production_lines');
+        db.run('DELETE FROM workshops');
+        const wsMap = {};
+        const lineMap = {};
+        for (let i = 2; i <= ws.rowCount; i++) {
+          const row = ws.getRow(i);
+          const workshopName = String(row.getCell(1).value || '').trim();
+          const teamName = String(row.getCell(2).value || '').trim();
+          const categoryName = String(row.getCell(3).value || '').trim();
+          const dailyOutput = parseInt(row.getCell(4).value) || 0;
+          if (!workshopName || !teamName) continue;
+          if (!wsMap[workshopName]) {
+            const r = db.run('INSERT INTO workshops (name, sort_order) VALUES (?, ?)', [workshopName, Object.keys(wsMap).length + 1]);
+            wsMap[workshopName] = r.lastInsertRowid;
+            workshopsCreated++;
+          }
+          const wsId = wsMap[workshopName];
+          const lineKey = `${wsId}_${teamName}`;
+          if (!lineMap[lineKey]) {
+            const r = db.run('INSERT INTO production_lines (workshop_id, line_name, daily_output, sort_order) VALUES (?, ?, ?, ?)',
+              [wsId, teamName, dailyOutput, teamsCreated + 1]);
+            lineMap[lineKey] = r.lastInsertRowid;
+            teamsCreated++;
+          } else {
+            db.run('UPDATE production_lines SET daily_output = ? WHERE id = ?', [dailyOutput, lineMap[lineKey]]);
+          }
+          if (categoryName) {
+            db.run('INSERT INTO line_style_categories (line_id, name, sort_order) VALUES (?, ?, ?)',
+              [lineMap[lineKey], categoryName, catsCreated + 1]);
+            catsCreated++;
+          }
         }
-        // 检查是否已存在
-        const existing = db.get('SELECT id FROM line_style_categories WHERE line_id = ? AND name = ?', [lineId, categoryName]);
-        if (existing) { skipped++; continue; }
-        const max = db.get('SELECT MAX(sort_order) as m FROM line_style_categories WHERE line_id = ?', [lineId]);
-        db.run('INSERT INTO line_style_categories (line_id, name, sort_order) VALUES (?, ?, ?)',
-          [lineId, categoryName, (max?.m || 0) + 1]);
-        added++;
-      }
-    });
-    txn();
-    res.json({ added, skipped });
+      });
+      txn();
+      res.json({ mode: 'replace', workshops: workshopsCreated, teams: teamsCreated, categories: catsCreated });
+    } else {
+      // 追加模式
+      const workshops = db.all('SELECT * FROM workshops');
+      const lines = db.all('SELECT * FROM production_lines');
+      const wsMap = {};
+      for (const w of workshops) wsMap[w.name] = w.id;
+      const lineMap = {};
+      for (const l of lines) lineMap[`${l.workshop_id}_${l.line_name}`] = l.id;
+
+      let added = 0, skipped = 0;
+      const txn = db.getDb().transaction(() => {
+        for (let i = 2; i <= ws.rowCount; i++) {
+          const row = ws.getRow(i);
+          const workshopName = String(row.getCell(1).value || '').trim();
+          const teamName = String(row.getCell(2).value || '').trim();
+          const categoryName = String(row.getCell(3).value || '').trim();
+          const dailyOutput = parseInt(row.getCell(4).value) || 0;
+          if (!workshopName || !teamName || !categoryName) { skipped++; continue; }
+          const wsId = wsMap[workshopName];
+          if (!wsId) { skipped++; continue; }
+          const lineId = lineMap[`${wsId}_${teamName}`];
+          if (!lineId) { skipped++; continue; }
+          if (dailyOutput > 0) {
+            db.run('UPDATE production_lines SET daily_output = ? WHERE id = ?', [dailyOutput, lineId]);
+          }
+          const existing = db.get('SELECT id FROM line_style_categories WHERE line_id = ? AND name = ?', [lineId, categoryName]);
+          if (existing) { skipped++; continue; }
+          const max = db.get('SELECT MAX(sort_order) as m FROM line_style_categories WHERE line_id = ?', [lineId]);
+          db.run('INSERT INTO line_style_categories (line_id, name, sort_order) VALUES (?, ?, ?)',
+            [lineId, categoryName, (max?.m || 0) + 1]);
+          added++;
+        }
+      });
+      txn();
+      res.json({ added, skipped });
+    }
   } catch (e) {
     console.error('POST /api/sewing-workshop-tree/import error:', e);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Import failed: ' + e.message });
   }
 });
 

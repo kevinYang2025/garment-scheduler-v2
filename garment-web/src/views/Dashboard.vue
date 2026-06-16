@@ -45,7 +45,7 @@ const kpiCards = computed(() => [
     bg: '#f0fdf4',
   },
   {
-    label: '主计划数',
+    label: '预排总计划数',
     value: stats.value.mainPlan,
     change: '-3%',
     changeLabel: 'vs 上月',
@@ -303,7 +303,7 @@ function getKpiIcon(name) {
             <div class="table-icon">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
             </div>
-            <span class="table-title">近期主计划</span>
+            <span class="table-title">近期预排总计划</span>
             <span class="table-count">{{ recentPlans.length }}</span>
           </div>
           <button class="btn btn-sm btn-outline" @click="emit('navigate', 'mainPlan')">查看全部</button>

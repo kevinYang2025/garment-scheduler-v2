@@ -73,7 +73,7 @@ const navSections = [
     label: '计划管理',
     items: [
       { key: 'planManagement', label: '计划管理总览', icon: 'grid' },
-      { key: 'mainPlan', label: '主计划', icon: 'calendar' },
+      { key: 'mainPlan', label: '预排总计划', icon: 'calendar' },
       { key: 'sewing', label: '缝制排程', icon: 'scissors' },
       { key: 'cutting', label: '裁剪排程', icon: 'cut' },
       { key: 'secondary', label: '二次加工', icon: 'palette' },

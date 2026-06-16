@@ -42,19 +42,19 @@ export default {
   batchAddCategories: (items) => api.post('/sewing-workshop-tree/batch', { type: 'category', items }),
   batchUpdateNodes: (items) => api.put('/sewing-workshop-tree/batch', { items }),
   exportSewingWorkshopTree: () => api.get('/sewing-workshop-tree/export', { responseType: 'blob' }),
-  importSewingWorkshopTree: (file) => {
+  importSewingWorkshopTree: (file, mode) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => {
         const base64 = reader.result.split(',')[1]
-        api.post('/sewing-workshop-tree/import', { file: base64 }).then(resolve).catch(reject)
+        api.post('/sewing-workshop-tree/import', { file: base64, mode: mode || 'append' }).then(resolve).catch(reject)
       }
       reader.onerror = reject
       reader.readAsDataURL(file)
     })
   },
 
-  // 主计划
+  // 预排总计划
   getMainPlan: () => api.get('/main-plan'),
   saveMainPlan: (plan) => api.post('/main-plan', plan),
   updateMainPlan: (id, data) => api.put(`/main-plan/${id}`, data),

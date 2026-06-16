@@ -75,7 +75,7 @@ onMounted(loadStrategies)
     <div class="action-section">
       <div class="action-card">
         <h3>🚀 一键自动排产</h3>
-        <p>根据当前激活的策略，自动将未排产的主计划分配到产线</p>
+        <p>根据当前激活的策略，自动将未排产的预排总计划分配到产线</p>
         <el-button type="primary" size="large" @click="doAutoSchedule" :loading="scheduling">
           {{ scheduling ? '排产中...' : '开始自动排产' }}
         </el-button>
