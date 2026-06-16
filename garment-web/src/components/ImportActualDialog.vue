@@ -92,8 +92,8 @@ function downloadTemplate() {
   >
     <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px">
       <el-button size="small" @click="downloadTemplate">下载模板</el-button>
-      <input type="file" accept=".xlsx,.xls" @change="onFileChange" style="display:none" ref="fileInput" />
-      <el-button type="primary" size="small" @click="$refs.fileInput.click()">选择文件</el-button>
+      <input type="file" accept=".xlsx,.xls" @change="onFileChange" style="display:none" ref="fileInputRef" />
+      <el-button type="primary" size="small" @click="fileInputRef.click()">选择文件</el-button>
       <span v-if="fileName" style="color: var(--text-secondary); font-size: 13px">{{ fileName }}</span>
     </div>
 

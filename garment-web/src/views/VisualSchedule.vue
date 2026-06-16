@@ -346,7 +346,7 @@ onMounted(loadGantt)
               </div>
               <div v-if="line.categories && line.categories.length" class="line-categories">
                 <span v-for="cat in line.categories" :key="cat.name" class="cat-tag">{{ cat.name }}</span>
-                <span class="output-tag">{{ line.categories.reduce((s, c) => s + c.dailyOutput, 0) }}件/天</span>
+                <span class="output-tag">{{ line.dailyOutput || 0 }}件/天</span>
               </div>
             </div>
           </template>

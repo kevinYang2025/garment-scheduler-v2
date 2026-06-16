@@ -64,8 +64,9 @@ const navSections = [
     items: [
       { key: 'basicData', label: '基础数据总览', icon: 'grid' },
       { key: 'styles', label: '款式管理', icon: 'tag' },
+      { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
       { key: 'sewingWorkshop', label: '缝制车间管理', icon: 'factory' },
-      { key: 'preWorkshopOutput', label: '前置车间产量管理', icon: 'factory' },
+      { key: 'preWorkshopOutput', label: '前置车间产量管理', icon: 'chart' },
       { key: 'styleColorSize', label: '分色分尺码', icon: 'ruler' },
     ]
   },
@@ -77,14 +78,6 @@ const navSections = [
       { key: 'sewing', label: '缝制排程', icon: 'scissors' },
       { key: 'cutting', label: '裁剪排程', icon: 'cut' },
       { key: 'secondary', label: '二次加工', icon: 'palette' },
-    ]
-  },
-  {
-    label: '仓库管理',
-    items: [
-      { key: 'fabricList', label: '面料装柜清单', icon: 'list' },
-      { key: 'auxiliaryList', label: '辅料装柜清单', icon: 'list' },
-      { key: 'warehouse', label: '仓库管理', icon: 'package' },
     ]
   },
   {

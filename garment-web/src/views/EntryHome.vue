@@ -42,7 +42,6 @@ const modules = [
   { key: 'basicData', label: '基础数据', icon: '📋', color: '#4a9eff', bg: '#eaf3ff', desc: '款式、面料、车间管理' },
   { key: 'planManagement', label: '计划管理', icon: '📅', color: '#f5a623', bg: '#fff6e8', desc: '预排总计划、排程、二次加工' },
   { key: 'dispatch', label: '报工管理', icon: '📝', color: '#a78bfa', bg: '#f3eeff', desc: '裁剪、印花、刺绣、缝制报工' },
-  { key: 'warehouse', label: '仓库管理', icon: '📦', color: '#34c77b', bg: '#e8faf0', desc: '面料、辅料、裁片、成品' },
   { key: 'config', label: '系统设置', icon: '⚙️', color: '#8e99a4', bg: '#f4f5f7', desc: '工作日历、产能、排产策略' },
 ]
 
@@ -58,10 +57,6 @@ const cardStats = {
   planManagement: [
     { label: '计划', value: () => stats.value.mainPlan, unit: '个' },
     { label: '待排', value: () => stats.value.sewingPending, unit: '个' },
-  ],
-  warehouse: [
-    { label: '面料', value: () => stats.value.warehouseTotal, unit: 'KG' },
-    { label: '仓库', value: () => 4, unit: '个' },
   ],
   dispatch: [
     { label: '报工', value: () => stats.value.todayDispatch, unit: '条' },

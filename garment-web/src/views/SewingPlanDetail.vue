@@ -71,11 +71,15 @@ const importMode = ref('skip')
 
 // Filter states
 const textFilters = ref({})
+const numFilters = ref({})
 const dateFilters = ref({})
 const sortState = ref({ field: '', sortBy: 'name', dir: 'asc' })
 
 function onTextFilter(field, f) {
   textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } }
+}
+function onNumFilter(field, f) {
+  numFilters.value = { ...numFilters.value, [field]: { ...f, applied: true } }
 }
 function onDateFilter(field, f) {
   dateFilters.value = { ...dateFilters.value, [field]: { validDates: f.validDates, hasEmpty: f.hasEmpty } }
@@ -526,7 +530,7 @@ onUnmounted(() => {
             <th class="fix" style="min-width:100px">
               <div class="col-header"><span>裁床计划数量</span>
                 <NumberFilter :data="masters" field="cutting_plan_qty"
-                  @filter="f => onTextFilter('cutting_plan_qty', f)"
+                  @filter="f => onNumFilter('cutting_plan_qty', f)"
                   :sortField="sortState.field==='cutting_plan_qty' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='cutting_plan_qty' ? sortState.dir : 'asc'"
                   @sort="e => onSort(e.field, e.sortBy, e.dir)"
@@ -547,7 +551,7 @@ onUnmounted(() => {
             <th class="fix" style="min-width:90px">
               <div class="col-header"><span>目标日产量</span>
                 <NumberFilter :data="masters" field="daily_target"
-                  @filter="f => onTextFilter('daily_target', f)"
+                  @filter="f => onNumFilter('daily_target', f)"
                   :sortField="sortState.field==='daily_target' ? sortState.sortBy : ''"
                   :sortDir="sortState.field==='daily_target' ? sortState.dir : 'asc'"
                   @sort="e => onSort(e.field, e.sortBy, e.dir)"

@@ -206,7 +206,13 @@
       "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);t.forEach\\(w=>console.log\\(w.name,'\\(',w.id,'\\) ->',w.children.map\\(c=>c.name\\).join\\(', '\\)\\)\\)}\\)\")",
       "Bash(taskkill //PID 29904 //F)",
       "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);t.forEach\\(w=>{console.log\\(w.name,'→',w.children.map\\(c=>c.name+'\\('+c.daily_output+'\\)'\\).join\\(', '\\)\\)}\\)}\\)\")",
-      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);let cats=0;t.forEach\\(w=>w.children.forEach\\(team=>{cats+=\\(team.children||[]\\).length; if\\(team.children&&team.children.length\\) console.log\\(w.name+'/'+team.name+': '+team.children.map\\(c=>c.name\\).join\\(', '\\)\\)}\\)\\);console.log\\('总分类数:',cats\\)}\\)\")"
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);let cats=0;t.forEach\\(w=>w.children.forEach\\(team=>{cats+=\\(team.children||[]\\).length; if\\(team.children&&team.children.length\\) console.log\\(w.name+'/'+team.name+': '+team.children.map\\(c=>c.name\\).join\\(', '\\)\\)}\\)\\);console.log\\('总分类数:',cats\\)}\\)\")",
+      "Bash(taskkill //PID 21260 //F)",
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);\\(t.workshops||[]\\).slice\\(0,2\\).forEach\\(w=>{w.lines.slice\\(0,3\\).forEach\\(l=>{console.log\\(w.name+'/'+l.name+': dailyOutput='+l.dailyOutput+', cats='+JSON.stringify\\(l.categories\\)\\)}\\)}\\)}\\)\")",
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('排程记录数:',t.length\\);t.slice\\(0,3\\).forEach\\(m=>console.log\\(' ',m.style_no,m.workshop,m.line_team,m.plan_start,m.plan_end\\)\\)}\\)\")",
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('总数:',t.length\\);t.forEach\\(m=>console.log\\(m.id,m.style_no,'车间:'+m.workshop,'班组:'+m.line_team,m.plan_start,'~',m.plan_end\\)\\)}\\)\")",
+      "Bash(taskkill //PID 32328 //F)",
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{try{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('OK, records:',t.length\\)}catch\\(e\\){console.log\\('PARSE ERROR:',d.join\\(''\\).slice\\(0,200\\)\\)}}\\)\")"
     ]
   }
 }

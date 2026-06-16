@@ -2727,12 +2727,12 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       taskIndex[key].push(t)
     }
 
-    // 加载所有产线的款式分类（含日产量）
+    // 加载所有产线的款式分类
     const allCats = db.all('SELECT * FROM line_style_categories ORDER BY line_id, sort_order');
     const catIndex = {}
     for (const c of allCats) {
       if (!catIndex[c.line_id]) catIndex[c.line_id] = []
-      catIndex[c.line_id].push({ name: c.name, dailyOutput: c.daily_output || 0 })
+      catIndex[c.line_id].push({ name: c.name })
     }
 
     // 以车间产线为骨架，关联排程数据和分类
@@ -2744,6 +2744,7 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
         return {
           name: line.line_name,
           status: line.status,
+          dailyOutput: line.daily_output || 0,
           categories: catIndex[line.id] || [],
           tasks: taskIndex[key] || []
         }
