@@ -126,8 +126,8 @@ onMounted(loadStats)
 </template>
 
 <style scoped>
-.entry-bg { background:linear-gradient(160deg,#f5f0ff 0%,#fdf2f8 40%,#fefce8 100%); display:flex; justify-content:center; }
-.entry-container { width:100%; max-width:1080px; background:#f3f4f6; border-radius:0 0 28px 28px; padding:16px 20px 20px; box-shadow:0 4px 24px rgba(0,0,0,.04); display:flex; flex-direction:column; }
+.entry-bg { height:100vh; background:linear-gradient(160deg,#f5f0ff 0%,#fdf2f8 40%,#fefce8 100%); display:flex; justify-content:center; overflow:hidden; }
+.entry-container { width:100%; max-width:1080px; background:#f3f4f6; border-radius:0 0 28px 28px; padding:16px 20px 20px; box-shadow:0 4px 24px rgba(0,0,0,.04); display:flex; flex-direction:column; overflow:hidden; }
 
 /* 横幅 */
 .banner { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; margin-bottom:14px; border-radius:16px; background:linear-gradient(135deg,#7c5cfc,#a78bfa 60%,#c4b5fd); color:#fff; position:relative; overflow:hidden; }
