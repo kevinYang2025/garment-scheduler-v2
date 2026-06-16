@@ -13,7 +13,7 @@ const columns = [
   { field: 'product_name', label: '品名', width: 130, type: 'text' },
   { field: 'plan_qty', label: '计划数量', width: 100, type: 'number' },
   { field: 'due_date', label: '交期', width: 110, type: 'date' },
-  { field: 'arrival_date', label: '预计到货', width: 110, type: 'date' },
+  { field: 'arrival_date', label: '预计面料到货', width: 120, type: 'date' },
   { field: 'cutting_start', label: '裁剪上线', width: 110, type: 'date' },
   { field: 'cutting_end', label: '裁剪下线', width: 110, type: 'date' },
   { field: 'printing_start', label: '印花上线', width: 100, type: 'date' },
@@ -29,6 +29,7 @@ const columns = [
   { field: 'sewing_end', label: '缝制下线', width: 110, type: 'date' },
   { field: 'workshop', label: '车间', width: 80, type: 'text' },
   { field: 'line_team', label: '班组', width: 70, type: 'text' },
+  { field: 'line_index', label: '产线', width: 70, type: 'text' },
 ]
 // checkbox(40) + 数据列 + 操作(120)，两表共用此宽度保证对齐
 const colWidths = [40, ...columns.map(c => c.width), 120]
@@ -201,6 +202,11 @@ const filteredPlans = computed(() => {
 const unassignedCount = computed(() => plans.value.filter(r => !r.workshop || !r.line_team).length)
 const assignedCount = computed(() => plans.value.filter(r => r.workshop && r.line_team).length)
 
+// 多行分组：同一款多线时，只在第一行显示款号/品名等重复信息
+function isFirstOfGroup(row) {
+  return row.line_index <= 1
+}
+
 // Re-sync column widths when body rows change
 watch(filteredPlans, () => { setTimeout(syncColWidths, 0) })
 
@@ -323,6 +329,9 @@ function openAdd() {
     pipeline_count: 1,
     workshop: '',
     line_team: '',
+    line_count: 1,
+    line_index: 1,
+    expired: 0,
   }
   dialogVisible.value = true
 }
@@ -364,6 +373,9 @@ async function save() {
       is_scheduled: false,
       workshop: form.value.workshop || '',
       line_team: form.value.line_team || '',
+      line_count: form.value.line_count || 1,
+      line_index: form.value.line_index || 1,
+      expired: form.value.expired || 0,
     }
     await api.saveMainPlan(payload)
     ElMessage.success('已添加到预排总计划')
@@ -567,20 +579,23 @@ onUnmounted(() => {
               <span class="section-tag assigned">已排班组款式 ({{ assignedCount }})</span>
             </td>
           </tr>
-          <tr :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id), 'unassigned-row': !row.workshop || !row.line_team, 'conflict-row': row.conflict_flag }">
+          <tr :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id), 'unassigned-row': !row.workshop || !row.line_team, 'conflict-row': row.conflict_flag && !row.expired, 'expired-row': row.expired, 'multi-line-row': row.line_count > 1 && !isFirstOfGroup(row) }">
             <td class="chk-cell">
               <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
-              <span v-if="row.conflict_flag" class="conflict-icon" title="排程冲突：缝制/烫标上线早于二次加工下线">
+              <span v-if="row.expired" class="expired-icon" title="已过期：交期已过，不排产">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </span>
+              <span v-else-if="row.conflict_flag" class="conflict-icon" title="排程冲突：缝制/烫标上线早于二次加工下线">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
               </span>
             </td>
             <td style="white-space:normal;word-break:break-all;overflow:hidden">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.style_no" /></template>
-              <template v-else><span>{{ row.style_no }}</span></template>
+              <template v-else><span :style="{ opacity: row.line_count > 1 && !isFirstOfGroup(row) ? 0.5 : 1 }">{{ row.style_no }}</span></template>
             </td>
             <td style="white-space:normal;word-break:break-all;overflow:hidden">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.product_name" /></template>
-              <template v-else><span>{{ row.product_name }}</span></template>
+              <template v-else><span :style="{ opacity: row.line_count > 1 && !isFirstOfGroup(row) ? 0.5 : 1 }">{{ row.product_name }}</span></template>
             </td>
             <td class="num">
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.plan_qty" type="number" min="0" /></template>
@@ -654,6 +669,10 @@ onUnmounted(() => {
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.line_team" /></template>
               <template v-else><span>{{ row.line_team }}</span></template>
             </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.line_index" type="number" min="1" /></template>
+              <template v-else><span>{{ row.line_count > 1 ? row.line_index + '/' + row.line_count : '' }}</span></template>
+            </td>
             <td class="action-cell">
               <template v-if="editingId === row.id">
                 <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
@@ -695,7 +714,7 @@ onUnmounted(() => {
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="预计到货">
+            <el-form-item label="预计面料到货">
               <el-date-picker v-model="form.arrival_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
             </el-form-item>
           </el-col>
@@ -871,6 +890,13 @@ onUnmounted(() => {
 }
 .conflict-row td {
   background: #fef2f2 !important;
+}
+.expired-row td {
+  background: #f9fafb !important;
+  color: #9ca3af !important;
+}
+.multi-line-row td {
+  border-top: 1px dashed #e5e7eb !important;
 }
 .conflict-badge {
   display: inline-flex;

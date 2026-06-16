@@ -74,6 +74,10 @@ export default {
   updateSchedule: (scheduleType, id, data) => api.put(`/schedule/${scheduleType}/${id}`, data),
   deleteSchedule: (scheduleType, id) => api.delete(`/schedule/${scheduleType}/${id}`),
 
+  // 印花排程
+  getPrintingPlanData: () => api.get('/printing-plan-data'),
+  confirmPrintingPlan: (data) => api.post('/printing-plan-data/confirm', data),
+
   // 实际生产数据
   getActual: (scheduleType) => api.get('/actual', { params: { scheduleType } }),
   getActualById: (id) => api.get(`/actual/${id}`),
@@ -87,6 +91,9 @@ export default {
   // Missing cutting API methods
   saveCutting: (data) => api.post('/schedule/cutting', data),
   deleteCutting: (id) => api.delete(`/schedule/cutting/${id}`),
+  // 裁剪排程（基于 main_plan + style_color_size）
+  getCuttingSchedule: () => api.get('/schedule/cutting'),
+  exportCuttingSchedule: () => api.get('/schedule/cutting/export', { responseType: 'blob' }),
   // Missing secondary API methods
   saveSecondary: (data) => api.post('/schedule/secondary', data),
   deleteSecondary: (id) => api.delete(`/schedule/secondary/${id}`),

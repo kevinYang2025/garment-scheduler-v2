@@ -1,0 +1,813 @@
+<script setup>
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '../api'
+import DateFilter from '../components/DateFilter.vue'
+import TextFilter from '../components/TextFilter.vue'
+import NumberFilter from '../components/NumberFilter.vue'
+import StylePicker from '../components/StylePicker.vue'
+
+const emit = defineEmits(['back'])
+
+const masters = ref([])
+const dailyData = ref({})
+const dialogVisible = ref(false)
+const form = ref({})
+const selectedStyle = ref(null)
+
+const editingId = ref(null)
+const editForm = ref({})
+
+function startEdit(g) {
+  editingId.value = g.master.id
+  editForm.value = { ...g.master }
+}
+function cancelEdit() {
+  editingId.value = null
+  editForm.value = {}
+}
+
+function calcPlanEnd(start, qty, daily) {
+  if (!start || !qty || !daily) return ''
+  const days = Math.ceil(qty / daily)
+  const d = new Date(start + 'T00:00:00')
+  d.setDate(d.getDate() + days - 1)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+watch(() => [editForm.value.plan_start, editForm.value.cutting_plan_qty, editForm.value.daily_target], () => {
+  if (!editingId.value) return
+  const v = calcPlanEnd(editForm.value.plan_start, editForm.value.cutting_plan_qty, editForm.value.daily_target)
+  if (v) editForm.value.plan_end = v
+})
+
+watch(() => [form.value.plan_start, form.value.cutting_plan_qty, form.value.daily_target], () => {
+  const v = calcPlanEnd(form.value.plan_start, form.value.cutting_plan_qty, form.value.daily_target)
+  if (v) form.value.plan_end = v
+})
+
+async function saveEdit() {
+  try {
+    await api.updateSchedule('secondary', editForm.value.id, editForm.value)
+    ElMessage.success('修改成功')
+    editingId.value = null
+    await load()
+    await loadAllDaily()
+  } catch (e) {
+    console.error('saveEdit error:', e, e.response?.data)
+    ElMessage.error('修改失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+const importDialogVisible = ref(false)
+const importFile = ref(null)
+const importPreview = ref(null)
+const importing = ref(false)
+const importMode = ref('skip')
+
+const textFilters = ref({})
+const numFilters = ref({})
+const dateFilters = ref({})
+const sortState = ref({ field: '', sortBy: 'name', dir: 'asc' })
+
+function onTextFilter(field, f) {
+  textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } }
+}
+function onNumFilter(field, f) {
+  numFilters.value = { ...numFilters.value, [field]: { ...f, applied: true } }
+}
+function onDateFilter(field, f) {
+  dateFilters.value = { ...dateFilters.value, [field]: { validDates: f.validDates, hasEmpty: f.hasEmpty } }
+}
+
+function isFilterActive(field, type) {
+  if (type === 'date') {
+    const df = dateFilters.value[field]
+    return df && (df.validDates?.size > 0 || df.hasEmpty)
+  }
+  return !!textFilters.value[field]?.applied || !!numFilters.value[field]?.applied
+}
+function onSort(field, sortBy, dir) {
+  sortState.value = { field, sortBy, dir }
+}
+
+const filteredMasters = computed(() => {
+  let list = masters.value.slice()
+
+  for (const [field, f] of Object.entries(textFilters.value)) {
+    if (!f || !f.applied) continue
+    list = list.filter(r => {
+      const val = r[field] || ''
+      const hasVal = !!val
+      if (hasVal && !f.checked.has(val)) return false
+      if (!hasVal && !f.includeEmpty) return false
+      return true
+    })
+  }
+
+  for (const [field, f] of Object.entries(dateFilters.value)) {
+    if (!f || ((!f.validDates || f.validDates.size === 0) && !f.hasEmpty)) continue
+    list = list.filter(r => {
+      const d = r[field] ? (r[field].includes('T') ? r[field].slice(0,10) : r[field]) : ''
+      if (d && f.validDates && !f.validDates.has(d)) return false
+      if (!d && !f.hasEmpty) return false
+      return true
+    })
+  }
+
+  if (sortState.value.field) {
+    const { field, sortBy, dir } = sortState.value
+    const mul = dir === 'asc' ? 1 : -1
+    list.sort((a, b) => {
+      let va, vb
+      if (sortBy === 'number') {
+        va = parseInt(a[field]) || 0
+        vb = parseInt(b[field]) || 0
+        return (va - vb) * mul
+      }
+      if (sortBy === 'date') {
+        va = a[field] ? (a[field].includes('T') ? a[field].slice(0,10) : a[field]) : ''
+        vb = b[field] ? (b[field].includes('T') ? b[field].slice(0,10) : b[field]) : ''
+        return va.localeCompare(vb) * mul
+      }
+      va = a[field] || ''
+      vb = b[field] || ''
+      return va.localeCompare(vb, 'zh') * mul
+    })
+  }
+
+  return list
+})
+
+const dateCols = computed(() => {
+  if (!masters.value.length) return []
+  let min = null, max = null
+  for (const m of masters.value) {
+    if (m.plan_start && (!min || m.plan_start < min)) min = m.plan_start
+    if (m.plan_end && (!max || m.plan_end > max)) max = m.plan_end
+  }
+  if (!min || !max) return []
+  const sd = new Date(min + 'T00:00:00'), ed = new Date(max + 'T00:00:00')
+  const days = Math.floor((ed - sd) / 86400000) + 1
+  const cols = []
+  for (let i = 0; i < days; i++) {
+    const dt = new Date(sd); dt.setDate(dt.getDate() + i)
+    const y = dt.getFullYear()
+    const mo = String(dt.getMonth() + 1).padStart(2, '0')
+    const d = String(dt.getDate()).padStart(2, '0')
+    cols.push(`${y}-${mo}-${d}`)
+  }
+  return cols
+})
+
+const groups = computed(() => {
+  return filteredMasters.value.map(m => {
+    const dd = dailyData.value[m.id] || []
+    const planSum = dateCols.value.reduce((s, date) => {
+      const apiRow = dd.find(d => d.date === date)
+      return s + calcPlanQty(m, date, apiRow)
+    }, 0)
+    const actualSum = dd.reduce((s, r) => s + (r.actual || 0), 0)
+    return { master: m, daily: dd, planSum, actualSum }
+  })
+})
+
+async function load() {
+  try {
+    const { data } = await api.getPrintingPlanData()
+    masters.value = data || []
+  } catch { ElMessage.error('加载排程失败') }
+}
+
+async function loadAllDaily() {
+  const ids = masters.value.filter(m => !m._virtual && !dailyData.value[m.id]).map(m => m.id)
+  if (!ids.length) return
+  const results = await Promise.allSettled(
+    ids.map(id => api.getScheduleDaily('secondary', id).then(r => ({ id, data: r.data })))
+  )
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      dailyData.value[r.value.id] = r.value.data || []
+    } else {
+      console.error('loadAllDaily failed:', r.reason)
+    }
+  }
+}
+
+function calcPlanQty(master, date, apiRow) {
+  if (apiRow && apiRow.plan) return apiRow.plan
+  const totalQty = master.cutting_plan_qty || master.plan_qty
+  if (master.plan_start && master.plan_end && master.daily_target && totalQty && date >= master.plan_start && date <= master.plan_end) {
+    const sd = new Date(master.plan_start + 'T00:00:00')
+    const cd = new Date(date + 'T00:00:00')
+    const dayIdx = Math.floor((cd - sd) / 86400000)
+    const fullDays = Math.floor(totalQty / master.daily_target)
+    const remainder = totalQty % master.daily_target
+    if (dayIdx < fullDays) return master.daily_target
+    if (dayIdx === fullDays && remainder > 0) return remainder
+    return 0
+  }
+  return 0
+}
+
+function dailyQty(masterId, date, rt) {
+  const dd = dailyData.value[masterId]
+  const apiRow = dd ? dd.find(d => d.date === date) : null
+
+  if (rt === 'plan') {
+    const m = masters.value.find(x => x.id === masterId)
+    return m ? calcPlanQty(m, date, apiRow) : 0
+  }
+
+  return apiRow ? (apiRow.actual || 0) : 0
+}
+
+function formatQty(v) { return v != null ? v.toLocaleString() : '0' }
+function colorFor(v) { if (v > 0) return 'var(--success)'; if (v < 0) return 'var(--danger)'; return 'var(--text-tertiary)' }
+
+const today = computed(() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+})
+
+const viewOffset = ref(0)
+function shiftWeek(dir) { viewOffset.value += dir * 7 }
+
+const visibleDateCols = computed(() => {
+  const d = new Date(today.value + 'T00:00:00')
+  const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
+  const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
+  const wsStr = `${ws.getFullYear()}-${String(ws.getMonth()+1).padStart(2,'0')}-${String(ws.getDate()).padStart(2,'0')}`
+  const weStr = `${we.getFullYear()}-${String(we.getMonth()+1).padStart(2,'0')}-${String(we.getDate()).padStart(2,'0')}`
+  return dateCols.value.filter(c => c >= wsStr && c <= weStr)
+})
+
+const dateRangeLabel = computed(() => {
+  if (!visibleDateCols.value.length) return ''
+  const first = visibleDateCols.value[0]
+  const last = visibleDateCols.value[visibleDateCols.value.length - 1]
+  return first.slice(5) + ' ~ ' + last.slice(5)
+})
+
+function dailyDiffVal(masterId, date) {
+  if (date > today.value) return null
+  return dailyQty(masterId, date, 'actual') - dailyQty(masterId, date, 'plan')
+}
+
+function dailyDiffSum(masterId) {
+  let sum = 0
+  for (const d of dateCols.value) {
+    if (d > today.value) break
+    sum += dailyQty(masterId, d, 'actual') - dailyQty(masterId, d, 'plan')
+  }
+  return sum
+}
+function dateLabel(d) { return d ? d.slice(5) : '' }
+
+function openCreate() {
+  form.value = { style_id: null, style_no: '', product_name: '', color: '', size_spec: '',
+    plan_qty: 0, cutting_plan_qty: 0, due_date: '', daily_target: 0,
+    plan_start: '', plan_end: '', workshop: '', line_team: '' }
+  selectedStyle.value = null
+  dialogVisible.value = true
+}
+
+function onStyleSelect(style) {
+  selectedStyle.value = style
+  form.value.style_id = style.id
+  form.value.style_no = style.style_no
+  form.value.product_name = style.product_name
+  form.value.color = style.color
+  form.value.size_spec = style.size_spec
+  form.value.cutting_plan_qty = style.plan_qty || 0
+  form.value.due_date = style.due_date || ''
+}
+
+async function create() {
+  if (!selectedStyle.value) { ElMessage.warning('请先选择款式'); return }
+  try {
+    await api.confirmPrintingPlan({ ...form.value })
+    dialogVisible.value = false
+    ElMessage.success('创建成功')
+    await load()
+    await loadAllDaily()
+  } catch (e) { ElMessage.error('创建失败') }
+}
+
+async function remove(id) {
+  try {
+    await ElMessageBox.confirm('确定删除？', '提示', { type: 'warning' })
+    await api.deleteSchedule('secondary', id)
+    delete dailyData.value[id]
+    await load()
+  } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败') }
+}
+
+async function updateDailyActual(masterId, date, val) {
+  if (date > today.value) { ElMessage.warning('不能填写未来日期的实际产量'); return }
+  const m = masters.value.find(x => x.id === masterId)
+  if (!m) { ElMessage.error('排程不存在'); return }
+  try {
+    await api.saveActual({
+      schedule_type: 'secondary', secondary_type: 'printing',
+      style_id: m?.style_id || 0, style_no: m?.style_no || '',
+      color: m?.color || '', size_spec: m?.size_spec || '',
+      production_date: date,
+      completed_qty: parseInt(val) || 0, defect_qty: 0,
+      workshop: m?.workshop || '', line_team: m?.line_team || '', remark: ''
+    })
+    const { data } = await api.getScheduleDaily('secondary', masterId)
+    dailyData.value[masterId] = data || []
+  } catch { ElMessage.error('更新失败') }
+}
+
+function doExport() {
+  const ids = filteredMasters.value.filter(m => !m._virtual).map(m => m.id).join(',')
+  window.open('/api/schedule/sewing/export' + (ids ? '?ids=' + ids : ''), '_blank')
+}
+
+function onImportFileChange(e) { importFile.value = e.target.files[0] }
+
+async function doImport() {
+  if (!importFile.value) return
+  if (importing.value) return
+  if (importFile.value.size > 5 * 1024 * 1024) {
+    ElMessage.warning('文件大小不能超过 5MB')
+    return
+  }
+  importing.value = true
+  try {
+    const XLSX = await import('xlsx')
+    const data = await importFile.value.arrayBuffer()
+    const wb = XLSX.read(data, { type: 'array' })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
+    if (rows.length < 2) { importing.value = false; return ElMessage.error('格式不正确') }
+    const headers = rows[0]
+    const records = []
+    let cur = null
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row || row.every(c => c == null)) continue
+      const rt = String(row[10] || '').trim()
+      if (rt === '计划' || rt === 'PLAN') {
+        cur = {
+          '车间': row[0], '班组': row[1], '款号': row[2], '品名': row[3],
+          '颜色': row[4], '尺码': row[5],
+          '原单量': parseInt(row[6]) || 0, '交期': row[7],
+          '印花日产量': parseInt(row[8]) || 0, '印花开始': row[9], '印花结束': row[10],
+          '每日明细': {}
+        }
+        for (let j = 13; j < row.length; j++) {
+          const date = headers[j - 1]
+          if (date && String(date).match(/^\d{4}-\d{2}-\d{2}$/)) {
+            cur['每日明细'][date] = { PLAN: parseInt(row[j]) || 0, ACTUAL: 0 }
+          }
+        }
+        records.push(cur)
+      } else if ((rt === '实际' || rt === 'ACTUAL') && cur) {
+        for (let j = 13; j < row.length; j++) {
+          const date = headers[j - 1]
+          if (date && String(date).match(/^\d{4}-\d{2}-\d{2}$/)) {
+            if (!cur['每日明细'][date]) cur['每日明细'][date] = {}
+            cur['每日明细'][date].ACTUAL = parseInt(row[j]) || 0
+          }
+        }
+      }
+    }
+    importPreview.value = records
+  } catch (e) { ElMessage.error('解析失败: ' + e.message) }
+  importing.value = false
+}
+
+async function confirmImport() {
+  if (!importPreview.value?.length) return
+  importing.value = true
+  try {
+    for (const rec of importPreview.value) {
+      await api.confirmPrintingPlan({
+        style_no: rec['款号'], color: rec['颜色'], size_spec: rec['尺码'],
+        plan_start: rec['印花开始'], plan_end: rec['印花结束'],
+        plan_qty: rec['原单量'], daily_target: rec['印花日产量'],
+        workshop: rec['车间'], line_team: rec['班组']
+      })
+    }
+    ElMessage.success(`导入完成: ${importPreview.value.length} 条`)
+    importDialogVisible.value = false
+    importPreview.value = null
+    importFile.value = null
+    await load()
+    await loadAllDaily()
+  } catch (e) { ElMessage.error('导入失败: ' + (e.response?.data?.error || e.message)) }
+  importing.value = false
+}
+
+const bodyRef = ref(null)
+let dragging = false, dragX = 0, dragY = 0, dragSL = 0, dragST = 0, dragWrap = null
+function onDragStart(e) {
+  if (e.target.tagName !== 'TD' && e.target.tagName !== 'TH') return
+  dragWrap = e.currentTarget
+  dragging = true
+  dragX = e.pageX
+  dragY = e.pageY
+  dragSL = dragWrap.scrollLeft
+  dragST = dragWrap.scrollTop
+  dragWrap.classList.add('dragging')
+  e.preventDefault()
+}
+function onDragMove(e) {
+  if (!dragging || !dragWrap) return
+  dragWrap.scrollLeft = dragSL - (e.pageX - dragX)
+  dragWrap.scrollTop = dragST - (e.pageY - dragY)
+}
+function onDragEnd() {
+  if (dragWrap) dragWrap.classList.remove('dragging')
+  dragging = false
+  dragWrap = null
+}
+
+onMounted(async () => {
+  await load()
+  await loadAllDaily()
+  const body = bodyRef.value
+  if (body) {
+    body.addEventListener('mousedown', onDragStart)
+    document.addEventListener('mousemove', onDragMove)
+    document.addEventListener('mouseup', onDragEnd)
+  }
+})
+onUnmounted(() => {
+  const body = bodyRef.value
+  if (body) body.removeEventListener('mousedown', onDragStart)
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
+})
+</script>
+
+<template>
+  <div class="printing-detail">
+    <div class="detail-header">
+      <div class="header-left">
+        <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
+      </div>
+      <div class="header-nav">
+        <span class="nav-arrows">
+          <button class="nav-btn" @click="shiftWeek(-1)" title="前一周">◀</button>
+          <button class="nav-btn today-btn" @click="viewOffset=0" title="回到今天">今天</button>
+          <button class="nav-btn" @click="shiftWeek(1)" title="后一周">▶</button>
+        </span>
+        <span class="date-range-label">{{ dateRangeLabel }}</span>
+      </div>
+      <div class="header-actions">
+        <el-button type="primary" @click="importDialogVisible = true">导入Excel</el-button>
+        <el-button @click="doExport">导出Excel</el-button>
+        <el-button type="success" @click="openCreate">+ 新增排程</el-button>
+      </div>
+    </div>
+
+    <div v-if="!masters.length" style="text-align:center;padding:60px;color:var(--text-tertiary)">
+      暂无排程数据，点击"新增排程"或"导入Excel"开始
+    </div>
+
+    <div v-else ref="bodyRef" class="excel-wrap">
+      <table class="excel-table">
+        <thead>
+          <tr>
+            <th class="fix" style="min-width:70px">
+              <div class="col-header"><span>车间</span>
+                <TextFilter :data="masters" field="workshop" @filter="f => onTextFilter('workshop', f)"
+                  :sortField="sortState.field==='workshop' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='workshop' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('workshop')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:70px">
+              <div class="col-header"><span>班组</span>
+                <TextFilter :data="masters" field="line_team" @filter="f => onTextFilter('line_team', f)"
+                  :sortField="sortState.field==='line_team' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='line_team' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('line_team')" />
+              </div>
+            </th>
+            <th class="fix" style="width:80px"><span>状态</span></th>
+            <th class="fix" style="min-width:100px">
+              <div class="col-header"><span>款号</span>
+                <TextFilter :data="masters" field="style_no" @filter="f => onTextFilter('style_no', f)"
+                  :sortField="sortState.field==='style_no' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='style_no' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('style_no')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:140px">
+              <div class="col-header"><span>品名</span>
+                <TextFilter :data="masters" field="product_name" @filter="f => onTextFilter('product_name', f)"
+                  :sortField="sortState.field==='product_name' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='product_name' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('product_name')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:80px">
+              <div class="col-header"><span>颜色</span>
+                <TextFilter :data="masters" field="color" @filter="f => onTextFilter('color', f)"
+                  :sortField="sortState.field==='color' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='color' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('color')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:70px">
+              <div class="col-header"><span>尺码</span>
+                <TextFilter :data="masters" field="size_spec" @filter="f => onTextFilter('size_spec', f)"
+                  :sortField="sortState.field==='size_spec' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='size_spec' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('size_spec')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:100px">
+              <div class="col-header"><span>原单量</span>
+                <NumberFilter :data="masters" field="cutting_plan_qty"
+                  @filter="f => onNumFilter('cutting_plan_qty', f)"
+                  :sortField="sortState.field==='cutting_plan_qty' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='cutting_plan_qty' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('cutting_plan_qty')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:100px">
+              <div class="col-header"><span>交期</span>
+                <DateFilter :data="masters" field="due_date" @filter="f => onDateFilter('due_date', f)"
+                  :sortField="sortState.field==='due_date' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='due_date' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('due_date', 'date')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:90px">
+              <div class="col-header"><span>印花日产量</span>
+                <NumberFilter :data="masters" field="daily_target"
+                  @filter="f => onNumFilter('daily_target', f)"
+                  :sortField="sortState.field==='daily_target' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='daily_target' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('daily_target')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:100px">
+              <div class="col-header"><span>印花开始</span>
+                <DateFilter :data="masters" field="plan_start" @filter="f => onDateFilter('plan_start', f)"
+                  :sortField="sortState.field==='plan_start' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='plan_start' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('plan_start', 'date')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:100px">
+              <div class="col-header"><span>印花结束</span>
+                <DateFilter :data="masters" field="plan_end" @filter="f => onDateFilter('plan_end', f)"
+                  :sortField="sortState.field==='plan_end' ? sortState.sortBy : ''"
+                  :sortDir="sortState.field==='plan_end' ? sortState.dir : 'asc'"
+                  @sort="e => onSort(e.field, e.sortBy, e.dir)"
+                  :active="isFilterActive('plan_end', 'date')" />
+              </div>
+            </th>
+            <th class="fix" style="min-width:80px"><div class="col-header"><span>合计</span></div></th>
+            <th class="fix" style="min-width:80px"><div class="col-header"><span>类型</span></div></th>
+            <th v-for="d in visibleDateCols" :key="d" class="date-th" :class="{ 'today-col': d === today }">{{ dateLabel(d) }}</th>
+            <th class="fix" style="min-width:60px"><div class="col-header"><span>操作</span></div></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="(g, gi) in groups" :key="g.master.id">
+            <tr class="row-plan" :class="{ 'editing-row': editingId === g.master.id }">
+              <td class="fix">
+                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.workshop" /></template>
+                <template v-else>{{ g.master.workshop || '' }}</template>
+              </td>
+              <td class="fix">
+                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.line_team" /></template>
+                <template v-else>{{ g.master.line_team || '' }}</template>
+              </td>
+              <td class="fix" style="width:80px">
+                <el-tag v-if="g.master.task_status === 'COMPLETED'" type="success" size="small">已完成</el-tag>
+                <el-tag v-else-if="g.master.task_status === 'IN_PROGRESS'" type="primary" size="small">进行中</el-tag>
+                <el-tag v-else type="info" size="small">待生产</el-tag>
+                <div v-if="g.master.progress_pct > 0" class="progress-mini">
+                  <div class="progress-bar" :style="{ width: g.master.progress_pct + '%' }"></div>
+                </div>
+              </td>
+              <td class="fix">{{ g.master.style_no }}</td>
+              <td class="fix">{{ g.master.product_name }}</td>
+              <td class="fix">{{ g.master.color || '' }}</td>
+              <td class="fix">{{ g.master.size_spec || '' }}</td>
+              <td class="fix num">
+                <template v-if="editingId === g.master.id"><input class="inp" v-model.number="editForm.cutting_plan_qty" type="number" min="1" style="text-align:right" /></template>
+                <template v-else>{{ formatQty(g.master.cutting_plan_qty || g.master.plan_qty) }}</template>
+              </td>
+              <td class="fix">
+                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.due_date" type="date" /></template>
+                <template v-else>{{ g.master.due_date || '' }}</template>
+              </td>
+              <td class="fix num">
+                <template v-if="editingId === g.master.id"><input class="inp" v-model.number="editForm.daily_target" type="number" min="1" style="text-align:right" /></template>
+                <template v-else>{{ formatQty(g.master.daily_target) }}</template>
+              </td>
+              <td class="fix">
+                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.plan_start" type="date" /></template>
+                <template v-else>{{ g.master.plan_start || '' }}</template>
+              </td>
+              <td class="fix">
+                <template v-if="editingId === g.master.id"><span style="color:var(--text-secondary)">{{ editForm.plan_end || '自动计算' }}</span></template>
+                <template v-else>{{ g.master.plan_end || '' }}</template>
+              </td>
+              <td class="fix num sum-cell">{{ formatQty(g.planSum) }}</td>
+              <td class="fix type-label plan-label">计划</td>
+              <td v-for="d in visibleDateCols" :key="'p'+d" class="cell-num" :class="{ 'today-col': d === today }">
+                {{ formatQty(dailyQty(g.master.id, d, 'plan')) }}
+              </td>
+              <td class="fix">
+                <template v-if="editingId === g.master.id">
+                  <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
+                  <el-button size="small" text @click="cancelEdit">取消</el-button>
+                </template>
+                <template v-else>
+                  <el-button size="small" text @click="startEdit(g)">编辑</el-button>
+                  <el-button v-if="!g.master._virtual" size="small" text type="danger" @click="remove(g.master.id)">删除</el-button>
+                </template>
+              </td>
+            </tr>
+            <tr class="row-actual">
+              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+              <td class="fix num sum-cell">{{ formatQty(g.actualSum) }}</td>
+              <td class="fix type-label" style="color:var(--success)">实际QC1</td>
+              <td v-for="d in visibleDateCols" :key="'a'+d" class="cell-num cell-edit" :class="{ 'today-col': d === today }">
+                <input type="number" class="inp-qty" :value="dailyQty(g.master.id, d, 'actual')"
+                  :disabled="d > today || g.master._virtual"
+                  @change="e => updateDailyActual(g.master.id, d, e.target.value)" min="0" max="99999" />
+              </td>
+              <td class="fix"></td>
+            </tr>
+            <tr class="row-diff">
+              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+              <td class="fix num sum-cell" :style="{color: colorFor(dailyDiffSum(g.master.id))}">
+                {{ dailyDiffSum(g.master.id) > 0 ? '+' : '' }}{{ formatQty(dailyDiffSum(g.master.id)) }}
+              </td>
+              <td class="fix type-label" style="color:var(--warning)">日差异</td>
+              <td v-for="d in visibleDateCols" :key="'dd'+d" class="cell-num" :class="{ 'today-col': d === today }"
+                :style="{color: colorFor(dailyDiffVal(g.master.id, d))}">
+                <template v-if="dailyDiffVal(g.master.id, d) != null">{{ dailyDiffVal(g.master.id, d) > 0 ? '+' : '' }}{{ formatQty(dailyDiffVal(g.master.id, d)) }}</template>
+                <template v-else>—</template>
+              </td>
+              <td class="fix"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <el-dialog v-model="dialogVisible" title="新增印花排程" width="520px">
+      <el-form :model="form" label-width="90px" size="small">
+        <el-form-item label="选择款式" required>
+          <StylePicker :model-value="selectedStyle" @select="onStyleSelect" />
+        </el-form-item>
+        <el-form-item v-if="selectedStyle" label="已选款式">
+          <span style="color:var(--primary-dark)">
+            {{ selectedStyle.style_no }} - {{ selectedStyle.product_name }} {{ selectedStyle.color }} {{ selectedStyle.size_spec }}
+          </span>
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="车间"><el-input v-model="form.workshop" placeholder="例：印花车间" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="班组"><el-input v-model="form.line_team" placeholder="例：1班" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="原单量"><el-input-number v-model="form.cutting_plan_qty" :min="1" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="印花日产量"><el-input-number v-model="form.daily_target" :min="1" :step="100" style="width:100%" /></el-form-item></el-col>
+        </el-row>
+        <el-form-item label="交期"><el-input v-model="form.due_date" type="date" /></el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="印花上线"><el-input v-model="form.plan_start" type="date" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="印花下线"><span style="line-height:32px;color:var(--text-secondary)">{{ form.plan_end || '自动计算' }}</span></el-form-item></el-col>
+        </el-row>
+      </el-form>
+      <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" @click="create">创建</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="importDialogVisible" title="导入Excel" width="600px">
+      <div style="margin-bottom:12px">
+        <input type="file" accept=".xlsx,.xls" @change="onImportFileChange" />
+        <span v-if="importFile" style="margin-left:8px;color:var(--primary-dark)">{{ importFile.name }}</span>
+      </div>
+      <div v-if="importFile" style="margin-bottom:12px">
+        <el-button @click="doImport" type="primary" :loading="importing">解析预览</el-button>
+        <el-radio-group v-model="importMode" style="margin-left:12px">
+          <el-radio value="skip">跳过重复</el-radio>
+          <el-radio value="overwrite">覆盖已有</el-radio>
+        </el-radio-group>
+      </div>
+      <div v-if="importPreview?.length" style="max-height:300px;overflow:auto">
+        <div style="margin-bottom:4px;font-size:12px;color:var(--text-secondary)">共 {{ importPreview.length }} 条</div>
+        <el-table :data="importPreview" size="small" border max-height="220">
+          <el-table-column label="款号" width="100"><template #default="{row}">{{ row['款号'] }}</template></el-table-column>
+          <el-table-column label="颜色" width="80"><template #default="{row}">{{ row['颜色'] }}</template></el-table-column>
+          <el-table-column label="尺码" width="60"><template #default="{row}">{{ row['尺码'] }}</template></el-table-column>
+          <el-table-column label="原单量" width="80"><template #default="{row}">{{ row['原单量'] }}</template></el-table-column>
+          <el-table-column label="开始" width="95"><template #default="{row}">{{ row['印花开始'] }}</template></el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmImport" :loading="importing" :disabled="!importPreview?.length">确认导入</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style scoped>
+.printing-detail { display: flex; flex-direction: column; height: 100%; }
+
+.detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); gap: 12px; }
+.header-left { display: flex; align-items: center; flex-shrink: 0; }
+.header-nav { display: flex; align-items: center; gap: 8px; justify-content: center; flex: 1; }
+.header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.nav-arrows { display: flex; align-items: center; gap: 4px; }
+.nav-btn {
+  padding: 6px 12px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--transition);
+  line-height: 1;
+}
+.nav-btn:hover { background: var(--primary-dark); }
+.nav-btn.today-btn { font-size: 13px; font-weight: 600; padding: 6px 14px; }
+.date-range-label { font-size: 14px; font-weight: 600; color: var(--text); min-width: 120px; text-align: center; margin-left: 4px; }
+
+.excel-wrap {
+  flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card);
+}
+.excel-wrap.dragging,
+.excel-wrap.dragging td,
+.excel-wrap.dragging th,
+.excel-wrap.dragging input { user-select: none !important; }
+
+.excel-table { border-collapse: collapse; font-size: 13px; color: var(--text); min-width: 100%; width: 100%; }
+
+.excel-table thead th {
+  padding: 0; background: var(--card); color: var(--text-tertiary); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.3px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap;
+  position: sticky; top: 0; z-index: 3;
+}
+
+.excel-table td { padding: 12px 16px; border-bottom: 1px solid var(--border-light); white-space: nowrap; text-align: center; }
+
+.col-header { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; padding: 10px 14px; gap: 4px; }
+.col-header span { font-weight: 500; font-size: 11px; flex-shrink: 0; color: var(--text-tertiary); letter-spacing: 0.3px; }
+
+.row-plan { background: var(--card); }
+.row-actual { background: var(--bg); }
+.row-diff { background: var(--card); }
+
+tbody tr:hover td:not(.fix) { background: var(--primary-light); }
+.editing-row td { background: var(--primary-light) !important; box-shadow: inset 3px 0 0 var(--primary); }
+.editing-row td.fix:not(:first-child) { background: var(--primary-light) !important; }
+
+.fix { position: sticky; left: 0; z-index: 1; background: inherit; }
+.row-plan .fix { background: var(--card); }
+.row-actual .fix { background: var(--bg); }
+.row-diff .fix { background: var(--card); }
+
+.excel-table thead .fix { z-index: 4; background: var(--card); }
+
+.date-th { min-width: 54px; width: 54px; }
+.excel-table .today-col { background: #e0d4ff !important; box-shadow: inset 3px 0 0 var(--primary); text-align: center !important; }
+.excel-table thead .today-col { background: #e0d4ff !important; color: var(--primary) !important; font-weight: 700 !important; }
+
+.num { text-align: center !important; font-variant-numeric: tabular-nums; font-family: 'Helvetica Neue', Arial, sans-serif; }
+.sum-cell { font-weight: 700; }
+.type-label { font-weight: 600; font-size: 12px; }
+.plan-label { color: var(--primary); }
+
+.cell-num { text-align: center !important; font-variant-numeric: tabular-nums; font-family: 'Helvetica Neue', Arial, sans-serif; }
+.cell-edit { padding: 2px; }
+
+.inp { width: 100%; border: 1px solid var(--border); text-align: left; font-size: 13px; padding: 4px 8px; background: var(--card); border-radius: var(--radius-sm); font-family: inherit; transition: border-color .15s; }
+.inp:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(0,0,0,.06); }
+
+.inp-qty { width: 56px; border: 1px solid transparent; text-align: right; font-size: 12px; font-family: 'Helvetica Neue', Arial, sans-serif; padding: 2px 4px; background: transparent; border-radius: 2px; }
+.inp-qty:focus { border-color: var(--primary); background: var(--card); outline: none; box-shadow: 0 0 0 2px rgba(0,0,0,.06); }
+.inp-qty:disabled { color: var(--text-tertiary); cursor: not-allowed; opacity: 0.4; }
+
+.progress-mini { height: 4px; background: #e5e7eb; border-radius: 2px; margin-top: 2px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--primary); border-radius: 2px; transition: width .3s ease; }
+</style>

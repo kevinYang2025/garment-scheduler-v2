@@ -6,6 +6,7 @@ import Dashboard from './views/Dashboard.vue'
 import Styles from './views/Styles.vue'
 import MainPlan from './views/MainPlan.vue'
 import ScheduleView from './views/ScheduleView.vue'
+import CuttingSchedule from './views/CuttingSchedule.vue'
 import WarehouseHome from './views/WarehouseHome.vue'
 import WarehouseDetail from './views/WarehouseDetail.vue'
 import SecondaryHome from './views/SecondaryHome.vue'
@@ -356,7 +357,7 @@ function getIcon(name) {
           <StyleColorSize v-else-if="currentModule === 'styleColorSize'" key="styleColorSize" />
 
           <MainPlan v-else-if="currentModule === 'mainPlan'" :db="DB" key="mainPlan" />
-          <ScheduleView v-else-if="currentModule === 'cutting'" schedule-type="cutting" :db="DB" key="cutting" />
+          <CuttingSchedule v-else-if="currentModule === 'cutting'" key="cutting" />
           <SecondaryHome v-else-if="currentModule === 'secondary' && !secondaryActiveType" @enter="enterSecondaryDetail" @back="goHome" key="secondaryHome" />
           <SecondaryDetail v-else-if="currentModule === 'secondary' && secondaryActiveType" :secondary-type="secondaryActiveType" :db="DB" @back="backToSecondaryHome" key="secondaryDetail" />
           <SewingHome v-else-if="currentModule === 'sewing' && !sewingActiveType" @enter="enterSewingDetail" @back="goHome" key="sewingHome" />

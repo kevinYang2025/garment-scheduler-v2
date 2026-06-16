@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import StylePicker from '../components/StylePicker.vue'
 import DailyScheduleTable from '../components/DailyScheduleTable.vue'
+import PrintingPlanDetail from './PrintingPlanDetail.vue'
 
 const props = defineProps({
   secondaryType: { type: String, required: true },
@@ -259,7 +260,8 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="secondary-detail">
+  <PrintingPlanDetail v-if="secondaryType === 'printing'" @back="emit('back')" />
+  <div v-else class="secondary-detail">
     <!-- 顶部操作栏 -->
     <div class="detail-header">
       <div class="header-left">

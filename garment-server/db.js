@@ -599,6 +599,9 @@ function migrateStyles() {
     if (!mpcols2.includes('template_start')) db.prepare("ALTER TABLE main_plan ADD COLUMN template_start TEXT DEFAULT ''").run();
     if (!mpcols2.includes('template_end')) db.prepare("ALTER TABLE main_plan ADD COLUMN template_end TEXT DEFAULT ''").run();
     if (!mpcols2.includes('arrival_date')) db.prepare("ALTER TABLE main_plan ADD COLUMN arrival_date TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('line_count')) db.prepare("ALTER TABLE main_plan ADD COLUMN line_count INTEGER DEFAULT 1").run();
+    if (!mpcols2.includes('line_index')) db.prepare("ALTER TABLE main_plan ADD COLUMN line_index INTEGER DEFAULT 1").run();
+    if (!mpcols2.includes('expired')) db.prepare("ALTER TABLE main_plan ADD COLUMN expired INTEGER DEFAULT 0").run();
   } catch (e) { console.log('main_plan ironing/conflict migration skip:', e.message); }
 
   const cols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
@@ -961,6 +964,35 @@ function autoSchedule(strategyId) {
 
         lineIdx++;
         scheduled++;
+      }
+
+      // ========== 自动生成印花排程 ==========
+      const printingStyles = db.prepare("SELECT * FROM styles WHERE printing = '是' AND printing_daily_output > 0").all();
+      const mainPlanAll = db.prepare("SELECT style_no, printing_start, printing_end FROM main_plan WHERE printing_start != '' AND printing_start IS NOT NULL").all();
+      const printingPlanMap = {};
+      for (const p of mainPlanAll) {
+        if (!printingPlanMap[p.style_no] || (p.printing_start < printingPlanMap[p.style_no].printing_start)) {
+          printingPlanMap[p.style_no] = p;
+        }
+      }
+      let printingCount = 0;
+      for (const style of printingStyles) {
+        const mp = printingPlanMap[style.style_no];
+        if (!mp || !mp.printing_start || !mp.printing_end) continue;
+        const colorSizes = db.prepare("SELECT * FROM style_color_size WHERE style_no = ?").all(style.style_no);
+        for (const cs of colorSizes) {
+          const exists = db.prepare("SELECT id FROM schedule_master WHERE schedule_type='secondary' AND secondary_type='printing' AND style_no=? AND color=? AND size_spec=?").get(cs.style_no, cs.color || '', cs.size_spec || '');
+          if (exists || !(cs.plan_qty > 0)) continue;
+          const r = db.prepare(`INSERT INTO schedule_master (schedule_type, secondary_type, style_id, style_no, product_name, color, size_spec, plan_qty, cutting_plan_qty, plan_start, plan_end, daily_target, due_date)
+            VALUES ('secondary','printing',?,?,?,?,?,?,?,?,?,?,?)`).run(
+            style.id, style.style_no, style.product_name, cs.color || '', cs.size_spec || '', cs.plan_qty, cs.plan_qty, mp.printing_start, mp.printing_end, style.printing_daily_output || 0, style.due_date || ''
+          );
+          generatePlanRows(r.lastInsertRowid, mp.printing_start, mp.printing_end, cs.plan_qty);
+          printingCount++;
+        }
+      }
+      if (printingCount > 0) {
+        broadcastSection('schedule_secondary', db.prepare("SELECT * FROM schedule_master WHERE schedule_type='secondary' AND secondary_type='printing'").all());
       }
     });
     txn();
