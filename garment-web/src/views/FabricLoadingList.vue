@@ -300,7 +300,21 @@ const importFile = ref(null)
 const importPreview = ref(null)
 const importing = ref(false)
 
-function triggerImport() { importDialogVisible.value = true; importFile.value = null; importPreview.value = null }
+function triggerImport() {
+  importFile.value = null
+  importPreview.value = null
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.xlsx,.xls'
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    importFile.value = file
+    importDialogVisible.value = true
+    await doImportParse()
+  }
+  input.click()
+}
 function onImportFileChange(e) { importFile.value = e.target.files[0] }
 
 async function doImportParse() {
@@ -495,12 +509,8 @@ onUnmounted(() => {
 
     <!-- 导入弹窗 -->
     <el-dialog v-model="importDialogVisible" title="导入 Excel" width="600px">
-      <div style="margin-bottom:12px">
-        <input type="file" accept=".xlsx,.xls" @change="onImportFileChange" />
-        <span v-if="importFile" style="margin-left:8px;color:var(--primary-dark)">{{ importFile.name }}</span>
-      </div>
-      <div v-if="importFile" style="margin-bottom:12px">
-        <el-button @click="doImportParse" type="primary" :loading="importing">解析预览</el-button>
+      <div v-if="importFile" style="margin-bottom:12px;font-size:13px;color:var(--text-secondary)">
+        📄 {{ importFile.name }}（{{ (importFile.size / 1024).toFixed(1) }} KB）
       </div>
       <div v-if="importPreview?.length" style="max-height:300px;overflow:auto">
         <div style="margin-bottom:4px;font-size:12px;color:var(--text-secondary)">共 {{ importPreview.length }} 条</div>
