@@ -41,8 +41,26 @@ const visibleDateCols = computed(() => {
   // 对齐到周一
   const dow = (baseDate.getDay() + 6) % 7
   baseDate.setDate(baseDate.getDate() - dow)
+
+  // 计算最后一条任务的结束日期
+  let lastDate = new Date(baseDate)
+  lastDate.setDate(lastDate.getDate() + 14) // 至少显示2周
+  for (const p of plans.value) {
+    const dates = [p.cutting_end, p.secondary_end, p.sewing_end, p.due_date].filter(Boolean)
+    for (const d of dates) {
+      const dd = new Date(d + 'T00:00:00')
+      if (dd > lastDate) lastDate = dd
+    }
+  }
+  // 对齐到周日
+  const endDow = (lastDate.getDay() + 6) % 7
+  lastDate.setDate(lastDate.getDate() + (6 - endDow))
+  // 加2天缓冲
+  lastDate.setDate(lastDate.getDate() + 2)
+
+  const totalDays = Math.round((lastDate - baseDate) / 86400000)
   const cols = []
-  for (let i = 0; i < 28; i++) { // 显示4周
+  for (let i = 0; i < totalDays; i++) {
     const d = new Date(baseDate)
     d.setDate(d.getDate() + i)
     const ds = fmtDate(d)
@@ -92,7 +110,7 @@ function barStyle(startDate, endDate, type) {
   const firstDate = visibleDateCols.value[0].date
   const startIdx = dayDiff(firstDate, startDate)
   const dur = dayDiff(startDate, endDate) + 1
-  if (startIdx + dur < 0 || startIdx > 28) return { display: 'none' }
+  if (startIdx + dur < 0 || startIdx > visibleDateCols.value.length) return { display: 'none' }
   const c = COLORS[type]
   return {
     left: `${Math.max(0, startIdx) * dayWidth}px`,
@@ -107,7 +125,7 @@ function dueDateStyle(dueDate) {
   if (!dueDate || !visibleDateCols.value.length) return { display: 'none' }
   const firstDate = visibleDateCols.value[0].date
   const idx = dayDiff(firstDate, dueDate)
-  if (idx < 0 || idx > 28) return { display: 'none' }
+  if (idx < 0 || idx > visibleDateCols.value.length) return { display: 'none' }
   return { left: `${idx * dayWidth + dayWidth / 2}px` }
 }
 
