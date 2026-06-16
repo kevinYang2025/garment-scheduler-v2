@@ -329,15 +329,21 @@ async function save() {
 const fileInputRef = ref(null)
 async function exportExcel() {
   try {
-    const res = await api.exportMainPlan()
-    const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = '主计划.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success('导出成功')
+    if (!filteredPlans.value.length) { ElMessage.warning('没有可导出的数据'); return }
+    const XLSX = await import('xlsx')
+    const header = columns.map(c => c.label)
+    const data = filteredPlans.value.map(row => columns.map(c => {
+      let v = row[c.field]
+      if (v === null || v === undefined) return ''
+      if (c.type === 'date' && v.includes && v.includes('T')) v = v.slice(0, 10)
+      return v
+    }))
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data])
+    ws['!cols'] = columns.map(c => ({ wch: Math.max(c.label.length * 2, Math.floor(c.width / 8)) }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '主计划')
+    XLSX.writeFile(wb, '主计划.xlsx')
+    ElMessage.success(`导出成功：${filteredPlans.value.length} 条`)
   } catch (e) {
     ElMessage.error('导出失败')
   }

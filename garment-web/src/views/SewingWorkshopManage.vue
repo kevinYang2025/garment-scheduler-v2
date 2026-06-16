@@ -346,13 +346,16 @@ function onDragEnd() { dragging = false; dragWrap = null }
 // ====== 导出 ======
 async function doExport() {
   try {
-    const { data } = await api.exportSewingWorkshopTree()
-    const url = URL.createObjectURL(new Blob([data]))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = '车间班组款式分类.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
+    if (!filteredRows.value.length) { ElMessage.warning('没有可导出的数据'); return }
+    const XLSX = await import('xlsx')
+    const header = ['车间', '班组', '款式分类']
+    const data = filteredRows.value.map(r => [r.workshopName, r.teamName, r.categoryName])
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data])
+    ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 20 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '车间班组款式分类')
+    XLSX.writeFile(wb, '车间班组款式分类.xlsx')
+    ElMessage.success(`导出成功：${filteredRows.value.length} 条`)
   } catch { ElMessage.error('导出失败') }
 }
 
