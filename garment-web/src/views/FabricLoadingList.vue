@@ -12,7 +12,7 @@ const columns = [
   { field: 'customer', label: '客户', width: 120, type: 'text' },
   { field: 'style_no', label: '款号', width: 180, type: 'text' },
   { field: 'pot_no', label: '锅号', width: 140, type: 'text' },
-  { field: 'fabric_name', label: '面料名称', width: 200, type: 'text' },
+  { field: 'fabric_name', label: '面料名称', width: 140, type: 'text' },
   { field: 'width', label: '幅宽', width: 80, type: 'text' },
   { field: 'weight', label: '克重', width: 80, type: 'number' },
   { field: 'color', label: '颜色', width: 150, type: 'text' },
@@ -447,7 +447,7 @@ onUnmounted(() => {
               <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
             </td>
             <td v-for="col in columns" :key="col.field" :style="{ width: col.width + 'px', minWidth: col.width + 'px' }"
-                :class="{ 'num': col.type === 'number' }">
+                :class="{ 'num': col.type === 'number', 'wrap-cell': col.field === 'fabric_name' }">
               <template v-if="editingId === row.id">
                 <input v-if="col.type === 'date'" class="inp" v-model="editForm[col.field]" type="date" />
                 <input v-else-if="col.type === 'number'" class="inp" v-model.number="editForm[col.field]" type="number" min="0" />
@@ -539,13 +539,17 @@ onUnmounted(() => {
 
 .empty-state { text-align: center; padding: 60px; color: var(--text-tertiary); }
 
-.excel-wrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.excel-wrap { flex: 1; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); display: flex; flex-direction: column; }
 .excel-wrap.dragging,
 .excel-wrap.dragging td,
 .excel-wrap.dragging th,
 .excel-wrap.dragging input { user-select: none !important; }
 
 .excel-body { overflow: auto; flex: 1; }
+.excel-body::-webkit-scrollbar { height: 8px; width: 8px; }
+.excel-body::-webkit-scrollbar-thumb { background: #c4c4c4; border-radius: 4px; }
+.excel-body::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
+.excel-body::-webkit-scrollbar-track { background: #f0f0f0; }
 
 .excel-table { border-collapse: collapse; font-size: 13px; color: var(--text); min-width: 100%; width: 100%; }
 .excel-table thead th { padding: 0; background: var(--card); color: var(--text-tertiary); font-size: 11px; font-weight: 500; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 3; }
@@ -564,6 +568,7 @@ tr.editing-row { background: var(--primary-light) !important; }
 tbody tr:hover td { background: var(--primary-light); }
 
 .action-cell { text-align: center !important; white-space: nowrap; }
+.wrap-cell { white-space: normal !important; word-break: break-all; line-height: 1.4; }
 
 .inp { width: 100%; border: 1px solid var(--border); text-align: left; font-size: 13px; padding: 4px 8px; background: var(--card); border-radius: 4px; font-family: inherit; }
 .inp:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(0,0,0,.06); }
