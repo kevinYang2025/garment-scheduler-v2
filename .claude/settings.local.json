@@ -238,7 +238,8 @@
       "Bash(node -e \"const db = require\\('./db'\\); db.init\\(\\); const r = db.get\\('SELECT * FROM main_plan WHERE style_no = ?', ['42-60082（柬埔寨）']\\); console.log\\(JSON.stringify\\(r, null, 2\\)\\);\")",
       "Bash(node -e \"const db = require\\('./db'\\); db.init\\(\\); const r = db.get\\('SELECT style_no, plan_qty, due_date, target_daily_output, embroidery, printing, template, ironing_label FROM styles WHERE style_no = ?', ['42-60082（柬埔寨）']\\); console.log\\(JSON.stringify\\(r, null, 2\\)\\);\")",
       "Bash(taskkill //F //PID 44328)",
-      "Bash(node -e \"const db = require\\('./db'\\); db.init\\(\\); const r = db.get\\('SELECT style_no, loading_date FROM fabric_loading_list WHERE style_no = ? ORDER BY loading_date LIMIT 1', ['42-60082（柬埔寨）']\\); console.log\\(JSON.stringify\\(r\\)\\);\")"
+      "Bash(node -e \"const db = require\\('./db'\\); db.init\\(\\); const r = db.get\\('SELECT style_no, loading_date FROM fabric_loading_list WHERE style_no = ? ORDER BY loading_date LIMIT 1', ['42-60082（柬埔寨）']\\); console.log\\(JSON.stringify\\(r\\)\\);\")",
+      "Bash(powershell -Command \"Stop-Process -Id 38368 -Force\")"
     ]
   }
 }
