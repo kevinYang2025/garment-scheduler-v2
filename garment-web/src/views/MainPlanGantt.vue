@@ -314,6 +314,7 @@ onMounted(loadGantt)
 .gantt-left-rows {
   overflow: hidden;
   flex: 1;
+  min-height: 0;
 }
 .gantt-left-row {
   height: 52px;
