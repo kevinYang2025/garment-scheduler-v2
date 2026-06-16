@@ -15,10 +15,14 @@ const columns = [
   { field: 'due_date', label: '交期', width: 110, type: 'date' },
   { field: 'cutting_start', label: '裁剪上线', width: 110, type: 'date' },
   { field: 'cutting_end', label: '裁剪下线', width: 110, type: 'date' },
-  { field: 'secondary_start', label: '二次上线', width: 110, type: 'date' },
-  { field: 'secondary_end', label: '二次下线', width: 110, type: 'date' },
-  { field: 'ironing_start', label: '烫标上线', width: 110, type: 'date' },
-  { field: 'ironing_end', label: '烫标下线', width: 110, type: 'date' },
+  { field: 'printing_start', label: '印花上线', width: 100, type: 'date' },
+  { field: 'printing_end', label: '印花下线', width: 100, type: 'date' },
+  { field: 'embroidery_start', label: '刺绣上线', width: 100, type: 'date' },
+  { field: 'embroidery_end', label: '刺绣下线', width: 100, type: 'date' },
+  { field: 'template_start', label: '模板上线', width: 100, type: 'date' },
+  { field: 'template_end', label: '模板下线', width: 100, type: 'date' },
+  { field: 'ironing_start', label: '烫标上线', width: 100, type: 'date' },
+  { field: 'ironing_end', label: '烫标下线', width: 100, type: 'date' },
   { field: 'sewing_remind_date', label: '缝制提醒', width: 110, type: 'date' },
   { field: 'sewing_start', label: '缝制上线', width: 110, type: 'date' },
   { field: 'sewing_end', label: '缝制下线', width: 110, type: 'date' },
@@ -298,6 +302,12 @@ async function autoCalcDates() {
   form.value.cutting_end = fmtLocal(cuttingEnd)
   form.value.secondary_start = fmtLocal(secondaryStart)
   form.value.secondary_end = fmtLocal(secondaryEnd)
+  form.value.printing_start = ''
+  form.value.printing_end = ''
+  form.value.embroidery_start = ''
+  form.value.embroidery_end = ''
+  form.value.template_start = ''
+  form.value.template_end = ''
   form.value.sewing_remind_date = fmtLocal(sewingRemind)
   form.value.sewing_start = fmtLocal(sewingStart)
   form.value.sewing_end = fmtLocal(sewingEnd)
@@ -338,6 +348,12 @@ async function save() {
       cutting_end: form.value.cutting_end,
       secondary_start: form.value.secondary_start,
       secondary_end: form.value.secondary_end,
+      printing_start: form.value.printing_start || '',
+      printing_end: form.value.printing_end || '',
+      embroidery_start: form.value.embroidery_start || '',
+      embroidery_end: form.value.embroidery_end || '',
+      template_start: form.value.template_start || '',
+      template_end: form.value.template_end || '',
       sewing_remind_date: form.value.sewing_remind_date,
       sewing_start: form.value.sewing_start,
       sewing_end: form.value.sewing_end,
@@ -577,12 +593,36 @@ onUnmounted(() => {
               <template v-else><span>{{ fmtDate(row.cutting_end) }}</span></template>
             </td>
             <td>
-              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.secondary_start" type="date" /></template>
-              <template v-else><span>{{ fmtDate(row.secondary_start) }}</span></template>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.printing_start" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.printing_start) }}</span></template>
             </td>
             <td>
-              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.secondary_end" type="date" /></template>
-              <template v-else><span>{{ fmtDate(row.secondary_end) }}</span></template>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.printing_end" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.printing_end) }}</span></template>
+            </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.embroidery_start" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.embroidery_start) }}</span></template>
+            </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.embroidery_end" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.embroidery_end) }}</span></template>
+            </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.template_start" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.template_start) }}</span></template>
+            </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.template_end" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.template_end) }}</span></template>
+            </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.ironing_start" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.ironing_start) }}</span></template>
+            </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.ironing_end" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.ironing_end) }}</span></template>
             </td>
             <td>
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.sewing_remind_date" type="date" /></template>
@@ -667,16 +707,20 @@ onUnmounted(() => {
 
         <el-divider content-position="left">二次加工</el-divider>
         <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="上线">
-              <el-date-picker v-model="form.secondary_start" type="date" value-format="YYYY-MM-DD" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="下线">
-              <el-date-picker v-model="form.secondary_end" type="date" value-format="YYYY-MM-DD" style="width:100%" />
-            </el-form-item>
-          </el-col>
+          <el-col :span="12"><el-form-item label="印花上线"><el-date-picker v-model="form.printing_start" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="印花下线"><el-date-picker v-model="form.printing_end" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12"><el-form-item label="刺绣上线"><el-date-picker v-model="form.embroidery_start" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="刺绣下线"><el-date-picker v-model="form.embroidery_end" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12"><el-form-item label="模板上线"><el-date-picker v-model="form.template_start" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="模板下线"><el-date-picker v-model="form.template_end" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12"><el-form-item label="烫标上线"><el-date-picker v-model="form.ironing_start" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="烫标下线"><el-date-picker v-model="form.ironing_end" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
         </el-row>
 
         <el-divider content-position="left">缝制</el-divider>

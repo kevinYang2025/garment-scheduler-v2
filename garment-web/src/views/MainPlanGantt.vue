@@ -1,321 +1,375 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import api from '../api'
 
 const plans = ref([])
-const dateRange = ref({ start: '', end: '' })
 const loading = ref(true)
 const weekOffset = ref(0)
-const dayWidth = 56 // 每天列宽 px
 
-// 颜色
-const COLORS = {
-  cutting: { bg: '#dbeafe', bar: '#3b82f6', text: '#1e40af' },
-  secondary: { bg: '#fef3c7', bar: '#f59e0b', text: '#92400e' },
-  sewing: { bg: '#d1fae5', bar: '#10b981', text: '#065f46' },
+const todayStr = (() => {
+  const t = new Date()
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`
+})()
+
+// 日期列表：今天前1周 ~ 后3周，随 weekOffset 滚动
+const dates = computed(() => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(today)
+  start.setDate(start.getDate() - 7 + weekOffset.value * 7)
+  const end = new Date(today)
+  end.setDate(end.getDate() + 21 + weekOffset.value * 7)
+  const result = []
+  const cur = new Date(start)
+  while (cur <= end) {
+    const y = cur.getFullYear()
+    const m = String(cur.getMonth() + 1).padStart(2, '0')
+    const d = String(cur.getDate()).padStart(2, '0')
+    result.push(`${y}-${m}-${d}`)
+    cur.setDate(cur.getDate() + 1)
+  }
+  return result
+})
+
+const datesWidth = computed(() => dates.value.length * 28)
+
+const dateRangeLabel = computed(() => {
+  if (!dates.value.length) return ''
+  return dates.value[0].slice(5) + ' ~ ' + dates.value[dates.value.length - 1].slice(5)
+})
+
+function prevWeek() { weekOffset.value-- }
+function nextWeek() { weekOffset.value++ }
+function goToday() { weekOffset.value = 0 }
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  return dateStr.slice(5)
 }
 
-// 今天的日期
-const today = (() => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-})()
+function isRestDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.getDay() === 0 || d.getDay() === 6
+}
 
 async function loadGantt() {
   loading.value = true
   try {
     const { data } = await api.getMainPlanGantt()
     plans.value = data.plans || []
-    dateRange.value = data.dateRange || { start: '', end: '' }
-  } catch { ElMessage.error('加载甘特图失败') }
+  } catch { /* ignore */ }
   loading.value = false
 }
 
-// 日期列（基于 weekOffset 滚动，默认显示今天所在的周）
-const visibleDateCols = computed(() => {
-  if (!dateRange.value.start) return []
-  // 默认从今天前3天开始显示
-  const baseDate = new Date()
-  baseDate.setDate(baseDate.getDate() - 3 + weekOffset.value * 21)
-  // 对齐到周一
-  const dow = (baseDate.getDay() + 6) % 7
-  baseDate.setDate(baseDate.getDate() - dow)
-
-  // 计算最后一条任务的结束日期
-  let lastDate = new Date(baseDate)
-  lastDate.setDate(lastDate.getDate() + 14) // 至少显示2周
-  for (const p of plans.value) {
-    const dates = [p.cutting_end, p.secondary_end, p.sewing_end, p.due_date].filter(Boolean)
-    for (const d of dates) {
-      const dd = new Date(d + 'T00:00:00')
-      if (dd > lastDate) lastDate = dd
-    }
-  }
-  // 对齐到周日
-  const endDow = (lastDate.getDay() + 6) % 7
-  lastDate.setDate(lastDate.getDate() + (6 - endDow))
-  // 加2天缓冲
-  lastDate.setDate(lastDate.getDate() + 2)
-
-  const totalDays = Math.round((lastDate - baseDate) / 86400000)
-  const cols = []
-  for (let i = 0; i < totalDays; i++) {
-    const d = new Date(baseDate)
-    d.setDate(d.getDate() + i)
-    const ds = fmtDate(d)
-    const dayOfWeek = d.getDay()
-    cols.push({
-      date: ds,
-      day: d.getDate(),
-      month: d.getMonth() + 1,
-      dow: ['日','一','二','三','四','五','六'][dayOfWeek],
-      isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
-      isToday: ds === today,
-    })
-  }
-  return cols
-})
-
-// 月分组
-const monthGroups = computed(() => {
-  const groups = []
-  let current = ''
-  let count = 0
-  for (const col of visibleDateCols.value) {
-    const key = `${col.month}月`
-    if (key !== current) {
-      if (current) groups.push({ label: current, span: count })
-      current = key
-      count = 1
-    } else { count++ }
-  }
-  if (current) groups.push({ label: current, span: count })
-  return groups
-})
-
-// 今天列的索引
-const todayIdx = computed(() => visibleDateCols.value.findIndex(c => c.isToday))
-
-function shiftWeek(dir) { weekOffset.value += dir }
-function goToday() { weekOffset.value = 0 }
-
-function fmtDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+function getTaskStyle(startDate, endDate) {
+  if (!startDate || !endDate || !dates.value.length) return { display: 'none' }
+  const start = new Date(startDate + 'T00:00:00')
+  const end = new Date(endDate + 'T00:00:00')
+  const rangeStart = new Date(dates.value[0] + 'T00:00:00')
+  const dayWidth = 28
+  const totalWidth = dates.value.length * dayWidth
+  let left = Math.round((start - rangeStart) / 86400000) * dayWidth
+  let width = Math.round((end - start) / 86400000 + 1) * dayWidth
+  if (left + width < 0 || left > totalWidth) return { display: 'none' }
+  if (left < 0) { width += left; left = 0 }
+  if (left + width > totalWidth) { width = totalWidth - left }
+  return { left: left + 'px', width: Math.max(width, dayWidth) + 'px' }
 }
 
-// 计算任务条位置
-function barStyle(startDate, endDate, type) {
-  if (!startDate || !endDate || !visibleDateCols.value.length) return { display: 'none' }
-  const firstDate = visibleDateCols.value[0].date
-  const startIdx = dayDiff(firstDate, startDate)
-  const dur = dayDiff(startDate, endDate) + 1
-  if (startIdx + dur < 0 || startIdx > visibleDateCols.value.length) return { display: 'none' }
-  const c = COLORS[type]
-  return {
-    left: `${Math.max(0, startIdx) * dayWidth}px`,
-    width: `${Math.max(1, dur) * dayWidth}px`,
-    background: c.bar,
-    color: c.text,
-  }
-}
-
-// 交期标记位置
 function dueDateStyle(dueDate) {
-  if (!dueDate || !visibleDateCols.value.length) return { display: 'none' }
-  const firstDate = visibleDateCols.value[0].date
-  const idx = dayDiff(firstDate, dueDate)
-  if (idx < 0 || idx > visibleDateCols.value.length) return { display: 'none' }
-  return { left: `${idx * dayWidth + dayWidth / 2}px` }
+  if (!dueDate || !dates.value.length) return { display: 'none' }
+  const d = new Date(dueDate + 'T00:00:00')
+  const rangeStart = new Date(dates.value[0] + 'T00:00:00')
+  const idx = Math.round((d - rangeStart) / 86400000)
+  if (idx < 0 || idx > dates.value.length) return { display: 'none' }
+  return { left: idx * 28 + 14 + 'px' }
 }
 
-function dayDiff(from, to) {
-  const a = new Date(from + 'T00:00:00')
-  const b = new Date(to + 'T00:00:00')
-  return Math.round((b - a) / 86400000)
-}
-
-function fmtShort(d) {
-  if (!d) return ''
-  const parts = d.split('-')
-  return `${parseInt(parts[1])}/${parseInt(parts[2])}`
+function buildTooltip(plan) {
+  const lines = [`款号: ${plan.style_no}`, `品名: ${plan.product_name}`, `数量: ${plan.plan_qty}件`]
+  if (plan.cutting_start) lines.push(`裁剪: ${plan.cutting_start} ~ ${plan.cutting_end || ''}`)
+  if (plan.secondary_start) lines.push(`二次加工: ${plan.secondary_start} ~ ${plan.secondary_end || ''}`)
+  if (plan.sewing_start) lines.push(`缝制: ${plan.sewing_start} ~ ${plan.sewing_end || ''}`)
+  if (plan.due_date) lines.push(`交期: ${plan.due_date}`)
+  return lines.join('\n')
 }
 
 onMounted(loadGantt)
 </script>
 
 <template>
-  <div class="gantt-page">
+  <div class="main-plan-gantt">
     <!-- 工具栏 -->
     <div class="toolbar">
-      <div class="nav-btns">
-        <el-button size="small" @click="shiftWeek(-1)">← 上三周</el-button>
-        <el-button size="small" type="primary" @click="goToday">今天</el-button>
-        <el-button size="small" @click="shiftWeek(1)">下三周 →</el-button>
+      <div class="toolbar-left">
+        <span class="date-range">{{ dateRangeLabel }}</span>
+      </div>
+      <div class="toolbar-center">
+        <div class="nav-arrows">
+          <button class="arrow-btn" @click="prevWeek">‹</button>
+          <button class="today-btn arrow-btn" @click="goToday">今天</button>
+          <button class="arrow-btn" @click="nextWeek">›</button>
+        </div>
       </div>
       <div class="legend">
         <span class="leg-item"><span class="leg-dot" style="background:#3b82f6"></span>裁剪</span>
         <span class="leg-item"><span class="leg-dot" style="background:#f59e0b"></span>二次加工</span>
         <span class="leg-item"><span class="leg-dot" style="background:#10b981"></span>缝制</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#ef4444"></span>交期</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#ef4444;height:2px;width:12px;border-radius:0"></span>交期</span>
       </div>
     </div>
 
-    <!-- 甘特图主体 -->
-    <div class="gantt-wrap" v-if="plans.length">
-      <!-- 月头 -->
-      <div class="gantt-header">
-        <div class="label-col">款号 / 品名</div>
-        <div class="timeline-header">
-          <div class="month-row">
-            <div v-for="(mg, i) in monthGroups" :key="i" class="month-cell" :style="{ width: mg.span * dayWidth + 'px' }">{{ mg.label }}</div>
-          </div>
-          <div class="day-row">
-            <div v-for="col in visibleDateCols" :key="col.date" class="day-cell"
-              :class="{ weekend: col.isWeekend, today: col.isToday }"
-              :style="{ width: dayWidth + 'px' }">
-              <span class="day-num">{{ col.day }}</span>
-              <span class="day-dow">{{ col.dow }}</span>
-            </div>
+    <!-- 甘特图 -->
+    <div class="content" v-if="plans.length">
+      <!-- 左侧固定列 -->
+      <div class="gantt-left" ref="ganttLeftRef">
+        <div class="gantt-left-header">款号 / 品名</div>
+        <div
+          v-for="plan in plans"
+          :key="'l-'+plan.id"
+          class="gantt-left-row"
+        >
+          <div class="plan-no">{{ plan.style_no }}</div>
+          <div class="plan-info">
+            <span>{{ plan.product_name }}</span>
+            <span class="plan-qty">{{ plan.plan_qty }}件</span>
           </div>
         </div>
       </div>
 
-      <!-- 甘特图行 -->
-      <div class="gantt-body">
-        <div v-for="plan in plans" :key="plan.id" class="gantt-row">
-          <!-- 左侧标签 -->
-          <div class="label-col">
-            <div class="plan-style">{{ plan.style_no }}</div>
-            <div class="plan-name">{{ plan.product_name }} ({{ plan.plan_qty }}件)</div>
+      <!-- 右侧可滚动区 -->
+      <div class="gantt-right" ref="ganttRightRef">
+        <!-- 日期标题 -->
+        <div class="gantt-right-header">
+          <div
+            v-for="date in dates"
+            :key="date"
+            class="date-cell"
+            :class="{ weekend: isRestDay(date), today: date === todayStr }"
+          >
+            {{ formatDate(date) }}
           </div>
-          <!-- 右侧时间轴 -->
-          <div class="timeline-body">
-            <!-- 今天线 -->
-            <div v-if="todayIdx >= 0" class="today-line" :style="{ left: todayIdx * dayWidth + dayWidth/2 + 'px' }"></div>
-            <!-- 交期线 -->
-            <div v-if="plan.due_date" class="due-line" :style="dueDateStyle(plan.due_date)" :title="'交期: ' + plan.due_date"></div>
-            <!-- 周末背景 -->
-            <div v-for="col in visibleDateCols" :key="col.date" class="day-bg"
-              :class="{ weekend: col.isWeekend, today: col.isToday }"
-              :style="{ left: visibleDateCols.indexOf(col) * dayWidth + 'px', width: dayWidth + 'px' }"></div>
+        </div>
+
+        <!-- 任务行 -->
+        <div
+          v-for="plan in plans"
+          :key="'r-'+plan.id"
+          class="gantt-right-row"
+        >
+          <div class="tasks-area" :style="{ minWidth: datesWidth + 'px' }">
             <!-- 裁剪条 -->
-            <div v-if="plan.cutting_start && plan.cutting_end" class="bar cutting-bar"
-              :style="barStyle(plan.cutting_start, plan.cutting_end, 'cutting')"
-              :title="'裁剪: ' + plan.cutting_start + ' ~ ' + plan.cutting_end">
-              <span class="bar-label">裁剪</span>
+            <div
+              v-if="plan.cutting_start && plan.cutting_end"
+              class="gantt-bar cutting"
+              :style="getTaskStyle(plan.cutting_start, plan.cutting_end)"
+              :title="'裁剪: ' + plan.cutting_start + ' ~ ' + plan.cutting_end"
+            >
+              <span class="bar-text">裁剪</span>
             </div>
             <!-- 二次加工条 -->
-            <div v-if="plan.secondary_start && plan.secondary_end" class="bar secondary-bar"
-              :style="barStyle(plan.secondary_start, plan.secondary_end, 'secondary')"
-              :title="'二次加工: ' + plan.secondary_start + ' ~ ' + plan.secondary_end">
-              <span class="bar-label">二次</span>
+            <div
+              v-if="plan.secondary_start && plan.secondary_end"
+              class="gantt-bar secondary"
+              :style="getTaskStyle(plan.secondary_start, plan.secondary_end)"
+              :title="'二次加工: ' + plan.secondary_start + ' ~ ' + plan.secondary_end"
+            >
+              <span class="bar-text">二次</span>
             </div>
             <!-- 缝制条 -->
-            <div v-if="plan.sewing_start && plan.sewing_end" class="bar sewing-bar"
-              :style="barStyle(plan.sewing_start, plan.sewing_end, 'sewing')"
-              :title="'缝制: ' + plan.sewing_start + ' ~ ' + plan.sewing_end">
-              <span class="bar-label">缝制</span>
+            <div
+              v-if="plan.sewing_start && plan.sewing_end"
+              class="gantt-bar sewing"
+              :style="getTaskStyle(plan.sewing_start, plan.sewing_end)"
+              :title="buildTooltip(plan)"
+            >
+              <span class="bar-text">{{ plan.style_no }} {{ plan.plan_qty }}件</span>
             </div>
+            <!-- 交期标记 -->
+            <div
+              v-if="plan.due_date"
+              class="due-marker"
+              :style="dueDateStyle(plan.due_date)"
+              :title="'交期: ' + plan.due_date"
+            ></div>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-else-if="!loading" class="empty">暂无排程数据，请先在预排总计划中添加计划</div>
+    <div v-else-if="!loading" class="empty">暂无排程数据</div>
     <div v-else class="empty">加载中...</div>
   </div>
 </template>
 
 <style scoped>
-.gantt-page { display: flex; flex-direction: column; height: 100%; }
+.main-plan-gantt {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 140px);
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+}
 
 .toolbar {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 0; margin-bottom: 8px;
-}
-.nav-btns { display: flex; gap: 4px; }
-.legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); }
-.leg-item { display: flex; align-items: center; gap: 4px; }
-.leg-dot { width: 12px; height: 12px; border-radius: 3px; }
-
-.gantt-wrap {
-  flex: 1; overflow: auto; border: 1px solid var(--border);
-  border-radius: var(--radius); background: var(--card);
-}
-
-/* 表头 */
-.gantt-header { display: flex; position: sticky; top: 0; z-index: 10; background: var(--card); }
-.label-col {
-  width: 200px; min-width: 200px; flex-shrink: 0;
-  padding: 8px 12px; border-right: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
-  font-size: 12px; font-weight: 600; color: var(--text-secondary);
-  display: flex; align-items: center;
+  flex-shrink: 0;
 }
-.timeline-header { flex: 1; overflow: hidden; }
-.month-row { display: flex; border-bottom: 1px solid var(--border); }
-.month-cell {
-  text-align: center; font-size: 12px; font-weight: 600; color: var(--text);
-  padding: 4px 0; border-right: 1px solid var(--border-light);
-}
-.day-row { display: flex; }
-.day-cell {
-  text-align: center; padding: 2px 0;
-  border-right: 1px solid var(--border-light);
-  font-size: 10px; color: var(--text-tertiary);
-  display: flex; flex-direction: column; align-items: center;
-}
-.day-cell.weekend { background: #f8f9fa; }
-.day-cell.today { background: #ede9fe; }
-.day-num { font-weight: 600; font-size: 11px; color: var(--text); }
-.day-dow { font-size: 9px; }
+.toolbar-left { display: flex; align-items: center; gap: 12px; }
+.date-range { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+.toolbar-center { display: flex; align-items: center; }
 
-/* 甘特图行 */
-.gantt-body { position: relative; }
-.gantt-row { display: flex; border-bottom: 1px solid var(--border-light); min-height: 52px; }
-.gantt-row:hover { background: #f8faff; }
-.gantt-row .label-col {
-  flex-direction: column; align-items: flex-start; justify-content: center;
-  border-bottom: none; font-weight: 400;
+.nav-arrows { display: flex; align-items: center; gap: 2px; }
+.arrow-btn {
+  padding: 4px 10px; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 13px;
+  color: var(--text-secondary); transition: var(--transition);
 }
-.plan-style { font-size: 13px; font-weight: 700; color: var(--text); }
-.plan-name { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.arrow-btn:hover { background: #eef2ff; color: var(--primary); border-color: var(--primary); }
+.today-btn { font-weight: 600; }
 
-.timeline-body { flex: 1; position: relative; min-height: 52px; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); }
+.leg-item { display: flex; align-items: center; gap: 4px; }
+.leg-dot { width: 12px; height: 8px; border-radius: 2px; }
 
-/* 周末背景 */
-.day-bg { position: absolute; top: 0; bottom: 0; }
-.day-bg.weekend { background: #fafafa; }
-.day-bg.today { background: #f5f3ff; }
-
-/* 今天线 */
-.today-line {
-  position: absolute; top: 0; bottom: 0; width: 2px;
-  background: #8b5cf6; z-index: 5; opacity: .6;
-}
-/* 交期线 */
-.due-line {
-  position: absolute; top: 0; bottom: 0; width: 2px;
-  background: #ef4444; z-index: 5; opacity: .5;
-  border-style: dashed;
-}
-.due-line::after {
-  content: '交期'; position: absolute; top: 2px; left: 4px;
-  font-size: 9px; color: #ef4444; font-weight: 600;
-}
-
-/* 任务条 */
-.bar {
-  position: absolute; top: 14px; height: 24px;
-  border-radius: 4px; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 600; z-index: 3;
-  cursor: pointer; transition: opacity .2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+/* 甘特图主体 */
+.content {
+  flex: 1;
+  display: flex;
   overflow: hidden;
 }
-.bar:hover { opacity: .85; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
-.bar-label { white-space: nowrap; padding: 0 6px; }
 
-.empty { text-align: center; padding: 60px; color: var(--text-tertiary); }
+/* 左侧固定列 */
+.gantt-left {
+  width: 200px;
+  min-width: 200px;
+  flex-shrink: 0;
+  border-right: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  z-index: 5;
+}
+.gantt-left-header {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+.gantt-left-row {
+  height: 52px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.plan-no { font-size: 13px; font-weight: 700; color: var(--text); }
+.plan-info { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.plan-info span { font-size: 11px; color: var(--text-tertiary); }
+.plan-qty { font-weight: 600; color: var(--primary); }
+
+/* 右侧可滚动区 */
+.gantt-right {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+.gantt-right-header {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  height: 52px;
+}
+.date-cell {
+  width: 28px;
+  min-width: 28px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border-light);
+  flex-shrink: 0;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 1px;
+}
+.date-cell.weekend { background: #f1f5f9; color: var(--text-tertiary); }
+.date-cell.today { background: var(--primary-light, #eef2ff); color: var(--primary); font-weight: 700; }
+
+.gantt-right-row {
+  height: 52px;
+  border-bottom: 1px solid var(--border-light);
+  position: relative;
+}
+.tasks-area {
+  position: relative;
+  height: 100%;
+}
+
+/* 甘特条 */
+.gantt-bar {
+  position: absolute;
+  top: 14px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 2;
+  transition: filter 0.2s;
+  overflow: hidden;
+}
+.gantt-bar:hover { filter: brightness(0.9); }
+.gantt-bar .bar-text { white-space: nowrap; padding: 0 4px; }
+
+.gantt-bar.cutting { background: var(--primary, #3b82f6); top: 6px; height: 16px; }
+.gantt-bar.secondary { background: #f59e0b; top: 24px; height: 16px; }
+.gantt-bar.sewing { background: #10b981; }
+
+/* 交期标记 */
+.due-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ef4444;
+  z-index: 3;
+}
+.due-marker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -4px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #ef4444;
+}
+
+.empty { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-tertiary); }
 </style>

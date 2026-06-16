@@ -765,6 +765,12 @@ app.put('/api/main-plan/:id', (req, res) => {
     const cutting_end = p.cutting_end ?? existing.cutting_end;
     const secondary_start = p.secondary_start ?? existing.secondary_start;
     const secondary_end = p.secondary_end ?? existing.secondary_end;
+    const printing_start = p.printing_start ?? existing.printing_start ?? '';
+    const printing_end = p.printing_end ?? existing.printing_end ?? '';
+    const embroidery_start = p.embroidery_start ?? existing.embroidery_start ?? '';
+    const embroidery_end = p.embroidery_end ?? existing.embroidery_end ?? '';
+    const template_start = p.template_start ?? existing.template_start ?? '';
+    const template_end = p.template_end ?? existing.template_end ?? '';
     const sewing_remind_date = p.sewing_remind_date ?? existing.sewing_remind_date;
     const sewing_start = p.sewing_start ?? existing.sewing_start;
     const sewing_end = p.sewing_end ?? existing.sewing_end;
@@ -775,8 +781,8 @@ app.put('/api/main-plan/:id', (req, res) => {
     const is_scheduled = p.is_scheduled !== undefined ? (p.is_scheduled ? 1 : 0) : existing.is_scheduled;
     const workshop = p.workshop ?? existing.workshop ?? '';
     const line_team = p.line_team ?? existing.line_team ?? '';
-    db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
-      [style_id, style_no, product_name, plan_qty, due_date, cutting_start, cutting_end, secondary_start, secondary_end, sewing_remind_date, sewing_start, sewing_end, ironing_start, ironing_end, conflict_flag, pipeline_count, is_scheduled, workshop, line_team, id]);
+    db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
+      [style_id, style_no, product_name, plan_qty, due_date, cutting_start, cutting_end, secondary_start, secondary_end, printing_start, printing_end, embroidery_start, embroidery_end, template_start, template_end, sewing_remind_date, sewing_start, sewing_end, ironing_start, ironing_end, conflict_flag, pipeline_count, is_scheduled, workshop, line_team, id]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     db.logOperation('main_plan', 'update', id, style_no);
     res.json({ ok: true, id });
