@@ -296,6 +296,8 @@ onMounted(loadGantt)
   border-right: 2px solid var(--border);
   background: var(--card);
   z-index: 5;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 .gantt-left-header {
