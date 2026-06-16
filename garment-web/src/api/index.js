@@ -56,9 +56,11 @@ export default {
 
   // 预排总计划
   getMainPlan: () => api.get('/main-plan'),
+  getMainPlanGantt: () => api.get('/main-plan/gantt'),
   saveMainPlan: (plan) => api.post('/main-plan', plan),
   updateMainPlan: (id, data) => api.put(`/main-plan/${id}`, data),
   deleteMainPlan: (id) => api.delete(`/main-plan/${id}`),
+  autoSchedule: () => api.post('/main-plan/auto-schedule'),
   exportMainPlan: () => api.get('/main-plan/export', { responseType: 'blob' }),
   importMainPlan: (file) => {
     const formData = new FormData()

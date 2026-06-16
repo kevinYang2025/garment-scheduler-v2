@@ -678,6 +678,50 @@ app.get('/api/main-plan', (req, res) => {
   }
 });
 
+// 预排总计划甘特图数据
+app.get('/api/main-plan/gantt', (req, res) => {
+  try {
+    const plans = db.all(`
+      SELECT id, style_no, product_name, plan_qty, due_date,
+        cutting_start, cutting_end,
+        secondary_start, secondary_end,
+        sewing_remind_date, sewing_start, sewing_end,
+        workshop, line_team, pipeline_count, is_scheduled
+      FROM main_plan
+      WHERE cutting_start IS NOT NULL AND cutting_end IS NOT NULL
+      ORDER BY cutting_start ASC, id ASC
+    `);
+
+    // 计算日期范围
+    const allDates = plans.flatMap(p => [
+      p.cutting_start, p.cutting_end,
+      p.secondary_start, p.secondary_end,
+      p.sewing_start, p.sewing_end, p.due_date
+    ]).filter(Boolean);
+
+    let dateRange = { start: '', end: '' };
+    if (allDates.length > 0) {
+      const min = new Date(Math.min(...allDates.map(d => new Date(d + 'T00:00:00'))));
+      const max = new Date(Math.max(...allDates.map(d => new Date(d + 'T00:00:00'))));
+      // 扩展到周一~周日
+      min.setDate(min.getDate() - ((min.getDay() + 6) % 7)); // 回到周一
+      max.setDate(max.getDate() + (7 - ((max.getDay() + 6) % 7)) - 1); // 到周日
+      // 至少显示4周
+      const diffDays = (max - min) / 86400000;
+      if (diffDays < 28) max.setDate(max.getDate() + (28 - diffDays));
+      dateRange = {
+        start: fmtLocal(min),
+        end: fmtLocal(max),
+      };
+    }
+
+    res.json({ plans, dateRange });
+  } catch (e) {
+    console.error('GET /api/main-plan/gantt error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/api/main-plan', (req, res) => {
   try {
     const p = req.body;
@@ -687,15 +731,15 @@ app.post('/api/main-plan', (req, res) => {
     if (p.id) {
       const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [p.id]);
       if (!existing) return res.status(404).json({ error: '计划不存在' });
-      db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
-        [p.style_id, p.style_no, p.product_name, p.plan_qty, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.sewing_remind_date, p.sewing_start, p.sewing_end, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.id]);
+      db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
+        [p.style_id, p.style_no, p.product_name, p.plan_qty, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.id]);
       broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
       db.logOperation('main_plan', 'update', p.id, p.style_no);
       return res.json({ ok: true, id: p.id });
     }
-    const result = db.run(`INSERT INTO main_plan (style_id,style_no,product_name,plan_qty,due_date,cutting_start,cutting_end,secondary_start,secondary_end,sewing_remind_date,sewing_start,sewing_end,pipeline_count,is_scheduled,workshop,line_team)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [p.style_id, p.style_no, p.product_name, p.plan_qty || 0, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.sewing_remind_date, p.sewing_start, p.sewing_end, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '']);
+    const result = db.run(`INSERT INTO main_plan (style_id,style_no,product_name,plan_qty,due_date,cutting_start,cutting_end,secondary_start,secondary_end,sewing_remind_date,sewing_start,sewing_end,ironing_start,ironing_end,conflict_flag,pipeline_count,is_scheduled,workshop,line_team)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [p.style_id, p.style_no, p.product_name, p.plan_qty || 0, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '']);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     db.logOperation('main_plan', 'create', result.lastInsertRowid, p.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -724,12 +768,15 @@ app.put('/api/main-plan/:id', (req, res) => {
     const sewing_remind_date = p.sewing_remind_date ?? existing.sewing_remind_date;
     const sewing_start = p.sewing_start ?? existing.sewing_start;
     const sewing_end = p.sewing_end ?? existing.sewing_end;
+    const ironing_start = p.ironing_start ?? existing.ironing_start ?? '';
+    const ironing_end = p.ironing_end ?? existing.ironing_end ?? '';
+    const conflict_flag = p.conflict_flag ?? existing.conflict_flag ?? 0;
     const pipeline_count = p.pipeline_count ?? existing.pipeline_count ?? 1;
     const is_scheduled = p.is_scheduled !== undefined ? (p.is_scheduled ? 1 : 0) : existing.is_scheduled;
     const workshop = p.workshop ?? existing.workshop ?? '';
     const line_team = p.line_team ?? existing.line_team ?? '';
-    db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
-      [style_id, style_no, product_name, plan_qty, due_date, cutting_start, cutting_end, secondary_start, secondary_end, sewing_remind_date, sewing_start, sewing_end, pipeline_count, is_scheduled, workshop, line_team, id]);
+    db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
+      [style_id, style_no, product_name, plan_qty, due_date, cutting_start, cutting_end, secondary_start, secondary_end, sewing_remind_date, sewing_start, sewing_end, ironing_start, ironing_end, conflict_flag, pipeline_count, is_scheduled, workshop, line_team, id]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     db.logOperation('main_plan', 'update', id, style_no);
     res.json({ ok: true, id });
@@ -750,6 +797,275 @@ app.delete('/api/main-plan/:id', (req, res) => {
   } catch (e) {
     console.error('DELETE /api/main-plan error:', e);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 预排产算法 ----------
+app.post('/api/main-plan/auto-schedule', (req, res) => {
+  try {
+    // 1. 获取所有数据
+    const loadingList = db.all('SELECT * FROM fabric_loading_list');
+    const styles = db.all('SELECT * FROM styles');
+    const capRows = db.all('SELECT * FROM capacity_config');
+    const cap = {};
+    for (const r of capRows) cap[r.process_type] = parseInt(r.daily_capacity) || 0;
+
+    const styleMap = {};
+    for (const s of styles) styleMap[s.style_no] = s;
+
+    // 2. 按款式去重，只处理装柜清单中的款式
+    const styleNos = [...new Set(loadingList.map(r => r.style_no).filter(Boolean).filter(sn => styleMap[sn]))];
+    if (styleNos.length === 0) return res.json({ ok: true, count: 0, message: '装柜清单为空' });
+
+    // 3. 按款式汇总装柜信息（取最早的装柜日期，累加 garment_qty）
+    const loadingInfo = {};
+    for (const row of loadingList) {
+      const sn = row.style_no;
+      if (!sn || !styleMap[sn]) continue;
+      if (!loadingInfo[sn]) {
+        loadingInfo[sn] = { loading_date: row.loading_date || '', garment_qty: 0 };
+      }
+      if (row.loading_date && (!loadingInfo[sn].loading_date || row.loading_date < loadingInfo[sn].loading_date)) {
+        loadingInfo[sn].loading_date = row.loading_date;
+      }
+      loadingInfo[sn].garment_qty += parseFloat(row.garment_qty) || 0;
+    }
+
+    // 数量优先规则
+    function getQty(sn) {
+      const li = loadingInfo[sn];
+      const st = styleMap[sn];
+      if (li && li.garment_qty > 0) return li.garment_qty;
+      if (st) return parseInt(st.plan_qty) || 0;
+      return li ? li.garment_qty : 0;
+    }
+
+    // 日期工具
+    function parseDate(val) {
+      if (!val) return '';
+      const s = String(val).trim();
+      // Excel serial number
+      if (/^\d{4,6}$/.test(s)) {
+        const serial = parseInt(s);
+        const ms = (serial - 25569) * 86400000;
+        const d = new Date(ms);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      }
+      // Already ISO date
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+      return '';
+    }
+    function addDays(dateStr, days) {
+      const d = parseDate(dateStr);
+      if (!d) return '';
+      const dt = new Date(d + 'T00:00:00');
+      dt.setDate(dt.getDate() + days);
+      return dt.toISOString().slice(0, 10);
+    }
+
+    // ========== Step 1: 裁剪 ==========
+    const cuttingItems = styleNos.map(sn => {
+      const li = loadingInfo[sn];
+      return {
+        style_no: sn,
+        qty: getQty(sn),
+        cutting_start: li ? addDays(li.loading_date, 24) : '',
+      };
+    }).filter(item => item.cutting_start && item.qty > 0);
+
+    cuttingItems.sort((a, b) => a.cutting_start.localeCompare(b.cutting_start) || a.style_no.localeCompare(b.style_no));
+
+    const cuttingStandard = cap.cutting || 60000;
+    let currentDay = '';
+    let remaining = cuttingStandard;
+    const cuttingResults = {};
+
+    for (const item of cuttingItems) {
+      if (!currentDay || item.cutting_start > currentDay) {
+        currentDay = item.cutting_start;
+        remaining = cuttingStandard;
+      }
+      let styleRemaining = item.qty;
+      while (styleRemaining > 0) {
+        if (styleRemaining <= remaining) {
+          remaining -= styleRemaining;
+          styleRemaining = 0;
+          cuttingResults[item.style_no] = { cutting_start: item.cutting_start, cutting_end: currentDay };
+        } else {
+          styleRemaining -= remaining;
+          currentDay = addDays(currentDay, 1);
+          remaining = cuttingStandard;
+          cuttingResults[item.style_no] = { cutting_start: item.cutting_start, cutting_end: currentDay };
+        }
+      }
+    }
+
+    // ========== Step 2: 二次加工（印花/刺绣/模板） ==========
+    const secTypes = [
+      { key: 'printing', flag: 'printing', dailyField: 'printing_daily_output', standard: cap.printing || 10000, prefix: 'printing' },
+      { key: 'embroidery', flag: 'embroidery', dailyField: 'embroidery_daily_output', standard: cap.embroidery || 8000, prefix: 'embroidery' },
+      { key: 'template', flag: 'template', dailyField: 'template_daily_output', standard: cap.template || 3000, prefix: 'template' },
+    ];
+    const secondaryResults = {}; // style_no -> { printing_end, embroidery_end, template_end }
+
+    for (const sec of secTypes) {
+      const items = styleNos
+        .filter(sn => {
+          const st = styleMap[sn];
+          const cr = cuttingResults[sn];
+          return cr && st[sec.flag] === '是' && parseInt(st[sec.dailyField]) > 0;
+        })
+        .map(sn => {
+          const st = styleMap[sn];
+          return {
+            style_no: sn,
+            qty: getQty(sn),
+            style_max: parseInt(st[sec.dailyField]) || 0,
+            start: addDays(cuttingResults[sn].cutting_end, 1),
+          };
+        });
+
+      items.sort((a, b) => a.start.localeCompare(b.start) || a.style_no.localeCompare(b.style_no));
+
+      let curDay = '';
+      let remain = sec.standard;
+      for (const item of items) {
+        if (!curDay || item.start > curDay) {
+          curDay = item.start;
+          remain = sec.standard;
+        }
+        let styleRemain = item.qty;
+        while (styleRemain > 0) {
+          const todayCap = Math.min(item.style_max, remain);
+          if (todayCap <= 0) {
+            curDay = addDays(curDay, 1);
+            remain = sec.standard;
+            continue;
+          }
+          const produce = Math.min(styleRemain, todayCap);
+          styleRemain -= produce;
+          remain -= produce;
+          if (styleRemain === 0) {
+            if (!secondaryResults[item.style_no]) secondaryResults[item.style_no] = {};
+            secondaryResults[item.style_no][sec.prefix + '_end'] = curDay;
+          } else {
+            curDay = addDays(curDay, 1);
+            remain = sec.standard;
+          }
+        }
+      }
+    }
+
+    // ========== Step 3 & 4: 缝制 + 烫标（倒推） ==========
+    const results = [];
+    for (const sn of styleNos) {
+      const st = styleMap[sn];
+      const li = loadingInfo[sn];
+      if (!st || !li) continue;
+
+      const qty = getQty(sn);
+      if (qty <= 0) continue;
+
+      const cr = cuttingResults[sn] || {};
+      const sr = secondaryResults[sn] || {};
+
+      // 缝制倒推
+      const sewingEnd = addDays(st.due_date, -15);
+      let dailyTarget = parseInt(st.target_daily_output) || 0;
+      if (dailyTarget <= 0) {
+        // 按款式分类从 production_lines 找兜底日产量
+        const cat = st.product_name || '';
+        const pl = db.get("SELECT daily_output FROM production_lines WHERE line_name = ? AND daily_output > 0 LIMIT 1", [cat]);
+        if (pl) dailyTarget = parseInt(pl.daily_output) || 0;
+      }
+      const sewingDays = dailyTarget > 0 ? Math.ceil(qty / dailyTarget) + 1 : 1;
+      const sewingStart = addDays(sewingEnd, -(sewingDays - 1));
+
+      // 烫标倒推（仅 ironing_label = '是'）
+      let ironingStart = '', ironingEnd = '';
+      let sewingRemind = addDays(sewingStart, -10);
+
+      if (st.ironing_label === '是') {
+        ironingEnd = addDays(sewingStart, -3);
+        const ironingMax = parseInt(st.ironing_daily_output) || 0;
+        const ironingStandard = cap.ironing || 6000;
+        if (ironingMax > 0 && ironingStandard > 0) {
+          // 倒推排程
+          let curDay = ironingEnd;
+          let remain = ironingStandard;
+          let styleRemain = qty;
+          while (styleRemain > 0) {
+            const todayCap = Math.min(ironingMax, remain);
+            if (todayCap <= 0) {
+              curDay = addDays(curDay, -1);
+              remain = ironingStandard;
+              continue;
+            }
+            const produce = Math.min(styleRemain, todayCap);
+            styleRemain -= produce;
+            remain -= produce;
+            if (styleRemain > 0) {
+              curDay = addDays(curDay, -1);
+              remain = ironingStandard;
+            }
+          }
+          ironingStart = curDay;
+          sewingRemind = addDays(ironingStart, -10);
+        }
+      }
+
+      // 冲突检测
+      const secEnds = [sr.printing_end, sr.embroidery_end, sr.template_end].filter(Boolean);
+      const maxSecEnd = secEnds.length > 0 ? secEnds.reduce((a, b) => a > b ? a : b) : '';
+      const refStart = ironingStart || sewingStart;
+      const conflict = maxSecEnd && refStart && refStart < maxSecEnd ? 1 : 0;
+
+      results.push({
+        style_id: st.id,
+        style_no: sn,
+        product_name: st.product_name || '',
+        plan_qty: qty,
+        due_date: st.due_date || '',
+        cutting_start: cr.cutting_start || '',
+        cutting_end: cr.cutting_end || '',
+        secondary_start: cr.cutting_end ? addDays(cr.cutting_end, 1) : '',
+        secondary_end: maxSecEnd,
+        sewing_remind_date: sewingRemind,
+        sewing_start: sewingStart,
+        sewing_end: sewingEnd,
+        ironing_start: ironingStart,
+        ironing_end: ironingEnd,
+        conflict_flag: conflict,
+        pipeline_count: 1,
+        is_scheduled: 0,
+        workshop: '',
+        line_team: '',
+      });
+    }
+
+    // 5. 清空旧数据，写入新计划
+    db.run('DELETE FROM main_plan');
+    for (const r of results) {
+      db.run(`INSERT INTO main_plan
+        (style_id,style_no,product_name,plan_qty,due_date,
+         cutting_start,cutting_end,secondary_start,secondary_end,
+         sewing_remind_date,sewing_start,sewing_end,
+         ironing_start,ironing_end,conflict_flag,
+         pipeline_count,is_scheduled,workshop,line_team)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [r.style_id, r.style_no, r.product_name, r.plan_qty, r.due_date,
+         r.cutting_start, r.cutting_end, r.secondary_start, r.secondary_end,
+         r.sewing_remind_date, r.sewing_start, r.sewing_end,
+         r.ironing_start, r.ironing_end, r.conflict_flag,
+         r.pipeline_count, r.is_scheduled, r.workshop, r.line_team]);
+    }
+
+    broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
+    db.logOperation('main_plan', 'auto_schedule', 0, `生成${results.length}条计划`);
+    res.json({ ok: true, count: results.length, conflicts: results.filter(r => r.conflict_flag).length });
+  } catch (e) {
+    console.error('POST /api/main-plan/auto-schedule error:', e);
+    res.status(500).json({ error: 'Internal server error: ' + e.message });
   }
 });
 

@@ -587,6 +587,13 @@ function migrateStyles() {
     }
   } catch (e) { console.log('main_plan priority migration skip:', e.message); }
 
+  try {
+    const mpcols2 = db.prepare("PRAGMA table_info(main_plan)").all().map(c => c.name);
+    if (!mpcols2.includes('ironing_start')) db.prepare("ALTER TABLE main_plan ADD COLUMN ironing_start TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('ironing_end')) db.prepare("ALTER TABLE main_plan ADD COLUMN ironing_end TEXT DEFAULT ''").run();
+    if (!mpcols2.includes('conflict_flag')) db.prepare("ALTER TABLE main_plan ADD COLUMN conflict_flag INTEGER DEFAULT 0").run();
+  } catch (e) { console.log('main_plan ironing/conflict migration skip:', e.message); }
+
   const cols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
   if (!cols.includes('embroidery')) {
     db.prepare("ALTER TABLE styles ADD COLUMN embroidery TEXT DEFAULT ''").run();

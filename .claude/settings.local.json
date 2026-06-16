@@ -225,7 +225,16 @@
       "Bash(where cloudflared *)",
       "Bash(node -e \"const d=require\\('/tmp/tree.json'\\); const w=d.filter\\(n=>n.type==='workshop'\\); const t=[]; d.forEach\\(n=>{if\\(n.children\\)n.children.filter\\(c=>c.type==='team'\\).forEach\\(c=>t.push\\(c\\)\\)}\\); console.log\\('车间:',w.length,'班组:',t.length\\); console.log\\('状态:',t.reduce\\(\\(a,x\\)=>{a[x.status]=\\(a[x.status]||0\\)+1;return a},{}\\)\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);const w=arr.filter\\(n=>n.type==='workshop'\\);const t=[];arr.forEach\\(n=>{if\\(n.children\\)n.children.filter\\(c=>c.type==='team'\\).forEach\\(c=>t.push\\(c\\)\\)}\\);console.log\\('车间:',w.length,'班组:',t.length\\);console.log\\('状态:',JSON.stringify\\(t.reduce\\(\\(a,x\\)=>{a[x.status]=\\(a[x.status]||0\\)+1;return a},{}\\)\\)\\)}\\)\")",
-      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const arr=JSON.parse\\(d\\);const w=arr.filter\\(n=>n.type==='workshop'\\);const t=[];arr.forEach\\(n=>{if\\(n.children\\)n.children.filter\\(c=>c.type==='team'\\).forEach\\(c=>t.push\\(c\\)\\)}\\);console.log\\('车间:',w.length,'班组:',t.length\\)}catch\\(e\\){console.log\\('err:',e.message\\)}}\\)\")"
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const arr=JSON.parse\\(d\\);const w=arr.filter\\(n=>n.type==='workshop'\\);const t=[];arr.forEach\\(n=>{if\\(n.children\\)n.children.filter\\(c=>c.type==='team'\\).forEach\\(c=>t.push\\(c\\)\\)}\\);console.log\\('车间:',w.length,'班组:',t.length\\)}catch\\(e\\){console.log\\('err:',e.message\\)}}\\)\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/main-plan/auto-schedule)",
+      "Bash(taskkill /PID 8792 /F)",
+      "Bash(cmd //c \"taskkill /PID 9684 /F\")",
+      "Bash(cmd //c \"taskkill /PID 37284 /F\")",
+      "Bash(cmd //c \"taskkill /PID 36772 /F\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);console.log\\('总条数:',arr.length\\);const c=arr.filter\\(r=>r.conflict_flag\\);console.log\\('冲突条数:',c.length\\);console.log\\('示例:',JSON.stringify\\(arr[0],null,2\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);const ir=arr.filter\\(r=>r.ironing_start\\);console.log\\('有烫标的:',ir.length\\);if\\(ir.length>0\\)console.log\\('示例:',JSON.stringify\\({style_no:ir[0].style_no,cutting:ir[0].cutting_start+'~'+ir[0].cutting_end,secondary:ir[0].secondary_start+'~'+ir[0].secondary_end,ironing:ir[0].ironing_start+'~'+ir[0].ironing_end,sewing:ir[0].sewing_start+'~'+ir[0].sewing_end,conflict:ir[0].conflict_flag}\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);const c=arr.filter\\(r=>r.conflict_flag\\);if\\(c.length>0\\)console.log\\('冲突示例:',JSON.stringify\\({style_no:c[0].style_no,secondary_end:c[0].secondary_end,ironing_start:c[0].ironing_start,sewing_start:c[0].sewing_start}\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);arr.slice\\(0,3\\).forEach\\(r=>console.log\\('款号:',r.style_no,'| plan_qty:',r.plan_qty,'| due_date:',r.due_date\\)\\)}\\)\")"
     ]
   }
 }

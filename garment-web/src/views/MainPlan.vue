@@ -6,6 +6,7 @@ import StylePicker from '../components/StylePicker.vue'
 import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
+import MainPlanGantt from './MainPlanGantt.vue'
 
 const columns = [
   { field: 'style_no', label: '款号', width: 120, type: 'text' },
@@ -16,17 +17,22 @@ const columns = [
   { field: 'cutting_end', label: '裁剪下线', width: 110, type: 'date' },
   { field: 'secondary_start', label: '二次上线', width: 110, type: 'date' },
   { field: 'secondary_end', label: '二次下线', width: 110, type: 'date' },
+  { field: 'ironing_start', label: '烫标上线', width: 110, type: 'date' },
+  { field: 'ironing_end', label: '烫标下线', width: 110, type: 'date' },
   { field: 'sewing_remind_date', label: '缝制提醒', width: 110, type: 'date' },
   { field: 'sewing_start', label: '缝制上线', width: 110, type: 'date' },
   { field: 'sewing_end', label: '缝制下线', width: 110, type: 'date' },
   { field: 'workshop', label: '车间', width: 80, type: 'text' },
   { field: 'line_team', label: '班组', width: 70, type: 'text' },
 ]
+// checkbox(40) + 数据列 + 操作(120)，两表共用此宽度保证对齐
+const colWidths = [40, ...columns.map(c => c.width), 120]
 
 const headerRef = ref(null)
 const bodyRef = ref(null)
 const plans = ref([])
 const loading = ref(false)
+const viewMode = ref('table') // 'table' or 'gantt'
 
 const editingId = ref(null)
 const editForm = ref({})
@@ -63,6 +69,22 @@ async function batchDelete() {
   } catch (e) {
     if (e !== 'cancel') ElMessage.error('批量删除失败')
   }
+}
+
+const autoScheduling = ref(false)
+const conflictCount = computed(() => plans.value.filter(p => p.conflict_flag).length)
+
+async function doAutoSchedule() {
+  try {
+    await ElMessageBox.confirm('将清空现有计划并根据装柜清单和款式数据自动排产，确定？', '自动排产', { type: 'warning' })
+    autoScheduling.value = true
+    const { data } = await api.autoSchedule()
+    ElMessage.success(`排产完成：${data.count} 条计划` + (data.conflicts > 0 ? `，${data.conflicts} 条冲突` : ''))
+    await load()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('排产失败: ' + (e.response?.data?.error || e.message))
+  }
+  autoScheduling.value = false
 }
 
 // Filter states
@@ -441,10 +463,21 @@ onUnmounted(() => {
 <template>
   <div class="styles-page">
     <div class="toolbar">
-      <el-button type="primary" @click="openAdd">+ 新增计划</el-button>
-      <el-button @click="exportExcel">导出 Excel</el-button>
-      <el-button @click="triggerImport">导入 Excel</el-button>
-      <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="handleImport" />
+      <div class="view-tabs">
+        <button class="view-tab" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'">📊 表格</button>
+        <button class="view-tab" :class="{ active: viewMode === 'gantt' }" @click="viewMode = 'gantt'">📅 甘特图</button>
+      </div>
+      <template v-if="viewMode === 'table'">
+        <el-button type="warning" @click="doAutoSchedule" :loading="autoScheduling">⚡ 自动排产</el-button>
+        <el-button type="primary" @click="openAdd">+ 新增计划</el-button>
+        <el-button @click="exportExcel">导出 Excel</el-button>
+        <el-button @click="triggerImport">导入 Excel</el-button>
+        <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="handleImport" />
+        <span v-if="conflictCount > 0" class="conflict-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          {{ conflictCount }} 条冲突
+        </span>
+      </template>
     </div>
 
     <div v-if="!plans.length && !loading" class="empty-state">暂无预排总计划数据，点击上方按钮新增</div>
@@ -456,23 +489,27 @@ onUnmounted(() => {
       <el-button size="small" text @click="selectedIds = new Set()">取消选择</el-button>
     </div>
 
-    <div class="excel-wrap">
+    <!-- 甘特图视图 -->
+    <MainPlanGantt v-if="viewMode === 'gantt'" />
+
+    <div v-if="viewMode === 'table'" class="excel-wrap">
       <!-- 固定表头 -->
       <div class="excel-header" ref="headerRef">
         <table class="excel-table">
+          <colgroup><col v-for="(w, i) in colWidths" :key="i" :style="{ width: w + 'px' }" /></colgroup>
           <thead>
             <tr>
-              <th style="width:40px;text-align:center">
+              <th style="text-align:center">
                 <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" class="chk" />
               </th>
-              <th v-for="col in columns" :key="col.field" :style="{ width: col.width + 'px' }">
+              <th v-for="col in columns" :key="col.field">
                 <div class="col-header">
                   <DateFilter v-if="col.type==='date'" :data="plans" :field="col.field" :label="col.label" :active="isFilterActive(col.field, 'date')" @filter="f => onDateFilter(col.field, f)" />
                   <NumberFilter v-else-if="col.type==='number'" :data="plans" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" :active="isFilterActive(col.field)" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
                   <TextFilter v-else :data="plans" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" :active="isFilterActive(col.field)" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
                 </div>
               </th>
-              <th style="width:120px">
+              <th>
                 操作
               </th>
             </tr>
@@ -482,6 +519,7 @@ onUnmounted(() => {
       <!-- 可滚动表体 -->
       <div class="excel-body" ref="bodyRef">
         <table class="excel-table">
+          <colgroup><col v-for="(w, i) in colWidths" :key="i" :style="{ width: w + 'px' }" /></colgroup>
           <tbody>
           <template v-for="(row, idx) in filteredPlans" :key="row.id">
           <!-- 分组分隔线：未排班组 → 已排班组 -->
@@ -507,15 +545,18 @@ onUnmounted(() => {
               <span class="section-tag assigned">已排班组款式 ({{ assignedCount }})</span>
             </td>
           </tr>
-          <tr :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id), 'unassigned-row': !row.workshop || !row.line_team }">
-            <td class="chk-cell" style="width:40px">
+          <tr :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id), 'unassigned-row': !row.workshop || !row.line_team, 'conflict-row': row.conflict_flag }">
+            <td class="chk-cell">
               <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
+              <span v-if="row.conflict_flag" class="conflict-icon" title="排程冲突：缝制/烫标上线早于二次加工下线">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+              </span>
             </td>
-            <td>
+            <td style="white-space:normal;word-break:break-all;overflow:hidden">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.style_no" /></template>
               <template v-else><span>{{ row.style_no }}</span></template>
             </td>
-            <td>
+            <td style="white-space:normal;word-break:break-all;overflow:hidden">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.product_name" /></template>
               <template v-else><span>{{ row.product_name }}</span></template>
             </td>
@@ -578,7 +619,7 @@ onUnmounted(() => {
         </tbody>
       </table>
     </div>
-    </div>
+    </div><!-- /table view -->
 
     <!-- 回到顶部 -->
     <div class="scroll-top-btn" @click="scrollToTop">
@@ -688,6 +729,17 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border);
 }
 
+.view-tabs { display: flex; gap: 4px; margin-right: 8px; }
+.view-tab {
+  padding: 6px 16px; border: 1px solid var(--border); border-radius: 8px;
+  background: #fff; cursor: pointer; font-size: 13px; font-weight: 500;
+  color: var(--text-secondary); transition: all .2s;
+}
+.view-tab:hover { background: #f8f9fa; }
+.view-tab.active {
+  background: var(--primary); color: #fff; border-color: var(--primary);
+}
+
 .empty-state { text-align: center; padding: 80px 60px; color: var(--text-tertiary); font-size: 14px; }
 
 /* 批量操作栏 */
@@ -715,7 +767,12 @@ onUnmounted(() => {
   vertical-align: middle;
   cursor: default;
   padding: 12px 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
+.conflict-icon { cursor: help; flex-shrink: 0; }
 .selected-row td {
   background: var(--primary-light) !important;
 }
@@ -752,6 +809,22 @@ onUnmounted(() => {
 }
 .unassigned-row td {
   background: #fffbeb !important;
+}
+.conflict-row td {
+  background: #fef2f2 !important;
+}
+.conflict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px 10px;
+  background: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* 双div容器：header固定 + body滚动 */
@@ -817,6 +890,7 @@ onUnmounted(() => {
   white-space: nowrap;
   line-height: 1.5;
 }
+/* 对齐：body td 宽度匹配 header th（合并冲突icon后：checkbox=1, 款号=2, ...） */
 
 .col-header {
   display: flex;
@@ -841,10 +915,11 @@ onUnmounted(() => {
 
 .num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'Helvetica Neue', Arial, sans-serif; white-space: nowrap; }
 .text-left { text-align: left; }
-.wrap-cell { overflow: hidden; word-break: break-all; }
+.wrap-cell { overflow: hidden; word-break: break-all; white-space: normal !important; }
 
 .action-cell {
   white-space: nowrap;
+  min-width: 120px;
 }
 
 .inp {
