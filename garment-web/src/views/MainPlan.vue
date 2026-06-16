@@ -533,7 +533,7 @@ onUnmounted(() => {
         </table>
       </div>
       <!-- 可滚动表体 -->
-      <div class="excel-body" ref="bodyRef">
+      <div class="excel-body" ref="bodyRef" @scroll="syncHeaderScroll">
         <table class="excel-table">
           <colgroup><col v-for="(w, i) in colWidths" :key="i" :style="{ width: w + 'px' }" /></colgroup>
           <tbody>

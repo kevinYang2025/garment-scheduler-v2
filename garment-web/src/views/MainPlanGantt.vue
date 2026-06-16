@@ -6,6 +6,15 @@ const plans = ref([])
 const loading = ref(true)
 const weekOffset = ref(0)
 
+const ganttLeftRef = ref(null)
+const ganttRightRef = ref(null)
+
+function onRightScroll() {
+  if (ganttLeftRef.value && ganttRightRef.value) {
+    ganttLeftRef.value.scrollTop = ganttRightRef.value.scrollTop
+  }
+}
+
 const todayStr = (() => {
   const t = new Date()
   return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`
@@ -138,7 +147,7 @@ onMounted(loadGantt)
       </div>
 
       <!-- 右侧可滚动区 -->
-      <div class="gantt-right" ref="ganttRightRef">
+      <div class="gantt-right" ref="ganttRightRef" @scroll="onRightScroll">
         <!-- 日期标题 -->
         <div class="gantt-right-header">
           <div
@@ -256,6 +265,7 @@ onMounted(loadGantt)
   flex-direction: column;
   background: var(--card);
   z-index: 5;
+  overflow: hidden;
 }
 .gantt-left-header {
   height: 52px;
