@@ -244,7 +244,9 @@
       "Bash(powershell -Command \"Stop-Process -Id 39924 -Force\")",
       "Bash(powershell -Command \"Stop-Process -Id 40852 -Force\")",
       "Bash(powershell -Command \"Stop-Process -Id 44564 -Force\")",
-      "Bash(powershell -Command \"Stop-Process -Id 35400 -Force\")"
+      "Bash(powershell -Command \"Stop-Process -Id 35400 -Force\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique\")",
+      "Bash(powershell -Command \"Stop-Process -Id 45580 -Force\")"
     ]
   }
 }

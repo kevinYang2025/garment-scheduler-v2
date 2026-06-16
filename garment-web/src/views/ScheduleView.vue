@@ -126,13 +126,15 @@ function openCreate() {
   dialogVisible.value = true
 }
 
-// ========== 缝制每日计划（数据来源：预排总计划） ==========
-const mainPlans = ref([])
+// ========== 缝制每日计划（数据来源：预排总计划 + 分色分尺码 + 实际产量） ==========
+const sewingPlanRows = ref([])
+const sewingDateRange = ref([])
 
-async function loadMainPlan() {
+async function loadSewingDailyPlan() {
   try {
-    const { data } = await api.getMainPlan()
-    mainPlans.value = (data || []).filter(r => r.sewing_start && r.sewing_end)
+    const { data } = await api.get('/schedule/sewing-daily-plan')
+    sewingPlanRows.value = data.rows || []
+    sewingDateRange.value = data.dateRange || []
   } catch { /* ignore */ }
 }
 
@@ -143,32 +145,14 @@ const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${
 const viewOffset = ref(0)
 function shiftWeek(dir) { viewOffset.value += dir * 7 }
 
-// 所有缝制日期范围
-const sewingDateCols = computed(() => {
-  if (!mainPlans.value.length) return []
-  let min = null, max = null
-  for (const m of mainPlans.value) {
-    if (m.sewing_start && (!min || m.sewing_start < min)) min = m.sewing_start
-    if (m.sewing_end && (!max || m.sewing_end > max)) max = m.sewing_end
-  }
-  if (!min || !max) return []
-  const sd = new Date(min + 'T00:00:00'), ed = new Date(max + 'T00:00:00')
-  const days = Math.floor((ed - sd) / 86400000) + 1
-  const cols = []
-  for (let i = 0; i < days; i++) {
-    const dt = new Date(sd); dt.setDate(dt.getDate() + i)
-    cols.push(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`)
-  }
-  return cols
-})
-
-// 可见日期列（滚动窗口）
+// 可见日期列（滚动窗口：今天前一周 ~ 今天后三周）
 const visibleSewingDates = computed(() => {
+  if (!sewingDateRange.value.length) return []
   const d = new Date(today + 'T00:00:00')
   const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
   const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
   const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
-  return sewingDateCols.value.filter(c => c >= fmt(ws) && c <= fmt(we))
+  return sewingDateRange.value.filter(date => date >= fmt(ws) && date <= fmt(we))
 })
 
 const sewingDateRangeLabel = computed(() => {
@@ -176,30 +160,33 @@ const sewingDateRangeLabel = computed(() => {
   return visibleSewingDates.value[0].slice(5) + ' ~ ' + visibleSewingDates.value[visibleSewingDates.value.length - 1].slice(5)
 })
 
-// 每日计划产量计算
-function calcSewingPlanQty(master, date) {
-  if (date < master.sewing_start || date > master.sewing_end) return 0
-  const daily = calcDailyTarget(master)
-  if (!daily) return 0
-  const sd = new Date(master.sewing_start + 'T00:00:00')
-  const cd = new Date(date + 'T00:00:00')
-  const dayIdx = Math.floor((cd - sd) / 86400000)
-  const fullDays = Math.floor(master.plan_qty / daily)
-  const remainder = master.plan_qty % daily
-  if (dayIdx < fullDays) return daily
-  if (dayIdx === fullDays && remainder > 0) return remainder
-  return 0
-}
+// 按款号分组（同款只在第一行显示款号和品名）
+const groupedSewingRows = computed(() => {
+  let lastStyle = ''
+  return sewingPlanRows.value.map(r => {
+    const firstOfGroup = r.style_no !== lastStyle
+    lastStyle = r.style_no
+    return { ...r, firstOfGroup }
+  })
+})
 
-function calcDailyTarget(master) {
-  if (!master.plan_qty || !master.sewing_start || !master.sewing_end) return 0
-  const days = Math.ceil((new Date(master.sewing_end + 'T00:00:00') - new Date(master.sewing_start + 'T00:00:00')) / 86400000) + 1
-  return Math.ceil(master.plan_qty / days)
-}
-
-// 每款合计
-function sewingPlanSum(master) {
-  return sewingDateCols.value.reduce((s, d) => s + calcSewingPlanQty(master, d), 0)
+async function saveSewingActual(row, date) {
+  const dd = row.dateData.find(d => d.date === date)
+  if (!dd) return
+  try {
+    await api.post('/schedule/sewing-daily-plan/actual', {
+      style_no: row.style_no,
+      color: row.color,
+      size_spec: row.size_spec,
+      production_date: date,
+      completed_qty: dd.actual,
+    })
+    dd.diff = dd.actual - dd.plan
+    row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
+    row.totalDiff = row.totalActual - row.totalPlan
+  } catch (e) {
+    console.error('保存实际产量失败:', e)
+  }
 }
 
 function fmtDate(v) { return v ? (v.includes('T') ? v.slice(0, 10) : v) : '' }
@@ -228,7 +215,7 @@ function sOnDragEnd() {
 onMounted(() => {
   load()
   if (props.scheduleType === 'cutting') {
-    loadMainPlan()
+    loadSewingDailyPlan()
   }
   const body = sewingBodyRef.value
   if (body) {
@@ -331,8 +318,8 @@ onUnmounted(() => {
       </el-table-column>
     </el-table>
 
-    <!-- ========== 缝制每日计划（数据来源：预排总计划） ========== -->
-    <div v-if="scheduleType === 'cutting' && mainPlans.length" class="sewing-section">
+    <!-- ========== 缝制每日计划（数据来源：预排总计划 + 分色分尺码 + 实际产量） ========== -->
+    <div v-if="scheduleType === 'cutting' && sewingPlanRows.length" class="sewing-section">
       <div class="sewing-header">
         <h3>缝制每日计划</h3>
         <div class="sewing-nav">
@@ -347,55 +334,67 @@ onUnmounted(() => {
         <table class="excel-table">
           <thead>
             <tr>
-              <th class="fix" style="min-width:100px">
-                <div class="col-header"><span>款号</span></div>
-              </th>
-              <th class="fix" style="min-width:130px">
-                <div class="col-header"><span>品名</span></div>
-              </th>
-              <th class="fix" style="min-width:80px">
-                <div class="col-header"><span>计划数量</span></div>
-              </th>
-              <th class="fix" style="min-width:90px">
-                <div class="col-header"><span>目标日产量</span></div>
-              </th>
-              <th class="fix" style="min-width:100px">
-                <div class="col-header"><span>缝制开始</span></div>
-              </th>
-              <th class="fix" style="min-width:100px">
-                <div class="col-header"><span>缝制结束</span></div>
-              </th>
-              <th class="fix" style="min-width:60px">
-                <div class="col-header"><span>车间</span></div>
-              </th>
-              <th class="fix" style="min-width:60px">
-                <div class="col-header"><span>班组</span></div>
-              </th>
-              <th class="fix" style="min-width:70px">
-                <div class="col-header"><span>合计</span></div>
-              </th>
-              <th class="fix" style="min-width:50px">
-                <div class="col-header"><span>类型</span></div>
-              </th>
+              <th class="fix" style="min-width:95px"><div class="col-header"><span>款号</span></div></th>
+              <th class="fix" style="min-width:120px"><div class="col-header"><span>品名</span></div></th>
+              <th class="fix" style="min-width:65px"><div class="col-header"><span>颜色</span></div></th>
+              <th class="fix" style="min-width:60px"><div class="col-header"><span>尺码</span></div></th>
+              <th class="fix" style="min-width:70px"><div class="col-header"><span>原单量</span></div></th>
+              <th class="fix" style="min-width:70px"><div class="col-header"><span>合计</span></div></th>
+              <th class="fix" style="min-width:50px"><div class="col-header"><span>类型</span></div></th>
               <th v-for="d in visibleSewingDates" :key="d" class="date-th" :class="{ 'today-col': d === today }">{{ dateLabel(d) }}</th>
             </tr>
           </thead>
           <tbody>
-            <template v-for="m in mainPlans" :key="m.id">
+            <template v-for="(row, ri) in groupedSewingRows" :key="ri">
               <!-- 计划行 -->
               <tr class="row-plan">
-                <td class="fix">{{ m.style_no }}</td>
-                <td class="fix">{{ m.product_name }}</td>
-                <td class="fix num">{{ m.plan_qty?.toLocaleString() }}</td>
-                <td class="fix num">{{ calcDailyTarget(m).toLocaleString() }}</td>
-                <td class="fix">{{ fmtDate(m.sewing_start) }}</td>
-                <td class="fix">{{ fmtDate(m.sewing_end) }}</td>
-                <td class="fix">{{ m.workshop || '' }}</td>
-                <td class="fix">{{ m.line_team || '' }}</td>
-                <td class="fix num sum-cell">{{ sewingPlanSum(m).toLocaleString() }}</td>
+                <td class="fix" :class="{ 'first-group': row.firstOfGroup }">{{ row.firstOfGroup ? row.style_no : '' }}</td>
+                <td class="fix" :class="{ 'first-group': row.firstOfGroup }">{{ row.firstOfGroup ? row.product_name : '' }}</td>
+                <td class="fix">{{ row.color }}</td>
+                <td class="fix">{{ row.size_spec }}</td>
+                <td class="fix num">{{ row.order_qty?.toLocaleString() }}</td>
+                <td class="fix num sum-cell">{{ row.totalPlan?.toLocaleString() }}</td>
                 <td class="fix type-label plan-label">计划</td>
                 <td v-for="d in visibleSewingDates" :key="'p'+d" class="cell-num" :class="{ 'today-col': d === today }">
-                  {{ calcSewingPlanQty(m, d) || '' }}
+                  {{ (row.dateData.find(dd => dd.date === d) || {}).plan || '' }}
+                </td>
+              </tr>
+              <!-- 实际行 -->
+              <tr class="row-actual">
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix num sum-cell">{{ row.totalActual?.toLocaleString() }}</td>
+                <td class="fix type-label actual-label">实际</td>
+                <td v-for="d in visibleSewingDates" :key="'a'+d" class="cell-num editable-cell" :class="{ 'today-col': d === today }">
+                  <input
+                    class="cell-inp"
+                    type="number"
+                    min="0"
+                    :value="(row.dateData.find(dd => dd.date === d) || {}).actual || ''"
+                    @change="e => {
+                      const dd = row.dateData.find(dd2 => dd2.date === d)
+                      if (dd) { dd.actual = parseInt(e.target.value) || 0 }
+                      saveSewingActual(row, d)
+                    }"
+                  />
+                </td>
+              </tr>
+              <!-- 差异行 -->
+              <tr class="row-diff">
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix num sum-cell" :class="{ 'diff-pos': row.totalDiff > 0, 'diff-neg': row.totalDiff < 0 }">{{ row.totalDiff > 0 ? '+' : '' }}{{ row.totalDiff?.toLocaleString() }}</td>
+                <td class="fix type-label diff-label">差异</td>
+                <td v-for="d in visibleSewingDates" :key="'f'+d" class="cell-num" :class="{ 'today-col': d === today }">
+                  <span :class="{ 'diff-pos': (row.dateData.find(dd => dd.date === d) || {}).diff > 0, 'diff-neg': (row.dateData.find(dd => dd.date === d) || {}).diff < 0 }">
+                    {{ (() => { const v = (row.dateData.find(dd => dd.date === d) || {}).diff; return v > 0 ? '+' + v : v; })() || '' }}
+                  </span>
                 </td>
               </tr>
             </template>
