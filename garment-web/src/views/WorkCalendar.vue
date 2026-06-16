@@ -83,6 +83,23 @@ async function loadAll() {
   loading.value = false
 }
 
+function onWorkDayToggle(i, v) {
+  if (!selectedCalendar.value) return
+  const cal = { ...selectedCalendar.value }
+  cal.work_days = cal.work_days.substring(0, i) + (v ? '1' : '0') + cal.work_days.substring(i + 1)
+  selectedCalendar.value = cal
+}
+
+async function saveWorkDays() {
+  if (!selectedCalendar.value) return
+  try {
+    await api.updateWorkCalendar(selectedCalendar.value.id, selectedCalendar.value)
+    ElMessage.success('保存成功')
+  } catch {
+    ElMessage.error('保存失败')
+  }
+}
+
 async function loadExceptions() {
   if (!selectedCalendar.value) return
   try {
@@ -217,12 +234,12 @@ onMounted(loadAll)
               <span>{{ day }}</span>
               <el-switch
                 :model-value="selectedCalendar.work_days[i] === '1'"
-                @change="v => { selectedCalendar.work_days = selectedCalendar.work_days.substring(0, i) + (v ? '1' : '0') + selectedCalendar.work_days.substring(i + 1) }"
+                @change="v => onWorkDayToggle(i, v)"
                 size="small"
               />
             </div>
           </div>
-          <el-button size="small" type="primary" @click="api.updateWorkCalendar(selectedCalendar.id, selectedCalendar).then(() => ElMessage.success('保存成功'))">
+          <el-button size="small" type="primary" @click="saveWorkDays">
             保存工作日设置
           </el-button>
         </div>

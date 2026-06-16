@@ -28,7 +28,11 @@ async function loadStrategies() {
 async function activateStrategy(id) {
   try {
     for (const s of strategies.value) {
-      await api.updateStrategy(s.id, { ...s, active: s.id === id ? 1 : 0, config: typeof s.config === 'string' ? JSON.parse(s.config) : s.config })
+      let config = s.config
+      if (typeof config === 'string') {
+        try { config = JSON.parse(config) } catch { config = {} }
+      }
+      await api.updateStrategy(s.id, { ...s, active: s.id === id ? 1 : 0, config })
     }
     ElMessage.success('已激活')
     await loadStrategies()

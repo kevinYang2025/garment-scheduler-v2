@@ -215,7 +215,8 @@
       "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{try{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\('OK, records:',t.length\\)}catch\\(e\\){console.log\\('PARSE ERROR:',d.join\\(''\\).slice\\(0,200\\)\\)}}\\)\")",
       "Bash(curl -s \"http://localhost:5173/api/schedule/sewing\")",
       "Bash(curl -s http://localhost:5173/src/views/SewingPlanDetail.vue)",
-      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\(JSON.stringify\\(t[0],null,2\\)\\)}\\)\")"
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const t=JSON.parse\\(d.join\\(''\\)\\);console.log\\(JSON.stringify\\(t[0],null,2\\)\\)}\\)\")",
+      "Bash(node -e \"const db = require\\('./db.js'\\); const rows = db.all\\('SELECT id, schedule_type, style_no FROM schedule_master'\\); console.log\\(JSON.stringify\\(rows, null, 2\\)\\)\")"
     ]
   }
 }
