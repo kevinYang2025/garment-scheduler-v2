@@ -145,6 +145,14 @@ function onSort(field, sortBy, dir) {
   sortState.value = { field, sortBy, dir }
 }
 
+function isFilterActive(field, type) {
+  if (type === 'date') {
+    if (field === 'order_date') return orderDateFilter.value.validDates.size > 0 || orderDateFilter.value.hasEmpty
+    if (field === 'due_date') return dueDateFilter.value.validDates.size > 0 || dueDateFilter.value.hasEmpty
+  }
+  return !!textFilters.value[field]?.applied
+}
+
 const filteredStyles = computed(() => {
   return styles.value.filter(r => {
     if (orderDateFilter.value.validDates.size > 0 || orderDateFilter.value.hasEmpty) {
@@ -376,9 +384,9 @@ onUnmounted(() => {
               </th>
               <th v-for="(col, ci) in columns" :key="col.field" :style="{ width: col.width + 'px' }">
                 <div class="col-header">
-                  <DateFilter v-if="col.type==='date'" :data="styles" :field="col.field" :label="col.label" @filter="col.field==='order_date'?onOrderDateFilter:onDueDateFilter" />
-                  <NumberFilter v-else-if="col.type==='number'" :data="styles" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
-                  <TextFilter v-else :data="styles" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
+                  <DateFilter v-if="col.type==='date'" :data="styles" :field="col.field" :label="col.label" :active="isFilterActive(col.field, 'date')" @filter="col.field==='order_date'?onOrderDateFilter:onDueDateFilter" />
+                  <NumberFilter v-else-if="col.type==='number'" :data="styles" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" :active="isFilterActive(col.field)" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
+                  <TextFilter v-else :data="styles" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" :active="isFilterActive(col.field)" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
                 </div>
               </th>
               <th style="width:120px">操作</th>

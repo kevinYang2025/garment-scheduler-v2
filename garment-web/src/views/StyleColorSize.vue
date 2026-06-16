@@ -1,7 +1,10 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import DateFilter from '../components/DateFilter.vue'
+import TextFilter from '../components/TextFilter.vue'
+import NumberFilter from '../components/NumberFilter.vue'
 
 const records = ref([])
 const loading = ref(true)
@@ -28,11 +31,55 @@ const selectedIds = ref(new Set())
 const isAllSelected = computed(() => filteredRecords.value.length > 0 && filteredRecords.value.every(r => selectedIds.value.has(r.id)))
 const selectedCount = computed(() => selectedIds.value.size)
 
-// 筛选
+// 筛选状态
+const orderDateFilter = ref({ validDates: new Set(), hasEmpty: false })
+const dueDateFilter = ref({ validDates: new Set(), hasEmpty: false })
 const textFilters = ref({})
 const numFilters = ref({})
-const dateFilters = ref({})
 const sortState = ref({ field: '', sortBy: 'name', dir: 'asc' })
+const precomputedOptions = ref({})
+
+function computeFilterOptions() {
+  const opts = {}
+  for (const col of columns) {
+    if (col.type === 'text') {
+      const map = new Map()
+      let emptyCount = 0
+      for (const r of records.value) {
+        const v = String(r[col.field] || '')
+        if (!v) { emptyCount++; continue }
+        map.set(v, (map.get(v) || 0) + 1)
+      }
+      opts[col.field] = { options: [...map.entries()].map(([text, count]) => ({ text, count })).sort((a, b) => b.count - a.count), emptyCount }
+    } else if (col.type === 'number') {
+      const map = new Map()
+      let emptyCount = 0
+      for (const r of records.value) {
+        const v = r[col.field]
+        const key = v != null ? String(v) : ''
+        if (!key) { emptyCount++; continue }
+        map.set(key, (map.get(key) || 0) + 1)
+      }
+      opts[col.field] = { options: [...map.entries()].map(([text, count]) => ({ text, count })).sort((a, b) => parseFloat(a.text) - parseFloat(b.text)), emptyCount }
+    } else if (col.type === 'date') {
+      const dates = new Set()
+      let hasEmpty = false
+      for (const r of records.value) {
+        const d = (r[col.field] || '').slice(0, 10)
+        if (!d) { hasEmpty = true; continue }
+        dates.add(d)
+      }
+      opts[col.field] = { dates, hasEmpty }
+    }
+  }
+  precomputedOptions.value = opts
+}
+
+function onOrderDateFilter(f) { orderDateFilter.value = { validDates: f.validDates, hasEmpty: f.hasEmpty } }
+function onDueDateFilter(f) { dueDateFilter.value = { validDates: f.validDates, hasEmpty: f.hasEmpty } }
+function onTextFilter(field, f) { textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } } }
+function onNumFilter(field, f) { numFilters.value = { ...numFilters.value, [field]: { ...f, applied: true } } }
+function onSort(field, sortBy, dir) { sortState.value = { field, sortBy, dir } }
 
 // 导入
 const importDialogVisible = ref(false)
@@ -66,13 +113,48 @@ async function batchDelete() {
 
 const filteredRecords = computed(() => {
   let list = records.value
+  // 关键字搜索
   if (searchKeyword.value) {
     const kw = searchKeyword.value.toLowerCase()
     list = list.filter(r =>
       (r.style_no || '').toLowerCase().includes(kw) ||
       (r.product_name || '').toLowerCase().includes(kw) ||
-      (r.color || '').toLowerCase().includes(kw)
+      (r.color || '').toLowerCase().includes(kw) ||
+      (r.size_spec || '').toLowerCase().includes(kw)
     )
+  }
+  // 日期筛选
+  if (orderDateFilter.value.validDates.size > 0 || orderDateFilter.value.hasEmpty) {
+    list = list.filter(r => {
+      const d = (r.order_date || '').slice(0, 10)
+      if (d && orderDateFilter.value.validDates.has(d)) return true
+      if (!d && orderDateFilter.value.hasEmpty) return true
+      return false
+    })
+  }
+  if (dueDateFilter.value.validDates.size > 0 || dueDateFilter.value.hasEmpty) {
+    list = list.filter(r => {
+      const d = (r.due_date || '').slice(0, 10)
+      if (d && dueDateFilter.value.validDates.has(d)) return true
+      if (!d && dueDateFilter.value.hasEmpty) return true
+      return false
+    })
+  }
+  // 文本筛选
+  for (const [field, f] of Object.entries(textFilters.value)) {
+    if (!f.applied) continue
+    if (f.validValues && f.validValues.size > 0) {
+      list = list.filter(r => {
+        const v = String(r[field] || '')
+        return f.validValues.has(v) || (f.hasEmpty && !v)
+      })
+    }
+  }
+  // 数字筛选
+  for (const [field, f] of Object.entries(numFilters.value)) {
+    if (!f.applied) continue
+    if (f.min !== undefined && f.min !== null) list = list.filter(r => Number(r[field]) >= f.min)
+    if (f.max !== undefined && f.max !== null) list = list.filter(r => Number(r[field]) <= f.max)
   }
   // 排序
   if (sortState.value.field) {
@@ -83,6 +165,9 @@ const filteredRecords = computed(() => {
         const ac = list.filter(x => x[field] === a[field]).length
         const bc = list.filter(x => x[field] === b[field]).length
         return (ac - bc) * d
+      }
+      if (sortBy === 'date') {
+        return ((a[field] || '').localeCompare(b[field] || '')) * d
       }
       const av = a[field] ?? '', bv = b[field] ?? ''
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * d
@@ -102,6 +187,7 @@ async function loadRecords() {
   try {
     const { data } = await api.get('/style-color-size', { params: { keyword: searchKeyword.value } })
     records.value = data || []
+    nextTick(() => computeFilterOptions())
   } catch { ElMessage.error('加载失败') }
   loading.value = false
 }
@@ -136,6 +222,11 @@ async function remove(id) {
     ElMessage.success('删除成功')
     await loadRecords()
   } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败') }
+}
+
+// 导出
+function exportExcel() {
+  window.open('/api/style-color-size/export', '_blank')
 }
 
 // 导入
@@ -216,8 +307,6 @@ function onDragEnd() {
   dragging = false; dragWrap = null
 }
 
-function onSort(field, sortBy, dir) { sortState.value = { field, sortBy, dir } }
-
 onMounted(() => {
   loadRecords()
   document.addEventListener('mousemove', onDragMove)
@@ -232,7 +321,7 @@ onUnmounted(() => {
 <template>
   <div class="scs-page">
     <div class="toolbar">
-      <el-input v-model="searchKeyword" placeholder="搜索款式、产品名、颜色..." clearable @input="onSearchInput" style="width:300px" />
+      <el-input v-model="searchKeyword" placeholder="搜索款式、产品名、颜色、规格..." clearable @input="onSearchInput" style="width:300px" />
       <el-button @click="exportExcel">导出 Excel</el-button>
       <el-button @click="triggerImport">导入 Excel</el-button>
     </div>
@@ -255,11 +344,10 @@ onUnmounted(() => {
               </th>
               <th v-for="col in columns" :key="col.field" :style="{ width: col.width + 'px', minWidth: col.width + 'px' }">
                 <div class="col-header">
-                  <span class="col-label">{{ col.label }}</span>
-                  <span class="sort-btns">
-                    <span class="sort-btn" :class="{ active: sortState.field === col.field && sortState.dir === 'asc' }" @click="onSort(col.field, 'name', 'asc')">▲</span>
-                    <span class="sort-btn" :class="{ active: sortState.field === col.field && sortState.dir === 'desc' }" @click="onSort(col.field, 'name', 'desc')">▼</span>
-                  </span>
+                  <DateFilter v-if="col.type==='date' && col.field==='order_date'" :data="records" :field="col.field" :label="col.label" @filter="onOrderDateFilter" />
+                  <DateFilter v-else-if="col.type==='date' && col.field==='due_date'" :data="records" :field="col.field" :label="col.label" @filter="onDueDateFilter" />
+                  <NumberFilter v-else-if="col.type==='number'" :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onNumFilter(col.field, f)" @sort="onSort" />
+                  <TextFilter v-else :data="records" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
                 </div>
               </th>
               <th style="width:120px">操作</th>
@@ -342,10 +430,6 @@ onUnmounted(() => {
 .excel-table thead th { padding: 0; background: var(--card); color: var(--text-tertiary); font-size: 11px; font-weight: 500; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 3; }
 .excel-table td { padding: 12px 16px; border-bottom: 1px solid var(--border-light); white-space: nowrap; text-align: center; }
 .col-header { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; }
-.col-label { font-size: 11px; }
-.sort-btns { display: flex; gap: 2px; }
-.sort-btn { cursor: pointer; font-size: 8px; color: var(--text-tertiary); opacity: 0.4; }
-.sort-btn.active { opacity: 1; color: var(--primary); }
 .chk-cell { text-align: center; }
 .chk { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary); }
 .num { text-align: right; font-variant-numeric: tabular-nums; }

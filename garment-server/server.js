@@ -828,7 +828,14 @@ app.get('/api/schedule/sewing/summary', (req, res) => {
 // ---------- 缝制导出（匹配缝制计划.xlsx）----------
 app.get('/api/schedule/sewing/export', async (req, res) => {
   try {
-    const masters = db.all("SELECT * FROM schedule_master WHERE schedule_type='sewing' ORDER BY workshop, line_team, style_no");
+    let masters;
+    if (req.query.ids) {
+      const ids = req.query.ids.split(',').map(Number).filter(Boolean);
+      if (!ids.length) return res.status(400).json({ error: '无有效ID' });
+      masters = db.all(`SELECT * FROM schedule_master WHERE schedule_type='sewing' AND id IN (${ids.map(() => '?').join(',')}) ORDER BY workshop, line_team, style_no`, ids);
+    } else {
+      masters = db.all("SELECT * FROM schedule_master WHERE schedule_type='sewing' ORDER BY workshop, line_team, style_no");
+    }
     if (!masters.length) return res.status(404).json({ error: '无数据' });
 
     let minDate = null, maxDate = null;
@@ -2104,6 +2111,38 @@ app.delete('/api/style-color-size/:id', (req, res) => {
   } catch (e) {
     console.error('DELETE /api/style-color-size error:', e);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/style-color-size/export', async (req, res) => {
+  try {
+    const rows = db.all('SELECT * FROM style_color_size ORDER BY order_date DESC, style_no, color, size_spec');
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('分色分尺码');
+    ws.columns = [
+      { header: '订单日期', key: 'order_date', width: 14 },
+      { header: '款式', key: 'style_no', width: 24 },
+      { header: '交期', key: 'due_date', width: 14 },
+      { header: '产品名', key: 'product_name', width: 14 },
+      { header: '规格', key: 'size_spec', width: 10 },
+      { header: '颜色', key: 'color', width: 18 },
+      { header: '原单量', key: 'plan_qty', width: 10 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    for (const r of rows) {
+      ws.addRow({
+        order_date: r.order_date || '', style_no: r.style_no || '', due_date: r.due_date || '',
+        product_name: r.product_name || '', size_spec: r.size_spec || '', color: r.color || '',
+        plan_qty: r.plan_qty || 0,
+      });
+    }
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=style-color-size.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('GET /api/style-color-size/export error:', e);
+    res.status(500).json({ error: '导出失败' });
   }
 });
 

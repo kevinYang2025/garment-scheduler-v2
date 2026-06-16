@@ -7,6 +7,7 @@ const props = defineProps({
   label: { type: String, default: '' },
   sortField: { type: String, default: '' },
   sortDir: { type: String, default: 'asc' },
+  active: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['filter', 'sort'])
@@ -176,7 +177,7 @@ watch(visible, (v) => {
 <template>
   <el-popover placement="bottom" :width="320" trigger="click" v-model:visible="visible">
     <template #reference>
-      <span class="filter-trigger" :class="{ active: activeCount > 0 && activeCount < 999 }">
+      <span class="filter-trigger" :class="{ active }">
         {{ label }}
         <el-icon class="filter-icon"><svg viewBox="0 0 1024 1024" width="14" height="14"><path d="M349 838c0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0-512 0 0 0 0 512 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0zM512 590l154-154H358l154 154z" fill="currentColor"/></svg></el-icon>
       </span>

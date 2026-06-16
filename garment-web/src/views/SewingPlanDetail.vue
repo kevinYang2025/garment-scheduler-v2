@@ -324,7 +324,10 @@ async function updateDailyActual(masterId, date, val) {
   } catch { ElMessage.error('更新失败') }
 }
 
-function doExport() { window.open('/api/schedule/sewing/export', '_blank') }
+function doExport() {
+  const ids = filteredMasters.value.map(m => m.id).join(',')
+  window.open('/api/schedule/sewing/export' + (ids ? '?ids=' + ids : ''), '_blank')
+}
 
 function onImportFileChange(e) { importFile.value = e.target.files[0] }
 

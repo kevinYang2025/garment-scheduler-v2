@@ -98,6 +98,14 @@ function onSort(field, sortBy, dir) {
   sortState.value = { field, sortBy, dir }
 }
 
+function isFilterActive(field, type) {
+  if (type === 'date') {
+    const f = dateFilters.value[field]
+    return !!(f && (f.validDates?.size > 0 || f.hasEmpty))
+  }
+  return !!textFilters.value[field]?.applied
+}
+
 const dateFields = computed(() => {
   const s = new Set()
   for (const col of columns) {
@@ -459,9 +467,9 @@ onUnmounted(() => {
               </th>
               <th v-for="col in columns" :key="col.field" :style="{ width: col.width + 'px' }">
                 <div class="col-header">
-                  <DateFilter v-if="col.type==='date'" :data="plans" :field="col.field" :label="col.label" @filter="f => onDateFilter(col.field, f)" />
-                  <NumberFilter v-else-if="col.type==='number'" :data="plans" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
-                  <TextFilter v-else :data="plans" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
+                  <DateFilter v-if="col.type==='date'" :data="plans" :field="col.field" :label="col.label" :active="isFilterActive(col.field, 'date')" @filter="f => onDateFilter(col.field, f)" />
+                  <NumberFilter v-else-if="col.type==='number'" :data="plans" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" :active="isFilterActive(col.field)" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
+                  <TextFilter v-else :data="plans" :field="col.field" :label="col.label" :precomputed="precomputedOptions[col.field]" :active="isFilterActive(col.field)" @filter="f => onTextFilter(col.field, f)" @sort="onSort" />
                 </div>
               </th>
               <th style="width:120px">

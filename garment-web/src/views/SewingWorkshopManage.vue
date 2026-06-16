@@ -135,6 +135,10 @@ function onSort({ field, dir }) {
   sortState.value = { field, dir }
 }
 
+function isFilterActive(field) {
+  return !!textFilters.value[field]?.applied
+}
+
 // ====== 通用 ======
 async function loadTree() {
   loading.value = true
@@ -438,7 +442,7 @@ onUnmounted(() => {
               </th>
               <th>
                 <div class="col-header">
-                  <TextFilter :data="flatRows" field="workshopName" label="车间" :precomputed="precomputedOptions.workshopName" @filter="f => onTextFilter('workshopName', f)" @sort="onSort" />
+                  <TextFilter :data="flatRows" field="workshopName" label="车间" :precomputed="precomputedOptions.workshopName" :active="isFilterActive('workshopName')" @filter="f => onTextFilter('workshopName', f)" @sort="onSort" />
                 </div>
               </th>
               <th>

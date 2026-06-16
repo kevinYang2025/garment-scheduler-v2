@@ -8,6 +8,7 @@ const props = defineProps({
   sortField: { type: String, default: '' },
   sortDir: { type: String, default: 'asc' },
   precomputed: { type: Object, default: null }, // { options: [{text, count}], emptyCount }
+  active: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['filter', 'sort'])
@@ -114,7 +115,7 @@ watch(visible, (v) => {
 <template>
   <el-popover placement="bottom" :width="380" trigger="click" v-model:visible="visible">
     <template #reference>
-      <span class="filter-trigger">
+      <span class="filter-trigger" :class="{ active }">
         {{ label }}
         <svg viewBox="0 0 1024 1024" width="14" height="14" class="filter-icon"><path d="M349 838c0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0-512 0 0 0 0 512 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0zM512 590l154-154H358l154 154z" fill="currentColor"/></svg>
       </span>
@@ -169,6 +170,7 @@ watch(visible, (v) => {
   cursor: pointer; color: var(--text-secondary); font-size: 12px;
 }
 .filter-trigger:hover { color: var(--primary-dark); }
+.filter-trigger.active { color: var(--primary); font-weight: 600; }
 .filter-icon { display: inline-flex; margin-left: 2px; }
 .text-filter { font-size: 13px; }
 .sort-bar {
