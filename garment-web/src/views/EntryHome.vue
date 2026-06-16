@@ -6,118 +6,93 @@ import api from '../api'
 const emit = defineEmits(['navigate'])
 const { connected } = useWebSocket()
 
-const stats = ref({
-  styles: 0, mainPlan: 0, busyLines: 0, totalLines: 0,
-  sewingPending: 0, sewingOverdue: 0,
-  warehouseTotal: 0,
-  todayDispatch: 0, dispatchRate: 0,
-})
-const loading = ref(true)
+const stats = ref({ styles: 0, mainPlan: 0, sewingPending: 0, sewingOverdue: 0, todayDispatch: 0, dispatchRate: 0 })
 
 async function loadStats() {
-  loading.value = true
   try {
-    const [stylesRes, planRes, sewingRes] = await Promise.all([
-      api.getStyles(''),
-      api.getMainPlan(),
-      api.getSewingSummary(),
-    ])
-    stats.value.styles = (stylesRes.data || []).length
-    stats.value.mainPlan = (planRes.data || []).length
-    stats.value.sewingPending = (sewingRes.data || {}).plan?.totalCount || 0
-    stats.value.sewingOverdue = (sewingRes.data || {}).plan?.overdue || 0
-  } catch { /* ignore */ }
-  loading.value = false
+    const [s, p, sw] = await Promise.all([api.getStyles(''), api.getMainPlan(), api.getSewingSummary()])
+    stats.value.styles = (s.data || []).length
+    stats.value.mainPlan = (p.data || []).length
+    stats.value.sewingPending = (sw.data || {}).plan?.totalCount || 0
+    stats.value.sewingOverdue = (sw.data || {}).plan?.overdue || 0
+  } catch {}
 }
 
 const _d = new Date()
 const today = `${_d.getFullYear()}年${_d.getMonth()+1}月${_d.getDate()}日`
 const weekdays = ['日','一','二','三','四','五','六']
 const weekday = weekdays[_d.getDay()]
+const rate = () => stats.value.mainPlan > 0 ? Math.min(100, Math.max(0, Math.round((1 - stats.value.sewingOverdue / Math.max(stats.value.mainPlan * 10, 1)) * 100))) : 0
 
-const modules = [
-  { key: 'basicData', label: '基础数据', icon: '📋', color: '#4a9eff', bg: '#eaf3ff', desc: '款式、面料、车间管理' },
-  { key: 'planManagement', label: '计划管理', icon: '📅', color: '#f5a623', bg: '#fff6e8', desc: '预排总计划、排程、二次加工' },
-  { key: 'dispatch', label: '报工管理', icon: '📝', color: '#a78bfa', bg: '#f3eeff', desc: '裁剪、印花、刺绣、缝制报工' },
-  { key: 'config', label: '系统设置', icon: '⚙️', color: '#8e99a4', bg: '#f4f5f7', desc: '工作日历、产能、排产策略' },
+const rightModules = [
+  { key: 'basicData', label: '基础数据', icon: '📋', color: '#3b82f6', bg: '#dbeafe', desc: '款式、面料、车间管理',
+    stats: [{ l: '款式', v: () => stats.value.styles, u: '个' }, { l: '装柜', v: () => '-', u: '条' }] },
+  { key: 'planManagement', label: '计划管理', icon: '📅', color: '#8b5cf6', bg: '#ede9fe', desc: '预排总计划、排程、二次加工',
+    stats: [{ l: '计划', v: () => stats.value.mainPlan, u: '个' }, { l: '待排', v: () => stats.value.sewingPending, u: '个' }] },
+  { key: 'dispatch', label: '报工管理', icon: '📝', color: '#ec4899', bg: '#fce7f3', desc: '裁剪、印花、刺绣、缝制报工',
+    stats: [{ l: '报工', v: () => stats.value.todayDispatch, u: '条' }, { l: '完成率', v: () => stats.value.dispatchRate, u: '%' }] },
+  { key: 'config', label: '系统设置', icon: '⚙️', color: '#6b7280', bg: '#f3f4f6', desc: '工作日历、产能、排产策略',
+    stats: [{ l: '状态', v: () => '服务正常', u: '' }, { l: '在线', v: () => 1, u: '人' }] },
 ]
 
-const cardStats = {
-  basicData: [
-    { label: '款式', value: () => stats.value.styles, unit: '个' },
-    { label: '装柜', value: () => '-', unit: '条' },
-  ],
-  planManagement: [
-    { label: '计划', value: () => stats.value.mainPlan, unit: '个' },
-    { label: '待排', value: () => stats.value.sewingPending, unit: '个' },
-  ],
-  dispatch: [
-    { label: '报工', value: () => stats.value.todayDispatch, unit: '条' },
-    { label: '完成率', value: () => stats.value.dispatchRate, unit: '%' },
-  ],
-  config: [
-    { label: '状态', value: () => '服务正常', unit: '', isStatus: true },
-    { label: '在线', value: () => 1, unit: '人' },
-  ],
-}
-
-function enterModule(key) { emit('navigate', key) }
-function fmtNum(v) { return typeof v === 'number' ? v.toLocaleString() : v }
+function go(k) { emit('navigate', k) }
+function fmt(v) { return typeof v === 'number' ? v.toLocaleString() : v }
 
 onMounted(loadStats)
 </script>
 
 <template>
-  <div class="entry-bg">
-    <div class="entry-container">
-
+  <div class="bg">
+    <div class="wrap">
       <!-- 横幅 -->
-      <div class="banner">
-        <div class="banner-left">
-          <div class="brand"><span class="brand-dot"></span><span class="brand-name">EUC 排程系统</span></div>
-          <h1 class="greeting">欢迎回来 <span class="wave">👋</span></h1>
-          <p class="sub-date">{{ today }} 星期{{ weekday }}</p>
+      <header class="hdr">
+        <div class="hdr-l">
+          <div class="hdr-brand"><span class="hdr-dot"></span><span class="hdr-name">EUC 排程系统</span></div>
+          <h1>欢迎回来 👋</h1>
+          <p class="hdr-date">{{ today }} 星期{{ weekday }}</p>
         </div>
-        <div class="banner-right">
-          <div class="pill" v-for="s in [{ v: stats.styles, l: '款式' }, { v: stats.mainPlan, l: '计划' }, { v: stats.sewingPending, l: '排程' }]" :key="s.l">
-            <span class="pill-val">{{ fmtNum(s.v) }}</span>
-            <span class="pill-lbl">{{ s.l }}</span>
+        <div class="hdr-pills">
+          <div class="pill" v-for="p in [{v:stats.styles,l:'款式'},{v:stats.mainPlan,l:'计划'},{v:stats.sewingPending,l:'排程'}]" :key="p.l">
+            <b>{{ fmt(p.v) }}</b><span>{{ p.l }}</span>
           </div>
         </div>
-      </div>
+      </header>
 
       <!-- 主体 -->
-      <div class="main-grid">
+      <div class="grid">
         <!-- 左：工作台 -->
-        <div class="wb" @click="enterModule('dashboard')">
-          <div class="wb-head"><span class="wb-icon">📊</span><div><h2>工作台</h2><p>数据看板与生产概览</p></div></div>
+        <div class="wb" @click="go('dashboard')">
+          <div class="wb-top">
+            <span class="wb-ico">📊</span>
+            <div><h2>工作台</h2><small>数据看板与生产概览</small></div>
+          </div>
           <div class="wb-rate">
-            <span class="rate-val">{{ stats.mainPlan > 0 ? Math.round((1 - stats.sewingOverdue / (stats.mainPlan * 10)) * 100) : '--' }}<small v-if="stats.mainPlan > 0">%</small></span>
-            <span class="rate-lbl">计划达成率</span>
+            <span class="rv">{{ rate() }}<small>%</small></span>
+            <span class="rl">计划达成率</span>
           </div>
           <div class="wb-row">
-            <div class="wb-num"><span class="wn">{{ fmtNum(stats.styles) }}</span><span class="wl">款式</span></div>
-            <div class="wb-num"><span class="wn">{{ fmtNum(stats.mainPlan) }}</span><span class="wl">计划</span></div>
-            <div class="wb-num"><span class="wn">{{ fmtNum(stats.sewingPending) }}</span><span class="wl">待排</span></div>
+            <div class="wn"><b>{{ fmt(stats.styles) }}</b><span>款式总数</span></div>
+            <div class="wn"><b>{{ fmt(stats.mainPlan) }}</b><span>预排总计划</span></div>
+            <div class="wn"><b>{{ fmt(stats.sewingPending) }}</b><span>待排程</span></div>
           </div>
           <div class="wb-go">进入工作台 →</div>
         </div>
 
-        <!-- 右：4卡片 -->
-        <div class="side">
-          <div v-for="m in modules" :key="m.key" class="sc" @click="enterModule(m.key)">
-            <div class="sc-icon" :style="{ background: m.bg, color: m.color }"><span>{{ m.icon }}</span></div>
-            <div class="sc-body">
+        <!-- 右：4模块 -->
+        <div class="right">
+          <div class="mod" v-for="m in rightModules" :key="m.key" @click="go(m.key)">
+            <div class="mod-ico" :style="{background:m.bg,color:m.color}">{{ m.icon }}</div>
+            <div class="mod-body">
               <h3>{{ m.label }}</h3>
               <p>{{ m.desc }}</p>
             </div>
-            <div class="sc-stats">
-              <div class="ss" v-for="s in cardStats[m.key]" :key="s.label">
-                <span class="sv"><span v-if="s.isStatus" class="dot" :class="connected?'on':'off'"></span>{{ typeof s.value()==='number'?s.value().toLocaleString():s.value() }}<small>{{ s.unit }}</small></span>
-                <span class="sl">{{ s.label }}</span>
+            <div class="mod-nums">
+              <div class="mn" v-for="s in m.stats" :key="s.l">
+                <b>{{ typeof s.v()==='number'?s.v().toLocaleString():s.v() }}<small>{{ s.u }}</small></b>
+                <span>{{ s.l }}</span>
               </div>
             </div>
-            <svg class="sc-arr" width="16" height="16" viewBox="0 0 24 24" fill="none" :stroke="m.color" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            <svg class="mod-arr" width="20" height="20" viewBox="0 0 24 24" fill="none" :stroke="m.color" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </div>
         </div>
       </div>
@@ -126,69 +101,168 @@ onMounted(loadStats)
 </template>
 
 <style scoped>
-.entry-bg { height:100vh; background:linear-gradient(160deg,#f5f0ff 0%,#fdf2f8 40%,#fefce8 100%); display:flex; justify-content:center; overflow:hidden; }
-.entry-container { width:100%; max-width:1080px; background:#f3f4f6; border-radius:0 0 28px 28px; padding:16px 20px 20px; box-shadow:0 4px 24px rgba(0,0,0,.04); display:flex; flex-direction:column; overflow:hidden; }
+* { margin:0; padding:0; box-sizing:border-box; }
 
-/* 横幅 */
-.banner { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; margin-bottom:14px; border-radius:16px; background:linear-gradient(135deg,#7c5cfc,#a78bfa 60%,#c4b5fd); color:#fff; position:relative; overflow:hidden; }
-.banner::before { content:''; position:absolute; width:160px; height:160px; right:-30px; top:-30px; background:rgba(255,255,255,.08); border-radius:50%; }
-.banner-left { position:relative; z-index:1; }
-.brand { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
-.brand-dot { width:8px; height:8px; background:#fff; border-radius:2px; opacity:.9; }
-.brand-name { font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; opacity:.8; }
-.greeting { font-size:24px; font-weight:700; margin-bottom:2px; line-height:1.2; }
-.wave { display:inline-block; animation:wave 1s ease-in-out; }
-@keyframes wave { 0%,100%{transform:rotate(0)} 20%{transform:rotate(16deg)} 60%{transform:rotate(-8deg)} }
-.sub-date { font-size:12px; opacity:.7; }
-.banner-right { display:flex; gap:10px; position:relative; z-index:1; }
-.pill { background:rgba(255,255,255,.15); backdrop-filter:blur(8px); border-radius:12px; padding:10px 16px; min-width:64px; text-align:center; border:1px solid rgba(255,255,255,.12); }
-.pill-val { display:block; font-size:20px; font-weight:700; line-height:1.1; }
-.pill-lbl { display:block; font-size:10px; opacity:.65; margin-top:2px; }
+.bg {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 50%, #fef9ee 100%);
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
 
-/* 主体 */
-.main-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; flex:1; }
+.wrap {
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
-/* 工作台 */
-.wb { background:#fff; border-radius:16px; padding:18px; cursor:pointer; transition:all .25s; box-shadow:0 1px 4px rgba(0,0,0,.03); border:1px solid rgba(0,0,0,.04); display:flex; flex-direction:column; }
-.wb:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.07); }
-.wb-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
-.wb-icon { font-size:22px; width:36px; height:36px; display:flex; align-items:center; justify-content:center; background:#f0ecff; border-radius:10px; }
-.wb-head h2 { font-size:16px; font-weight:700; color:#1e293b; }
-.wb-head p { font-size:11px; color:#94a3b8; }
+/* ── 横幅 ── */
+.hdr {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6 50%, #a78bfa);
+  border-radius: 20px;
+  padding: 24px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(99,102,241,.3);
+}
+.hdr::before { content:''; position:absolute; width:200px; height:200px; right:-40px; top:-60px; background:rgba(255,255,255,.1); border-radius:50%; }
+.hdr::after { content:''; position:absolute; width:120px; height:120px; right:120px; bottom:-40px; background:rgba(255,255,255,.06); border-radius:50%; }
 
-.wb-rate { background:linear-gradient(135deg,#ede9fe,#f0ecff); border-radius:12px; padding:14px; text-align:center; margin-bottom:12px; }
-.rate-val { display:block; font-size:36px; font-weight:700; color:#6366f1; }
-.rate-val small { font-size:16px; font-weight:500; color:#94a3b8; }
-.rate-lbl { display:block; font-size:11px; color:#94a3b8; margin-top:2px; }
+.hdr-l { position:relative; z-index:1; }
+.hdr-brand { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.hdr-dot { width:10px; height:10px; background:#fff; border-radius:3px; }
+.hdr-name { font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; opacity:.85; }
+.hdr h1 { font-size:32px; font-weight:800; line-height:1.1; margin-bottom:4px; }
+.hdr-date { font-size:14px; opacity:.7; }
 
-.wb-row { display:flex; gap:8px; margin-bottom:10px; }
-.wb-num { flex:1; background:#f8f9fa; border-radius:10px; padding:10px; text-align:center; }
-.wn { display:block; font-size:18px; font-weight:700; color:#1e293b; }
-.wl { display:block; font-size:10px; color:#94a3b8; margin-top:2px; }
+.hdr-pills { display:flex; gap:12px; position:relative; z-index:1; }
+.pill {
+  background: rgba(255,255,255,.18);
+  backdrop-filter: blur(10px);
+  border-radius: 14px;
+  padding: 16px 24px;
+  min-width: 80px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,.15);
+}
+.pill b { display:block; font-size:28px; font-weight:800; line-height:1; }
+.pill span { display:block; font-size:12px; opacity:.7; margin-top:4px; }
 
-.wb-go { text-align:center; font-size:12px; color:#6366f1; font-weight:500; padding-top:8px; border-top:1px solid #f1f5f9; }
+/* ── 主体 ── */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: 1;
+}
 
-/* 右侧卡片 */
-.side { display:flex; flex-direction:column; gap:10px; }
-.sc { background:#fff; border-radius:14px; padding:14px 16px; cursor:pointer; transition:all .25s; box-shadow:0 1px 4px rgba(0,0,0,.03); border:1px solid rgba(0,0,0,.04); display:flex; align-items:center; gap:12px; flex:1; }
-.sc:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.06); }
+/* ── 工作台 ── */
+.wb {
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px;
+  cursor: pointer;
+  transition: all .3s;
+  box-shadow: 0 2px 12px rgba(0,0,0,.04);
+  border: 1px solid rgba(0,0,0,.04);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.wb:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(0,0,0,.1); }
 
-.sc-icon { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
-.sc-body { flex:1; min-width:0; }
-.sc-body h3 { font-size:14px; font-weight:700; color:#1e293b; margin-bottom:1px; }
-.sc-body p { font-size:11px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wb-top { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
+.wb-ico { font-size:28px; width:52px; height:52px; display:flex; align-items:center; justify-content:center; background:#ede9fe; border-radius:14px; }
+.wb-top h2 { font-size:22px; font-weight:800; color:#1e293b; }
+.wb-top small { font-size:13px; color:#94a3b8; }
 
-.sc-stats { display:flex; gap:14px; flex-shrink:0; }
-.ss { display:flex; flex-direction:column; align-items:flex-end; }
-.sv { font-size:14px; font-weight:700; color:#1e293b; display:flex; align-items:center; gap:3px; }
-.sv small { font-size:9px; font-weight:500; color:#94a3b8; }
-.sl { font-size:9px; color:#94a3b8; }
-.dot { width:5px; height:5px; border-radius:50%; }
-.dot.on { background:#22c55e; }
-.dot.off { background:#ef4444; }
+.wb-rate {
+  background: linear-gradient(135deg, #ede9fe, #e0e7ff);
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+.rv { display:block; font-size:56px; font-weight:900; color:#6366f1; line-height:1; }
+.rv small { font-size:24px; font-weight:600; color:#94a3b8; }
+.rl { display:block; font-size:14px; color:#6b7280; margin-top:6px; font-weight:500; }
 
-.sc-arr { flex-shrink:0; opacity:0; transform:translateX(-3px); transition:all .25s; }
-.sc:hover .sc-arr { opacity:1; transform:translateX(0); }
+.wb-row { display:flex; gap:12px; margin-bottom:16px; }
+.wn {
+  flex:1;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+.wn b { display:block; font-size:24px; font-weight:800; color:#1e293b; }
+.wn span { display:block; font-size:12px; color:#94a3b8; margin-top:4px; }
 
-@media (max-width:800px) { .main-grid { grid-template-columns:1fr; } .banner { flex-direction:column; gap:12px; text-align:center; } .banner-right { justify-content:center; } }
+.wb-go {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6366f1;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+/* ── 右侧模块 ── */
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mod {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px 24px;
+  cursor: pointer;
+  transition: all .3s;
+  box-shadow: 0 2px 8px rgba(0,0,0,.03);
+  border: 1px solid rgba(0,0,0,.04);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+.mod:hover { transform: translateX(4px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+
+.mod-ico {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.mod-body { flex:1; min-width:0; }
+.mod-body h3 { font-size:18px; font-weight:700; color:#1e293b; margin-bottom:2px; }
+.mod-body p { font-size:13px; color:#94a3b8; }
+
+.mod-nums { display:flex; gap:20px; flex-shrink:0; }
+.mn { display:flex; flex-direction:column; align-items:flex-end; }
+.mn b { font-size:20px; font-weight:800; color:#1e293b; font-variant-numeric:tabular-nums; }
+.mn b small { font-size:12px; font-weight:500; color:#94a3b8; margin-left:2px; }
+.mn span { font-size:11px; color:#94a3b8; margin-top:2px; }
+
+.mod-arr { flex-shrink:0; opacity:0; transition:all .3s; }
+.mod:hover .mod-arr { opacity:1; }
+
+@media (max-width:800px) {
+  .grid { grid-template-columns:1fr; }
+  .hdr { flex-direction:column; gap:16px; text-align:center; }
+  .hdr-pills { justify-content:center; }
+}
 </style>
