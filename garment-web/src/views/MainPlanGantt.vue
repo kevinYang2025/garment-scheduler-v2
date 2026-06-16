@@ -312,9 +312,15 @@ onMounted(loadGantt)
   letter-spacing: 1px;
 }
 .gantt-left-rows {
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   min-height: 0;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.gantt-left-rows::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 .gantt-left-row {
   height: 52px;
