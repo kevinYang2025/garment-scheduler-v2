@@ -626,6 +626,7 @@ onMounted(loadGantt)
   z-index: 3;
   position: sticky;
   left: 0;
+  align-self: stretch;
 }
 
 .gantt-left-header {

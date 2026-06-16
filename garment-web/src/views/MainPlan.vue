@@ -319,6 +319,7 @@ function openAdd() {
   form.value = {
     plan_qty: 0,
     due_date: '',
+    arrival_date: '',
     pipeline_count: 1,
     workshop: '',
     line_team: '',
@@ -345,6 +346,7 @@ async function save() {
       product_name: selectedStyle.value.product_name,
       plan_qty: form.value.plan_qty,
       due_date: form.value.due_date,
+      arrival_date: form.value.arrival_date || '',
       cutting_start: form.value.cutting_start,
       cutting_end: form.value.cutting_end,
       secondary_start: form.value.secondary_start,
@@ -690,6 +692,11 @@ onUnmounted(() => {
           <el-col :span="8">
             <el-form-item label="交期">
               <el-date-picker v-model="form.due_date" type="date" value-format="YYYY-MM-DD" style="width:100%" @change="autoCalcDates" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="预计到货">
+              <el-date-picker v-model="form.arrival_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">

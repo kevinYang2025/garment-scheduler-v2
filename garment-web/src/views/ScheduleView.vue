@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import StylePicker from '../components/StylePicker.vue'
 import DailyScheduleTable from '../components/DailyScheduleTable.vue'
+import SewingDailyPlan from './SewingDailyPlan.vue'
 
 const props = defineProps({
   scheduleType: String,
@@ -19,6 +20,7 @@ const expandedSet = ref(new Set())
 const expandedRows = computed(() => Array.from(expandedSet.value))
 const editingId = ref(null)
 const editForm = ref({})
+const activeTab = ref('cutting') // 'cutting' or 'sewingDaily'
 
 const defaultForm = () => ({
   style_id: null, style_no: '', product_name: '', color: '', size_spec: '',
@@ -131,6 +133,17 @@ onMounted(load)
 
 <template>
   <div class="page">
+    <!-- 裁剪排程页面：tab切换 -->
+    <div v-if="scheduleType === 'cutting'" class="tab-bar">
+      <button class="tab-btn" :class="{ active: activeTab === 'cutting' }" @click="activeTab = 'cutting'">裁剪排程</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'sewingDaily' }" @click="activeTab = 'sewingDaily'">缝制每日计划</button>
+    </div>
+
+    <!-- 缝制每日计划视图 -->
+    <SewingDailyPlan v-if="scheduleType === 'cutting' && activeTab === 'sewingDaily'" @back="activeTab = 'cutting'" />
+
+    <!-- 裁剪排程视图 / 其他排程类型 -->
+    <template v-if="scheduleType !== 'cutting' || activeTab === 'cutting'">
     <div class="toolbar">
       <el-button type="primary" @click="openCreate">+ 新排程</el-button>
     </div>
@@ -250,11 +263,36 @@ onMounted(load)
         <el-button type="primary" @click="create">创建</el-button>
       </template>
     </el-dialog>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .page { max-width: 1400px; }
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  padding: 8px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all .2s;
+}
+.tab-btn:hover { background: #f8f9fa; }
+.tab-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
 .toolbar {
   display: flex;
   align-items: center;

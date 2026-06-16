@@ -1,10 +1,15 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useWebSocket } from '../composables/useWebSocket'
 import api from '../api'
 
 const emit = defineEmits(['navigate'])
 const { connected } = useWebSocket()
+
+const serviceStatus = computed(() => {
+  if (connected.value === null || connected.value === undefined) return { color: '#f59e0b', label: '连接中...' }
+  return connected.value ? { color: '#22c55e', label: '服务正常' } : { color: '#ef4444', label: '未连接' }
+})
 
 const stats = ref({ styles: 0, mainPlan: 0, sewingPending: 0, sewingOverdue: 0, todayDispatch: 0, dispatchRate: 0, busyLines: 0, totalLines: 0, workshops: 0 })
 
@@ -37,7 +42,7 @@ const rightModules = [
   { key: 'dispatch', label: '报工管理', icon: '📝', color: '#ec4899', bg: '#fce7f3', desc: '裁剪、印花、刺绣、缝制报工',
     stats: [{ l: '报工', v: () => stats.value.todayDispatch, u: '条' }, { l: '完成率', v: () => stats.value.dispatchRate, u: '%' }] },
   { key: 'config', label: '系统设置', icon: '⚙️', color: '#6b7280', bg: '#f3f4f6', desc: '工作日历、产能、排产策略',
-    stats: [{ l: '状态', v: () => '服务正常', u: '' }, { l: '在线', v: () => 1, u: '人' }] },
+    stats: [{ l: '状态', v: () => serviceStatus.value, u: '', isStatus: true }, { l: '在线', v: () => 1, u: '人' }] },
 ]
 
 function go(k) { emit('navigate', k) }
@@ -93,7 +98,8 @@ onMounted(loadStats)
             </div>
             <div class="mod-nums">
               <div class="mn" v-for="s in m.stats" :key="s.l">
-                <b>{{ typeof s.v()==='number'?s.v().toLocaleString():s.v() }}<small>{{ s.u }}</small></b>
+                <b v-if="s.isStatus"><span class="status-dot" :style="{background:s.v().color}"></span>{{ s.v().label }}<small>{{ s.u }}</small></b>
+                <b v-else>{{ typeof s.v()==='number'?s.v().toLocaleString():s.v() }}<small>{{ s.u }}</small></b>
                 <span>{{ s.l }}</span>
               </div>
             </div>
@@ -258,9 +264,10 @@ onMounted(loadStats)
 
 .mod-nums { display:flex; gap:20px; flex-shrink:0; }
 .mn { display:flex; flex-direction:column; align-items:flex-end; }
-.mn b { font-size:20px; font-weight:800; color:#1e293b; font-variant-numeric:tabular-nums; }
+.mn b { font-size:20px; font-weight:800; color:#1e293b; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:6px; justify-content:flex-end; }
 .mn b small { font-size:12px; font-weight:500; color:#94a3b8; margin-left:2px; }
 .mn span { font-size:11px; color:#94a3b8; margin-top:2px; }
+.status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
 
 .mod-arr { flex-shrink:0; opacity:0; transition:all .3s; }
 .mod:hover .mod-arr { opacity:1; }
