@@ -13,6 +13,7 @@ const columns = [
   { field: 'product_name', label: '品名', width: 130, type: 'text' },
   { field: 'plan_qty', label: '计划数量', width: 100, type: 'number' },
   { field: 'due_date', label: '交期', width: 110, type: 'date' },
+  { field: 'arrival_date', label: '预计到货', width: 110, type: 'date' },
   { field: 'cutting_start', label: '裁剪上线', width: 110, type: 'date' },
   { field: 'cutting_end', label: '裁剪下线', width: 110, type: 'date' },
   { field: 'printing_start', label: '印花上线', width: 100, type: 'date' },
@@ -586,6 +587,10 @@ onUnmounted(() => {
             <td>
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.due_date" type="date" /></template>
               <template v-else><span>{{ fmtDate(row.due_date) }}</span></template>
+            </td>
+            <td>
+              <template v-if="editingId === row.id"><input class="inp" v-model="editForm.arrival_date" type="date" /></template>
+              <template v-else><span>{{ fmtDate(row.arrival_date) }}</span></template>
             </td>
             <td>
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.cutting_start" type="date" /></template>

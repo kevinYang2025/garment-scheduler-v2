@@ -383,8 +383,6 @@ onMounted(loadGantt)
               @drop="line.status !== '故障' && onDrop(workshop, line)"
             >
               <div class="tasks-area" :style="{ minWidth: datesWidth + 'px' }">
-                <!-- 今天竖线 -->
-                <div v-if="todayIdx >= 0" class="today-line" :style="{ left: todayIdx * 28 + 14 + 'px' }"></div>
                 <div
                   v-for="task in line.tasks"
                   :key="task.planId"

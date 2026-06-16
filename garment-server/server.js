@@ -744,15 +744,15 @@ app.post('/api/main-plan', (req, res) => {
     if (p.id) {
       const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [p.id]);
       if (!existing) return res.status(404).json({ error: '计划不存在' });
-      db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
-        [p.style_id, p.style_no, p.product_name, p.plan_qty, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.printing_start||'', p.printing_end||'', p.embroidery_start||'', p.embroidery_end||'', p.template_start||'', p.template_end||'', p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.id]);
+      db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,arrival_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
+        [p.style_id, p.style_no, p.product_name, p.plan_qty, p.due_date, p.arrival_date||'', p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.printing_start||'', p.printing_end||'', p.embroidery_start||'', p.embroidery_end||'', p.template_start||'', p.template_end||'', p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.id]);
       broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
       db.logOperation('main_plan', 'update', p.id, p.style_no);
       return res.json({ ok: true, id: p.id });
     }
-    const result = db.run(`INSERT INTO main_plan (style_id,style_no,product_name,plan_qty,due_date,cutting_start,cutting_end,secondary_start,secondary_end,printing_start,printing_end,embroidery_start,embroidery_end,template_start,template_end,sewing_remind_date,sewing_start,sewing_end,ironing_start,ironing_end,conflict_flag,pipeline_count,is_scheduled,workshop,line_team)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [p.style_id, p.style_no, p.product_name, p.plan_qty || 0, p.due_date, p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.printing_start||'', p.printing_end||'', p.embroidery_start||'', p.embroidery_end||'', p.template_start||'', p.template_end||'', p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '']);
+    const result = db.run(`INSERT INTO main_plan (style_id,style_no,product_name,plan_qty,due_date,arrival_date,cutting_start,cutting_end,secondary_start,secondary_end,printing_start,printing_end,embroidery_start,embroidery_end,template_start,template_end,sewing_remind_date,sewing_start,sewing_end,ironing_start,ironing_end,conflict_flag,pipeline_count,is_scheduled,workshop,line_team)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [p.style_id, p.style_no, p.product_name, p.plan_qty || 0, p.due_date, p.arrival_date||'', p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.printing_start||'', p.printing_end||'', p.embroidery_start||'', p.embroidery_end||'', p.template_start||'', p.template_end||'', p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '']);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     db.logOperation('main_plan', 'create', result.lastInsertRowid, p.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -774,6 +774,7 @@ app.put('/api/main-plan/:id', (req, res) => {
     const product_name = p.product_name ?? existing.product_name;
     const plan_qty = p.plan_qty ?? existing.plan_qty;
     const due_date = p.due_date ?? existing.due_date;
+    const arrival_date = p.arrival_date ?? existing.arrival_date ?? '';
     const cutting_start = p.cutting_start ?? existing.cutting_start;
     const cutting_end = p.cutting_end ?? existing.cutting_end;
     const secondary_start = p.secondary_start ?? existing.secondary_start;
@@ -794,8 +795,8 @@ app.put('/api/main-plan/:id', (req, res) => {
     const is_scheduled = p.is_scheduled !== undefined ? (p.is_scheduled ? 1 : 0) : existing.is_scheduled;
     const workshop = p.workshop ?? existing.workshop ?? '';
     const line_team = p.line_team ?? existing.line_team ?? '';
-    db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
-      [style_id, style_no, product_name, plan_qty, due_date, cutting_start, cutting_end, secondary_start, secondary_end, printing_start, printing_end, embroidery_start, embroidery_end, template_start, template_end, sewing_remind_date, sewing_start, sewing_end, ironing_start, ironing_end, conflict_flag, pipeline_count, is_scheduled, workshop, line_team, id]);
+    db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,arrival_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=? WHERE id=?`,
+      [style_id, style_no, product_name, plan_qty, due_date, arrival_date, cutting_start, cutting_end, secondary_start, secondary_end, printing_start, printing_end, embroidery_start, embroidery_end, template_start, template_end, sewing_remind_date, sewing_start, sewing_end, ironing_start, ironing_end, conflict_flag, pipeline_count, is_scheduled, workshop, line_team, id]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     db.logOperation('main_plan', 'update', id, style_no);
     res.json({ ok: true, id });
@@ -1033,6 +1034,12 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
         }
       }
 
+      // 预计到货日期 = 最早装柜日期 + 21天
+      let arrivalDate = '';
+      if (li.loading_date) {
+        arrivalDate = addDays(li.loading_date, 21);
+      }
+
       // 冲突检测（多条件）
       const today = new Date().toISOString().slice(0, 10);
       const secEnds = [sr.printing_end, sr.embroidery_end, sr.template_end].filter(Boolean);
@@ -1054,6 +1061,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
         product_name: st.product_name || '',
         plan_qty: qty,
         due_date: st.due_date || '',
+        arrival_date: arrivalDate,
         cutting_start: cr.cutting_start || '',
         cutting_end: cr.cutting_end || '',
         secondary_start: cr.cutting_end ? addDays(cr.cutting_end, 1) : '',
@@ -1082,16 +1090,16 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
     const writeTxn = rawDb.transaction(() => {
       rawDb.prepare('DELETE FROM main_plan').run();
       const stmt = rawDb.prepare(`INSERT INTO main_plan
-        (style_id,style_no,product_name,plan_qty,due_date,
+        (style_id,style_no,product_name,plan_qty,due_date,arrival_date,
          cutting_start,cutting_end,secondary_start,secondary_end,
          printing_start,printing_end,embroidery_start,embroidery_end,
          template_start,template_end,
          sewing_remind_date,sewing_start,sewing_end,
          ironing_start,ironing_end,conflict_flag,
          pipeline_count,is_scheduled,workshop,line_team)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       for (const r of results) {
-        stmt.run(r.style_id, r.style_no, r.product_name, r.plan_qty, r.due_date,
+        stmt.run(r.style_id, r.style_no, r.product_name, r.plan_qty, r.due_date, r.arrival_date,
           r.cutting_start, r.cutting_end, r.secondary_start, r.secondary_end,
           r.printing_start, r.printing_end, r.embroidery_start, r.embroidery_end,
           r.template_start, r.template_end,
