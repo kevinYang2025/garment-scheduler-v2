@@ -684,7 +684,10 @@ app.get('/api/main-plan/gantt', (req, res) => {
     const plans = db.all(`
       SELECT id, style_no, product_name, plan_qty, due_date,
         cutting_start, cutting_end,
-        secondary_start, secondary_end,
+        printing_start, printing_end,
+        embroidery_start, embroidery_end,
+        template_start, template_end,
+        ironing_start, ironing_end,
         sewing_remind_date, sewing_start, sewing_end,
         workshop, line_team, pipeline_count, is_scheduled
       FROM main_plan
@@ -695,7 +698,10 @@ app.get('/api/main-plan/gantt', (req, res) => {
     // 计算日期范围
     const allDates = plans.flatMap(p => [
       p.cutting_start, p.cutting_end,
-      p.secondary_start, p.secondary_end,
+      p.printing_start, p.printing_end,
+      p.embroidery_start, p.embroidery_end,
+      p.template_start, p.template_end,
+      p.ironing_start, p.ironing_end,
       p.sewing_start, p.sewing_end, p.due_date
     ]).filter(Boolean);
 
@@ -911,7 +917,6 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       { key: 'printing', flag: 'printing', dailyField: 'printing_daily_output', standard: cap.printing || 10000, prefix: 'printing' },
       { key: 'embroidery', flag: 'embroidery', dailyField: 'embroidery_daily_output', standard: cap.embroidery || 8000, prefix: 'embroidery' },
       { key: 'template', flag: 'template', dailyField: 'template_daily_output', standard: cap.template || 3000, prefix: 'template' },
-      { key: 'ironing', flag: 'ironing_label', dailyField: 'ironing_daily_output', standard: cap.ironing || 6000, prefix: 'ironing' },
     ];
     const secondaryResults = {}; // style_no -> { printing_start, printing_end, embroidery_start, ... }
 
@@ -965,7 +970,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       }
     }
 
-    // ========== Step 3 & 4: 缝制（倒推） + 冲突检测 ==========
+    // ========== Step 3 & 4: 缝制 + 烫标（倒推） ==========
     const results = [];
     for (const sn of styleNos) {
       const st = styleMap[sn];
@@ -988,12 +993,53 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       }
       const sewingDays = dailyTarget > 0 ? Math.ceil(qty / dailyTarget) + 1 : 1;
       const sewingStart = addDays(sewingEnd, -(sewingDays - 1));
-      const sewingRemind = addDays(sewingStart, -10);
 
-      // 冲突检测：二次加工/烫标 最晚下线日 > 缝制上线日 → 冲突
-      const secEnds = [sr.printing_end, sr.embroidery_end, sr.template_end, sr.ironing_end].filter(Boolean);
+      // 烫标倒推（仅 ironing_label = '是'）
+      let ironingStart = '', ironingEnd = '';
+      let sewingRemind = addDays(sewingStart, -10);
+
+      if (st.ironing_label === '是') {
+        ironingEnd = addDays(sewingStart, -3);
+        const ironingMax = parseInt(st.ironing_daily_output) || 0;
+        const ironingStandard = cap.ironing || 6000;
+        if (ironingMax > 0 && ironingStandard > 0) {
+          let curDay = ironingEnd;
+          let remain = ironingStandard;
+          let styleRemain = qty;
+          while (styleRemain > 0) {
+            const todayCap = Math.min(ironingMax, remain);
+            if (todayCap <= 0) {
+              curDay = addDays(curDay, -1);
+              remain = ironingStandard;
+              continue;
+            }
+            const produce = Math.min(styleRemain, todayCap);
+            styleRemain -= produce;
+            remain -= produce;
+            if (styleRemain > 0) {
+              curDay = addDays(curDay, -1);
+              remain = ironingStandard;
+            }
+          }
+          ironingStart = curDay;
+          sewingRemind = addDays(ironingStart, -10);
+        }
+      }
+
+      // 冲突检测（多条件）
+      const today = new Date().toISOString().slice(0, 10);
+      const secEnds = [sr.printing_end, sr.embroidery_end, sr.template_end].filter(Boolean);
       const maxSecEnd = secEnds.length > 0 ? secEnds.reduce((a, b) => a > b ? a : b) : '';
-      const conflict = maxSecEnd && sewingStart && sewingStart < maxSecEnd ? 1 : 0;
+      const refStart = ironingStart || sewingStart;
+      let conflict = 0;
+      // 1) 二次加工下线 > 缝制/烫标上线
+      if (maxSecEnd && refStart && refStart < maxSecEnd) conflict = 1;
+      // 2) 烫标上线早于裁剪下线（倒推到过去）
+      if (ironingStart && cr.cutting_end && ironingStart < cr.cutting_end) conflict = 1;
+      // 3) 缝制上线早于今天（倒推到过去）
+      if (sewingStart && sewingStart < today) conflict = 1;
+      // 4) 烫标上线早于今天
+      if (ironingStart && ironingStart < today) conflict = 1;
 
       results.push({
         style_id: st.id,
@@ -1014,8 +1060,8 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
         sewing_remind_date: sewingRemind,
         sewing_start: sewingStart,
         sewing_end: sewingEnd,
-        ironing_start: sr.ironing_start || '',
-        ironing_end: sr.ironing_end || '',
+        ironing_start: ironingStart,
+        ironing_end: ironingEnd,
         conflict_flag: conflict,
         pipeline_count: 1,
         is_scheduled: 0,

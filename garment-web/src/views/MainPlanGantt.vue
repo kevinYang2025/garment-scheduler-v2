@@ -123,6 +123,10 @@ onMounted(loadGantt)
       </div>
       <div class="legend">
         <span class="leg-item"><span class="leg-dot" style="background:#3b82f6"></span>裁剪</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#ec4899"></span>印花</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#8b5cf6"></span>刺绣</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#06b6d4"></span>模板</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#f97316"></span>烫标</span>
         <span class="leg-item"><span class="leg-dot" style="background:#10b981"></span>缝制</span>
         <span class="leg-item"><span class="leg-dot" style="background:#ef4444;height:2px;width:12px;border-radius:0"></span>交期</span>
       </div>
@@ -177,6 +181,42 @@ onMounted(loadGantt)
               :title="'裁剪: ' + plan.cutting_start + ' ~ ' + plan.cutting_end"
             >
               <span class="bar-text">裁剪</span>
+            </div>
+            <!-- 印花条 -->
+            <div
+              v-if="plan.printing_start && plan.printing_end"
+              class="gantt-bar printing"
+              :style="getTaskStyle(plan.printing_start, plan.printing_end)"
+              :title="'印花: ' + plan.printing_start + ' ~ ' + plan.printing_end"
+            >
+              <span class="bar-text">印花</span>
+            </div>
+            <!-- 刺绣条 -->
+            <div
+              v-if="plan.embroidery_start && plan.embroidery_end"
+              class="gantt-bar embroidery"
+              :style="getTaskStyle(plan.embroidery_start, plan.embroidery_end)"
+              :title="'刺绣: ' + plan.embroidery_start + ' ~ ' + plan.embroidery_end"
+            >
+              <span class="bar-text">刺绣</span>
+            </div>
+            <!-- 模板条 -->
+            <div
+              v-if="plan.template_start && plan.template_end"
+              class="gantt-bar template"
+              :style="getTaskStyle(plan.template_start, plan.template_end)"
+              :title="'模板: ' + plan.template_start + ' ~ ' + plan.template_end"
+            >
+              <span class="bar-text">模板</span>
+            </div>
+            <!-- 烫标条 -->
+            <div
+              v-if="plan.ironing_start && plan.ironing_end"
+              class="gantt-bar ironing"
+              :style="getTaskStyle(plan.ironing_start, plan.ironing_end)"
+              :title="'烫标: ' + plan.ironing_start + ' ~ ' + plan.ironing_end"
+            >
+              <span class="bar-text">烫标</span>
             </div>
             <!-- 缝制条 -->
             <div
@@ -351,8 +391,11 @@ onMounted(loadGantt)
 .gantt-bar:hover { filter: brightness(0.9); }
 .gantt-bar .bar-text { white-space: nowrap; padding: 0 4px; }
 
-.gantt-bar.cutting { background: var(--primary, #3b82f6); top: 6px; height: 16px; }
-.gantt-bar.secondary { background: #f59e0b; top: 24px; height: 16px; }
+.gantt-bar.cutting { background: #3b82f6; }
+.gantt-bar.printing { background: #ec4899; }
+.gantt-bar.embroidery { background: #8b5cf6; }
+.gantt-bar.template { background: #06b6d4; }
+.gantt-bar.ironing { background: #f97316; }
 .gantt-bar.sewing { background: #10b981; }
 
 /* 交期标记 */
