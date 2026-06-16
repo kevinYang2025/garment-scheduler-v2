@@ -234,7 +234,8 @@
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);console.log\\('总条数:',arr.length\\);const c=arr.filter\\(r=>r.conflict_flag\\);console.log\\('冲突条数:',c.length\\);console.log\\('示例:',JSON.stringify\\(arr[0],null,2\\)\\)}\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);const ir=arr.filter\\(r=>r.ironing_start\\);console.log\\('有烫标的:',ir.length\\);if\\(ir.length>0\\)console.log\\('示例:',JSON.stringify\\({style_no:ir[0].style_no,cutting:ir[0].cutting_start+'~'+ir[0].cutting_end,secondary:ir[0].secondary_start+'~'+ir[0].secondary_end,ironing:ir[0].ironing_start+'~'+ir[0].ironing_end,sewing:ir[0].sewing_start+'~'+ir[0].sewing_end,conflict:ir[0].conflict_flag}\\)\\)}\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);const c=arr.filter\\(r=>r.conflict_flag\\);if\\(c.length>0\\)console.log\\('冲突示例:',JSON.stringify\\({style_no:c[0].style_no,secondary_end:c[0].secondary_end,ironing_start:c[0].ironing_start,sewing_start:c[0].sewing_start}\\)\\)}\\)\")",
-      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);arr.slice\\(0,3\\).forEach\\(r=>console.log\\('款号:',r.style_no,'| plan_qty:',r.plan_qty,'| due_date:',r.due_date\\)\\)}\\)\")"
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);arr.slice\\(0,3\\).forEach\\(r=>console.log\\('款号:',r.style_no,'| plan_qty:',r.plan_qty,'| due_date:',r.due_date\\)\\)}\\)\")",
+      "Bash(node -e \"const db = require\\('./db'\\); db.init\\(\\); const r = db.get\\('SELECT * FROM main_plan WHERE style_no = ?', ['42-60082（柬埔寨）']\\); console.log\\(JSON.stringify\\(r, null, 2\\)\\);\")"
     ]
   }
 }

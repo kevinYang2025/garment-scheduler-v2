@@ -7,11 +7,12 @@ const loading = ref(true)
 const weekOffset = ref(0)
 
 const ganttLeftRef = ref(null)
+const ganttLeftRowsRef = ref(null)
 const ganttRightRef = ref(null)
 
 function onRightScroll() {
-  if (ganttLeftRef.value && ganttRightRef.value) {
-    ganttLeftRef.value.scrollTop = ganttRightRef.value.scrollTop
+  if (ganttLeftRowsRef.value && ganttRightRef.value) {
+    ganttLeftRowsRef.value.scrollTop = ganttRightRef.value.scrollTop
   }
 }
 
@@ -20,14 +21,14 @@ const todayStr = (() => {
   return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`
 })()
 
-// 日期列表：今天前1周 ~ 后3周，随 weekOffset 滚动
+// 日期列表：今天前2周 ~ 后6周，随 weekOffset 滚动
 const dates = computed(() => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const start = new Date(today)
-  start.setDate(start.getDate() - 7 + weekOffset.value * 7)
+  start.setDate(start.getDate() - 14 + weekOffset.value * 14)
   const end = new Date(today)
-  end.setDate(end.getDate() + 21 + weekOffset.value * 7)
+  end.setDate(end.getDate() + 42 + weekOffset.value * 14)
   const result = []
   const cur = new Date(start)
   while (cur <= end) {
@@ -47,8 +48,8 @@ const dateRangeLabel = computed(() => {
   return dates.value[0].slice(5) + ' ~ ' + dates.value[dates.value.length - 1].slice(5)
 })
 
-function prevWeek() { weekOffset.value-- }
-function nextWeek() { weekOffset.value++ }
+function prevWeek() { weekOffset.value -= 2 }
+function nextWeek() { weekOffset.value += 2 }
 function goToday() { weekOffset.value = 0 }
 
 function formatDate(dateStr) {
@@ -133,15 +134,17 @@ onMounted(loadGantt)
       <!-- 左侧固定列 -->
       <div class="gantt-left" ref="ganttLeftRef">
         <div class="gantt-left-header">款号 / 品名</div>
-        <div
-          v-for="plan in plans"
-          :key="'l-'+plan.id"
-          class="gantt-left-row"
-        >
-          <div class="plan-no">{{ plan.style_no }}</div>
-          <div class="plan-info">
-            <span>{{ plan.product_name }}</span>
-            <span class="plan-qty">{{ plan.plan_qty }}件</span>
+        <div class="gantt-left-rows" ref="ganttLeftRowsRef">
+          <div
+            v-for="plan in plans"
+            :key="'l-'+plan.id"
+            class="gantt-left-row"
+          >
+            <div class="plan-no">{{ plan.style_no }}</div>
+            <div class="plan-info">
+              <span>{{ plan.product_name }}</span>
+              <span class="plan-qty">{{ plan.plan_qty }}件</span>
+            </div>
           </div>
         </div>
       </div>
@@ -261,8 +264,6 @@ onMounted(loadGantt)
   min-width: 200px;
   flex-shrink: 0;
   border-right: 2px solid var(--border);
-  display: flex;
-  flex-direction: column;
   background: var(--card);
   z-index: 5;
   overflow: hidden;
@@ -279,7 +280,9 @@ onMounted(loadGantt)
   border-bottom: 1px solid var(--border);
   text-transform: uppercase;
   letter-spacing: 1px;
-  flex-shrink: 0;
+}
+.gantt-left-rows {
+  overflow: hidden;
 }
 .gantt-left-row {
   height: 52px;
