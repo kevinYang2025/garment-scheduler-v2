@@ -147,6 +147,9 @@ export default {
   getDispatchPlanVsActual: (params) => api.get('/dispatch-plan-vs-actual', { params }),
   getDispatchAlerts: () => api.get('/dispatch-alerts'),
   exportDispatchReport: (params) => api.get('/dispatch-export', { params, responseType: 'blob' }),
+  getDispatchByLine: (params) => api.get('/dispatch-by-line', { params }),
+  getDispatchByWorkshop: (params) => api.get('/dispatch-by-workshop', { params }),
+  getDispatchByWorker: (params) => api.get('/dispatch-by-worker', { params }),
 
   // 交期预估
   getEstimations: () => api.get('/estimations'),

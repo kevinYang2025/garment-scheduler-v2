@@ -201,9 +201,11 @@ app.post('/api/styles/import', async (req, res) => {
     const headerMap = {
       '接单日期': 'order_date', '款号': 'style_no', '品名': 'product_name',
       '面料代号': 'fabric_code', '成衣计划数量': 'plan_qty', '交期': 'due_date',
-      '是否刺绣': 'embroidery', '是否印花': 'printing', '是否烫标': 'ironing_label',
-      '是否用模板': 'template', 'TT时间': 'tt_time', '目标日产量': 'target_daily_output',
-      '几条线生产': 'production_lines', '备注': 'remarks', '优先级': 'priority',
+      '是否刺绣': 'embroidery', '刺绣日产量': 'embroidery_daily_output',
+      '是否印花': 'printing', '印花日产量': 'printing_daily_output',
+      '是否烫标': 'ironing_label', '烫标日产量': 'ironing_daily_output',
+      '是否用模板': 'template', '模板日产量': 'template_daily_output',
+      'TT时间': 'tt_time', '缝制目标日产量': 'target_daily_output', '备注': 'remarks',
     };
     const colMap = {};
     ws.getRow(1).eachCell((cell, colNumber) => {
@@ -220,6 +222,10 @@ app.post('/api/styles/import', async (req, res) => {
           if (val && typeof val === 'object' && val.result !== undefined) val = val.result;
           if (val instanceof Date) {
             data[key] = `${val.getFullYear()}-${String(val.getMonth()+1).padStart(2,'0')}-${String(val.getDate()).padStart(2,'0')}`;
+          } else if (typeof val === 'number' && val > 40000) {
+            const ms = (val - 25569) * 86400000;
+            const d = new Date(ms);
+            data[key] = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
           } else {
             data[key] = val != null ? String(val).trim() : '';
           }
@@ -227,14 +233,26 @@ app.post('/api/styles/import', async (req, res) => {
         if (!data.style_no) { skipped++; continue; }
         data.plan_qty = parseInt(data.plan_qty) || 0;
         data.target_daily_output = parseInt(data.target_daily_output) || 0;
-        data.production_lines = parseInt(data.production_lines) || 0;
-        data.priority = parseInt(data.priority) || 3;
+        data.embroidery_daily_output = parseInt(data.embroidery_daily_output) || 0;
+        data.printing_daily_output = parseInt(data.printing_daily_output) || 0;
+        data.ironing_daily_output = parseInt(data.ironing_daily_output) || 0;
+        data.template_daily_output = parseInt(data.template_daily_output) || 0;
+        // Handle Excel serial date for 接单日期
+        if (data.order_date && !isNaN(Number(data.order_date)) && Number(data.order_date) > 40000) {
+          const serial = Number(data.order_date);
+          const ms = (serial - 25569) * 86400000;
+          const d = new Date(ms);
+          data.order_date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
         db.run(`INSERT INTO styles (style_no, product_name, fabric_code, plan_qty, due_date, order_date,
-          embroidery, printing, ironing_label, template, tt_time, target_daily_output, production_lines, remarks, priority)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          embroidery, embroidery_daily_output, printing, printing_daily_output,
+          ironing_label, ironing_daily_output, template, template_daily_output,
+          tt_time, target_daily_output, remarks)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           [data.style_no, data.product_name, data.fabric_code, data.plan_qty, data.due_date,
-           data.order_date, data.embroidery, data.printing, data.ironing_label, data.template,
-           data.tt_time, data.target_daily_output, data.production_lines, data.remarks, data.priority]);
+           data.order_date, data.embroidery, data.embroidery_daily_output,
+           data.printing, data.printing_daily_output, data.ironing_label, data.ironing_daily_output,
+           data.template, data.template_daily_output, data.tt_time, data.target_daily_output, data.remarks]);
         imported++;
       }
     });
@@ -268,15 +286,15 @@ app.post('/api/styles', (req, res) => {
     if (s.id) {
       const existing = db.get('SELECT id FROM styles WHERE id = ?', [s.id]);
       if (!existing) return res.status(404).json({ error: '款式不存在' });
-      db.run(`UPDATE styles SET style_no=?,product_name=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,printing=?,ironing_label=?,template=?,tt_time=?,target_daily_output=?,production_lines=?,remarks=?,priority=? WHERE id=?`,
-        [s.style_no, s.product_name, s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.printing||'', s.ironing_label||'', s.template||'', s.tt_time||'', s.target_daily_output||0, s.production_lines||0, s.remarks||'', s.priority||3, s.id]);
+      db.run(`UPDATE styles SET style_no=?,product_name=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,remarks=? WHERE id=?`,
+        [s.style_no, s.product_name, s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'', s.id]);
       broadcastSection('styles', db.searchStyles(''));
       db.logOperation('styles', 'update', s.id, s.style_no);
       return res.json({ ok: true, id: s.id });
     }
-    const result = db.run(`INSERT INTO styles (style_no, product_name, fabric_code, plan_qty, due_date, order_date, embroidery, printing, ironing_label, template, tt_time, target_daily_output, production_lines, remarks, priority)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [s.style_no, s.product_name, s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.printing||'', s.ironing_label||'', s.template||'', s.tt_time||'', s.target_daily_output||0, s.production_lines||0, s.remarks||'', s.priority||3]);
+    const result = db.run(`INSERT INTO styles (style_no, product_name, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, remarks)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [s.style_no, s.product_name, s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'']);
     broadcastSection('styles', db.searchStyles(''));
     db.logOperation('styles', 'create', result.lastInsertRowid, s.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -1288,6 +1306,80 @@ app.get('/api/dispatch-export', async (req, res) => {
   }
 });
 
+// ---------- 按产线统计 ----------
+app.get('/api/dispatch-by-line', (req, res) => {
+  try {
+    const { schedule_type, secondary_type, workshop, style_no, date_from, date_to } = req.query;
+    let sql = `SELECT line_team, workshop,
+      COUNT(*) as record_count,
+      SUM(completed_qty) as total_completed,
+      SUM(defect_qty) as total_defects,
+      ROUND(CAST(SUM(completed_qty) AS REAL) * 100.0 / NULLIF(SUM(completed_qty) + SUM(defect_qty), 0), 1) as quality_rate
+    FROM actual_production WHERE line_team != '' AND line_team IS NOT NULL`;
+    const params = [];
+    if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
+    if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
+    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
+    if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
+    sql += ' GROUP BY workshop, line_team ORDER BY total_completed DESC';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/dispatch-by-line error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 按车间统计 ----------
+app.get('/api/dispatch-by-workshop', (req, res) => {
+  try {
+    const { schedule_type, secondary_type, style_no, date_from, date_to } = req.query;
+    let sql = `SELECT workshop,
+      COUNT(*) as record_count,
+      SUM(completed_qty) as total_completed,
+      SUM(defect_qty) as total_defects,
+      ROUND(CAST(SUM(completed_qty) AS REAL) * 100.0 / NULLIF(SUM(completed_qty) + SUM(defect_qty), 0), 1) as quality_rate
+    FROM actual_production WHERE workshop != '' AND workshop IS NOT NULL`;
+    const params = [];
+    if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
+    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
+    if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
+    sql += ' GROUP BY workshop ORDER BY total_completed DESC';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/dispatch-by-workshop error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 按工人统计 ----------
+app.get('/api/dispatch-by-worker', (req, res) => {
+  try {
+    const { schedule_type, secondary_type, workshop, line_team, date_from, date_to } = req.query;
+    let sql = `SELECT worker_name, workshop, line_team,
+      COUNT(*) as record_count,
+      SUM(completed_qty) as total_completed,
+      SUM(defect_qty) as total_defects,
+      ROUND(CAST(SUM(completed_qty) AS REAL) * 100.0 / NULLIF(SUM(completed_qty) + SUM(defect_qty), 0), 1) as quality_rate
+    FROM actual_production WHERE worker_name != '' AND worker_name IS NOT NULL`;
+    const params = [];
+    if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
+    if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
+    if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
+    if (line_team) { sql += ' AND line_team = ?'; params.push(line_team); }
+    if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
+    if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
+    sql += ' GROUP BY worker_name ORDER BY total_completed DESC';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/dispatch-by-worker error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ---------- 交期预估 ----------
 app.get('/api/estimations', (req, res) => {
   try {
@@ -1955,6 +2047,88 @@ function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
     }
   }
 }
+
+// ============================================================
+// 分色分尺码
+// ============================================================
+app.get('/api/style-color-size', (req, res) => {
+  try {
+    const { keyword } = req.query;
+    let sql = 'SELECT * FROM style_color_size';
+    const params = [];
+    if (keyword) {
+      sql += ' WHERE style_no LIKE ? OR product_name LIKE ? OR color LIKE ?';
+      const kw = `%${keyword}%`;
+      params.push(kw, kw, kw);
+    }
+    sql += ' ORDER BY order_date DESC, style_no, color, size_spec';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/style-color-size error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/style-color-size', (req, res) => {
+  try {
+    const r = req.body;
+    const result = db.run(
+      'INSERT INTO style_color_size (order_date, style_no, due_date, product_name, size_spec, color, plan_qty) VALUES (?,?,?,?,?,?,?)',
+      [r.order_date || '', r.style_no || '', r.due_date || '', r.product_name || '', r.size_spec || '', r.color || '', r.plan_qty || 0]
+    );
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (e) {
+    console.error('POST /api/style-color-size error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/style-color-size/:id', (req, res) => {
+  try {
+    const r = req.body;
+    db.run(
+      'UPDATE style_color_size SET order_date=?, style_no=?, due_date=?, product_name=?, size_spec=?, color=?, plan_qty=? WHERE id=?',
+      [r.order_date || '', r.style_no || '', r.due_date || '', r.product_name || '', r.size_spec || '', r.color || '', r.plan_qty || 0, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('PUT /api/style-color-size error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/style-color-size/:id', (req, res) => {
+  try {
+    db.run('DELETE FROM style_color_size WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('DELETE /api/style-color-size error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/style-color-size/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !records.length) return res.status(400).json({ error: '没有数据' });
+    let imported = 0;
+    const tx = db.getDb().transaction(() => {
+      for (const r of records) {
+        db.run(
+          'INSERT INTO style_color_size (order_date, style_no, due_date, product_name, size_spec, color, plan_qty) VALUES (?,?,?,?,?,?,?)',
+          [r.order_date || '', r.style_no || '', r.due_date || '', r.product_name || '', r.size_spec || '', r.color || '', r.plan_qty || 0]
+        );
+        imported++;
+      }
+    });
+    tx();
+    db.logOperation('style_color_size', 'import', null, `导入 ${imported} 条分色分尺码`);
+    res.json({ ok: true, imported });
+  } catch (e) {
+    console.error('POST /api/style-color-size/import error:', e);
+    res.status(500).json({ error: 'Import failed: ' + e.message });
+  }
+});
 
 // 获取装柜数据供仓库选择（款号+锅号联动）
 app.get('/api/fabric-loading/options', (req, res) => {

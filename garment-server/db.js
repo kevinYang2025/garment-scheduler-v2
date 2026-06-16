@@ -494,6 +494,19 @@ function createTables() {
       remark TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    -- 分色分尺码
+    CREATE TABLE IF NOT EXISTS style_color_size (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_date TEXT DEFAULT '',
+      style_no TEXT DEFAULT '',
+      due_date TEXT DEFAULT '',
+      product_name TEXT DEFAULT '',
+      size_spec TEXT DEFAULT '',
+      color TEXT DEFAULT '',
+      plan_qty INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ''
+    );
   `);
 }
 
@@ -577,6 +590,14 @@ function migrateStyles() {
     }
   }
   if (rows.length > 0) console.log(`✅ 迁移款式数据：${rows.length} 条刺绣/印花字段拆分`)
+
+  // 新增4个日产量字段
+  const newStyleCols = ['embroidery_daily_output', 'printing_daily_output', 'ironing_daily_output', 'template_daily_output']
+  for (const col of newStyleCols) {
+    if (!cols.includes(col)) {
+      db.prepare(`ALTER TABLE styles ADD COLUMN ${col} INTEGER DEFAULT 0`).run()
+    }
+  }
 
   // 迁移：仓库表添加面料库扩展字段
   const whFields = ['pot_no', 'fabric_name', 'supplier', 'customer', 'width', 'weight', 'unit', 'total_pcs', 'unit2', 'remark']
@@ -692,7 +713,7 @@ function seedDefaultData() {
     insGantt.run('secondary', '["styleNo","planQty"]', '["styleNo","productName","planQty","secondaryType"]', '["workshop"]');
   }
 
-  console.log('✅ 数据库初始化完成：5个车间、50条产线、20条款式');
+  console.log('✅ 数据库初始化完成：5个车间、50条产线、20款式');
 
   // 排产策略种子数据
   const stratCount = db.prepare('SELECT COUNT(*) as c FROM scheduling_strategies').get().c;

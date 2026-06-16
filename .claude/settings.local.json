@@ -195,7 +195,10 @@
       "Bash(taskkill //F //PID 20420)",
       "Bash(taskkill //F //PID 41828)",
       "Bash(taskkill //F //PID 38972)",
-      "Bash(curl -s http://localhost:3001/api/config/capacity)"
+      "Bash(curl -s http://localhost:3001/api/config/capacity)",
+      "Bash(gh pr create --title 'feat: 前端全面重构 — 入口导航+排程可视化+仓库管理+基础数据' --body ' *)",
+      "Bash(node import_styles.js)",
+      "Bash(node --check server.js)"
     ]
   }
 }

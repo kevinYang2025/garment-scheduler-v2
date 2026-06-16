@@ -800,7 +800,7 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border-light);
   text-align: left;
   overflow: hidden;
-  word-break: break-all;
+  white-space: nowrap;
   line-height: 1.5;
 }
 

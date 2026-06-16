@@ -40,6 +40,18 @@ const pvaLoading = ref(false)
 // ---- 预警 ----
 const alerts = ref([])
 
+// ---- 按产线统计 ----
+const lineStats = ref([])
+const lineLoading = ref(false)
+
+// ---- 按车间统计 ----
+const workshopStats = ref([])
+const workshopLoading = ref(false)
+
+// ---- 按工人统计 ----
+const workerStats = ref([])
+const workerLoading = ref(false)
+
 // ---- 分页 ----
 const currentPage = ref(1)
 const pageSize = ref(50)
@@ -48,17 +60,23 @@ const pagedReports = computed(() => {
   return reports.value.slice(start, start + pageSize.value)
 })
 
+// ---- 构建筛选参数 ----
+function buildParams() {
+  const params = {}
+  if (props.scheduleType) params.schedule_type = props.scheduleType
+  if (props.secondaryType) params.secondary_type = props.secondaryType
+  if (props.workshop) params.workshop = props.workshop
+  if (filters.value.style_no) params.style_no = filters.value.style_no
+  if (filters.value.date_from) params.date_from = filters.value.date_from
+  if (filters.value.date_to) params.date_to = filters.value.date_to
+  return params
+}
+
 // ---- 加载报工列表 ----
 async function loadReports() {
   loading.value = true
   try {
-    const params = {}
-    if (props.scheduleType) params.schedule_type = props.scheduleType
-    if (props.secondaryType) params.secondary_type = props.secondaryType
-    if (props.workshop) params.workshop = props.workshop
-    if (filters.value.style_no) params.style_no = filters.value.style_no
-    if (filters.value.date_from) params.date_from = filters.value.date_from
-    if (filters.value.date_to) params.date_to = filters.value.date_to
+    const params = buildParams()
     const { data } = await api.getDispatchSummary(params)
     reports.value = data || []
     let totalCompleted = 0, totalDefects = 0
@@ -94,13 +112,7 @@ async function loadAlerts() {
 async function loadTrend() {
   trendLoading.value = true
   try {
-    const params = {}
-    if (props.scheduleType) params.schedule_type = props.scheduleType
-    if (props.secondaryType) params.secondary_type = props.secondaryType
-    if (props.workshop) params.workshop = props.workshop
-    if (filters.value.style_no) params.style_no = filters.value.style_no
-    if (filters.value.date_from) params.date_from = filters.value.date_from
-    if (filters.value.date_to) params.date_to = filters.value.date_to
+    const params = buildParams()
     const { data } = await api.getDispatchDailyTrend(params)
     trendData.value = data || []
     renderTrendChart()
@@ -188,11 +200,84 @@ function doRenderPva(el) {
   })
 }
 
+// ---- 加载按产线统计 ----
+async function loadLineStats() {
+  lineLoading.value = true
+  try {
+    const params = buildParams()
+    const { data } = await api.getDispatchByLine(params)
+    lineStats.value = data || []
+  } catch {
+    ElMessage.error('加载产线统计失败')
+  }
+  lineLoading.value = false
+}
+
+// ---- 加载按车间统计 ----
+async function loadWorkshopStats() {
+  workshopLoading.value = true
+  try {
+    const params = buildParams()
+    const { data } = await api.getDispatchByWorkshop(params)
+    workshopStats.value = data || []
+    renderWorkshopChart()
+  } catch {
+    ElMessage.error('加载车间统计失败')
+  }
+  workshopLoading.value = false
+}
+
+function renderWorkshopChart() {
+  const el = document.getElementById('workshop-chart')
+  if (!el || workshopStats.value.length === 0) return
+  if (!window.echarts) {
+    import('echarts').then(m => { window.echarts = m.default || m; doRenderWorkshop(el) })
+  } else {
+    doRenderWorkshop(el)
+  }
+}
+
+let workshopChart = null
+function doRenderWorkshop(el) {
+  if (workshopChart) workshopChart.dispose()
+  workshopChart = window.echarts.init(el)
+  const labels = workshopStats.value.map(d => d.workshop)
+  const completed = workshopStats.value.map(d => d.total_completed)
+  const defects = workshopStats.value.map(d => d.total_defects)
+  workshopChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['完成量', '次品'], bottom: 0 },
+    grid: { left: 60, right: 20, top: 20, bottom: 40 },
+    xAxis: { type: 'category', data: labels, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 11 } },
+    series: [
+      { name: '完成量', type: 'bar', data: completed, itemStyle: { color: '#3b82f6' } },
+      { name: '次品', type: 'bar', data: defects, itemStyle: { color: '#ef4444' } },
+    ],
+  })
+}
+
+// ---- 加载按工人统计 ----
+async function loadWorkerStats() {
+  workerLoading.value = true
+  try {
+    const params = buildParams()
+    const { data } = await api.getDispatchByWorker(params)
+    workerStats.value = data || []
+  } catch {
+    ElMessage.error('加载工人统计失败')
+  }
+  workerLoading.value = false
+}
+
 // ---- 操作 ----
 function handleFilter() {
   loadReports()
   if (activeTab.value === 'trend') loadTrend()
   if (activeTab.value === 'pva') loadPlanVsActual()
+  if (activeTab.value === 'byLine') loadLineStats()
+  if (activeTab.value === 'byWorkshop') loadWorkshopStats()
+  if (activeTab.value === 'byWorker') loadWorkerStats()
 }
 
 function openAdd() {
@@ -228,13 +313,7 @@ function onImported() {
 
 async function handleExport() {
   try {
-    const params = {}
-    if (props.scheduleType) params.schedule_type = props.scheduleType
-    if (props.secondaryType) params.secondary_type = props.secondaryType
-    if (props.workshop) params.workshop = props.workshop
-    if (filters.value.style_no) params.style_no = filters.value.style_no
-    if (filters.value.date_from) params.date_from = filters.value.date_from
-    if (filters.value.date_to) params.date_to = filters.value.date_to
+    const params = buildParams()
     const { data } = await api.exportDispatchReport(params)
     const url = URL.createObjectURL(new Blob([data]))
     const a = document.createElement('a')
@@ -251,6 +330,9 @@ async function handleExport() {
 function onTabChange(tab) {
   if (tab === 'trend') loadTrend()
   if (tab === 'pva') loadPlanVsActual()
+  if (tab === 'byLine') loadLineStats()
+  if (tab === 'byWorkshop') loadWorkshopStats()
+  if (tab === 'byWorker') loadWorkerStats()
 }
 
 function loadData() {
@@ -330,6 +412,9 @@ onMounted(loadData)
     <!-- Tab 切换 -->
     <el-tabs v-model="activeTab" @tab-change="onTabChange" style="margin-bottom: 12px">
       <el-tab-pane label="报工列表" name="list" />
+      <el-tab-pane label="按产线" name="byLine" />
+      <el-tab-pane label="按车间" name="byWorkshop" />
+      <el-tab-pane label="按工人" name="byWorker" />
       <el-tab-pane label="趋势分析" name="trend" />
       <el-tab-pane label="计划 vs 实际" name="pva" />
     </el-tabs>
@@ -375,6 +460,88 @@ onMounted(loadData)
           @current-change="currentPage = $event"
         />
       </div>
+    </div>
+
+    <!-- 按产线统计 -->
+    <div v-if="activeTab === 'byLine'">
+      <el-table :data="lineStats" v-loading="lineLoading" stripe size="small" style="width:100%">
+        <el-table-column prop="workshop" label="车间" width="100" />
+        <el-table-column prop="line_team" label="产线" width="100" />
+        <el-table-column prop="total_completed" label="完成量" width="100" align="right" sortable>
+          <template #default="{ row }">
+            <span style="font-weight:600">{{ row.total_completed?.toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="total_defects" label="次品" width="80" align="right" sortable>
+          <template #default="{ row }">
+            <span :style="{ color: row.total_defects > 0 ? '#ef4444' : '' }">{{ row.total_defects }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="quality_rate" label="合格率" width="90" align="right" sortable>
+          <template #default="{ row }">
+            <span :style="{ color: row.quality_rate >= 95 ? '#22c55e' : row.quality_rate >= 90 ? '#eab308' : '#ef4444', fontWeight: 600 }">
+              {{ row.quality_rate }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="record_count" label="报工次数" width="90" align="right" />
+      </el-table>
+      <div v-if="!lineLoading && lineStats.length === 0" class="empty-state">暂无产线统计数据</div>
+    </div>
+
+    <!-- 按车间统计 -->
+    <div v-if="activeTab === 'byWorkshop'">
+      <div v-loading="workshopLoading" id="workshop-chart" style="width:100%; height:350px"></div>
+      <el-table v-if="workshopStats.length > 0" :data="workshopStats" v-loading="workshopLoading" stripe size="small" style="width:100%; margin-top:16px">
+        <el-table-column prop="workshop" label="车间" width="120" />
+        <el-table-column prop="total_completed" label="完成量" width="100" align="right" sortable>
+          <template #default="{ row }">
+            <span style="font-weight:600">{{ row.total_completed?.toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="total_defects" label="次品" width="80" align="right" sortable>
+          <template #default="{ row }">
+            <span :style="{ color: row.total_defects > 0 ? '#ef4444' : '' }">{{ row.total_defects }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="quality_rate" label="合格率" width="90" align="right" sortable>
+          <template #default="{ row }">
+            <span :style="{ color: row.quality_rate >= 95 ? '#22c55e' : row.quality_rate >= 90 ? '#eab308' : '#ef4444', fontWeight: 600 }">
+              {{ row.quality_rate }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="record_count" label="报工次数" width="90" align="right" />
+      </el-table>
+      <div v-if="!workshopLoading && workshopStats.length === 0" class="empty-state">暂无车间统计数据</div>
+    </div>
+
+    <!-- 按工人统计 -->
+    <div v-if="activeTab === 'byWorker'">
+      <el-table :data="workerStats" v-loading="workerLoading" stripe size="small" style="width:100%">
+        <el-table-column prop="worker_name" label="工人" width="120" />
+        <el-table-column prop="workshop" label="车间" width="100" />
+        <el-table-column prop="line_team" label="产线" width="100" />
+        <el-table-column prop="total_completed" label="完成量" width="100" align="right" sortable>
+          <template #default="{ row }">
+            <span style="font-weight:600">{{ row.total_completed?.toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="total_defects" label="次品" width="80" align="right" sortable>
+          <template #default="{ row }">
+            <span :style="{ color: row.total_defects > 0 ? '#ef4444' : '' }">{{ row.total_defects }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="quality_rate" label="合格率" width="90" align="right" sortable>
+          <template #default="{ row }">
+            <span :style="{ color: row.quality_rate >= 95 ? '#22c55e' : row.quality_rate >= 90 ? '#eab308' : '#ef4444', fontWeight: 600 }">
+              {{ row.quality_rate }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="record_count" label="报工次数" width="90" align="right" />
+      </el-table>
+      <div v-if="!workerLoading && workerStats.length === 0" class="empty-state">暂无工人统计数据（请在报工时填写工人姓名）</div>
     </div>
 
     <!-- 趋势分析 -->

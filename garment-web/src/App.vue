@@ -22,6 +22,7 @@ import ShippingPlan from './views/ShippingPlan.vue'
 import SchedulingStrategy from './views/SchedulingStrategy.vue'
 import FabricLoadingList from './views/FabricLoadingList.vue'
 import AuxiliaryList from './views/AuxiliaryList.vue'
+import StyleColorSize from './views/StyleColorSize.vue'
 import SewingWorkshopManage from './views/SewingWorkshopManage.vue'
 import PreWorkshopOutput from './views/PreWorkshopOutput.vue'
 import EntryHome from './views/EntryHome.vue'
@@ -121,9 +122,12 @@ const pageTitle = computed(() => {
 
 const breadcrumb = computed(() => {
   if (currentModule.value === 'home') return []
-  const crumbs = [{ label: '工作台', key: 'home' }]
   const item = allNavItems.find(m => m.key === currentModule.value)
-  if (item) crumbs.push({ label: item.label, key: item.key })
+  if (!item) return []
+  const section = navSections.find(s => s.items.some(i => i.key === currentModule.value))
+  const crumbs = []
+  if (section) crumbs.push({ label: section.label, key: section.items[0].key })
+  crumbs.push({ label: item.label, key: item.key })
   if (currentModule.value === 'warehouse' && warehouseActiveType.value) {
     const typeNames = { raw_material: '面料库', auxiliary: '辅料库', cutting_piece: '裁片库', finished: '成品库' }
     crumbs.push({ label: typeNames[warehouseActiveType.value] || '' })
@@ -334,20 +338,20 @@ function getIcon(name) {
       <main class="main-content">
         <KeepAlive :max="8">
           <!-- 入口页面 -->
-          <EntryHome v-if="currentModule === 'home' && DB" key="home" @navigate="enterModule" />
+          <EntryHome v-if="currentModule === 'home'" key="home" @navigate="enterModule" />
 
           <!-- 基础数据入口 -->
-          <BasicDataHome v-else-if="currentModule === 'basicData' && DB" key="basicData" @navigate="enterModule" />
+          <BasicDataHome v-else-if="currentModule === 'basicData'" key="basicData" @navigate="enterModule" />
 
           <!-- 计划管理入口 -->
-          <PlanManagementHome v-else-if="currentModule === 'planManagement' && DB" key="planManagement" @navigate="enterModule" />
+          <PlanManagementHome v-else-if="currentModule === 'planManagement'" key="planManagement" @navigate="enterModule" />
 
           <!-- 工作台 / 数据看板 -->
           <div v-else-if="currentModule === 'dashboard' && DB" key="dashboard">
             <Dashboard :db="DB" @navigate="enterModule" />
           </div>
 
-          <Styles v-else-if="currentModule === 'styles' && DB" :db="DB" :initial-data="prefetchedStyles" key="styles" />
+          <Styles v-else-if="currentModule === 'styles'" :db="DB" :initial-data="prefetchedStyles" key="styles" />
 
           <FabricLoadingList v-else-if="currentModule === 'fabricList'" key="fabricList" />
           <AuxiliaryList v-else-if="currentModule === 'auxiliaryList'" key="auxiliaryList" />
@@ -355,31 +359,22 @@ function getIcon(name) {
           <SewingWorkshopManage v-else-if="currentModule === 'sewingWorkshop'" key="sewingWorkshop" />
           <PreWorkshopOutput v-else-if="currentModule === 'preWorkshopOutput'" key="preWorkshopOutput" />
 
-          <div v-else-if="currentModule === 'styleColorSize' && DB" class="placeholder-page" key="styleColorSize">
-            <div class="page-header-bar">
-              <h2 class="page-heading">款式分色分尺码清单</h2>
-              <p class="page-desc">分色分尺码数量明细</p>
-            </div>
-            <div class="empty-state">
-              <div class="empty-icon">📐</div>
-              <p>功能开发中...</p>
-            </div>
-          </div>
+          <StyleColorSize v-else-if="currentModule === 'styleColorSize'" key="styleColorSize" />
 
-          <MainPlan v-else-if="currentModule === 'mainPlan' && DB" :db="DB" key="mainPlan" />
-          <ScheduleView v-else-if="currentModule === 'cutting' && DB" schedule-type="cutting" :db="DB" key="cutting" />
-          <SecondaryHome v-else-if="currentModule === 'secondary' && !secondaryActiveType && DB" @enter="enterSecondaryDetail" @back="goHome" key="secondaryHome" />
-          <SecondaryDetail v-else-if="currentModule === 'secondary' && secondaryActiveType && DB" :secondary-type="secondaryActiveType" :db="DB" @back="backToSecondaryHome" key="secondaryDetail" />
-          <SewingHome v-else-if="currentModule === 'sewing' && !sewingActiveType && DB" @enter="enterSewingDetail" @back="goHome" key="sewingHome" />
-          <SewingPlanDetail v-else-if="currentModule === 'sewing' && sewingActiveType === 'plan' && DB" @back="backToSewingHome" key="sewingPlan" />
-          <VisualSchedule v-else-if="currentModule === 'sewing' && sewingActiveType === 'visual' && DB" :db="DB" @back="backToSewingHome" key="visualSchedule" />
-          <WarehouseHome v-else-if="currentModule === 'warehouse' && !warehouseActiveType && DB" @enter="enterWarehouse" @exit="goHome" key="warehouseHome" />
-          <WarehouseDetail v-else-if="currentModule === 'warehouse' && warehouseActiveType && DB" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" @navigate="enterModule" key="warehouseDetail" />
-          <CapacityConfig v-else-if="currentModule === 'config' && DB" :db="DB" key="capacityConfig" />
-          <OperationLogs v-else-if="currentModule === 'logs' && DB" key="logs" />
-          <WorkCalendar v-else-if="currentModule === 'work-calendar' && DB" key="workCalendar" />
+          <MainPlan v-else-if="currentModule === 'mainPlan'" :db="DB" key="mainPlan" />
+          <ScheduleView v-else-if="currentModule === 'cutting'" schedule-type="cutting" :db="DB" key="cutting" />
+          <SecondaryHome v-else-if="currentModule === 'secondary' && !secondaryActiveType" @enter="enterSecondaryDetail" @back="goHome" key="secondaryHome" />
+          <SecondaryDetail v-else-if="currentModule === 'secondary' && secondaryActiveType" :secondary-type="secondaryActiveType" :db="DB" @back="backToSecondaryHome" key="secondaryDetail" />
+          <SewingHome v-else-if="currentModule === 'sewing' && !sewingActiveType" @enter="enterSewingDetail" @back="goHome" key="sewingHome" />
+          <SewingPlanDetail v-else-if="currentModule === 'sewing' && sewingActiveType === 'plan'" @back="backToSewingHome" key="sewingPlan" />
+          <VisualSchedule v-else-if="currentModule === 'sewing' && sewingActiveType === 'visual'" :db="DB" @back="backToSewingHome" key="visualSchedule" />
+          <WarehouseHome v-else-if="currentModule === 'warehouse' && !warehouseActiveType" @enter="enterWarehouse" @exit="goHome" key="warehouseHome" />
+          <WarehouseDetail v-else-if="currentModule === 'warehouse' && warehouseActiveType" :warehouse-type="warehouseActiveType" @back="backToWarehouseHome" @navigate="enterModule" key="warehouseDetail" />
+          <CapacityConfig v-else-if="currentModule === 'config'" :db="DB" key="capacityConfig" />
+          <OperationLogs v-else-if="currentModule === 'logs'" key="logs" />
+          <WorkCalendar v-else-if="currentModule === 'work-calendar'" key="workCalendar" />
           <!-- 报工管理卡片首页 -->
-          <div v-else-if="currentModule === 'dispatch' && DB" class="sewing-dispatch-home" key="dispatch-home">
+          <div v-else-if="currentModule === 'dispatch'" class="sewing-dispatch-home" key="dispatch-home">
             <div class="sdh-header">
               <h2 class="sdh-title">报工管理</h2>
               <p class="sdh-desc">选择工序或车间进行报工</p>
@@ -417,13 +412,13 @@ function getIcon(name) {
               </div>
             </div>
           </div>
-          <DispatchReport v-else-if="currentModule === 'cutting-dispatch' && DB" schedule-type="cutting" key="cutting-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'printing-dispatch' && DB" schedule-type="secondary" secondary-type="印花" key="printing-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'embroidery-dispatch' && DB" schedule-type="secondary" secondary-type="刺绣" key="embroidery-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'template-dispatch' && DB" schedule-type="secondary" secondary-type="模板" key="template-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'ironing-dispatch' && DB" schedule-type="secondary" secondary-type="烫标" key="ironing-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'sewing-dispatch' && sewingActiveWorkshop && DB" schedule-type="sewing" :workshop="sewingActiveWorkshop" :key="'sewing-dispatch-' + sewingActiveWorkshop" />
-          <div v-else-if="currentModule === 'sewing-dispatch' && !sewingActiveWorkshop && DB" class="sewing-dispatch-home" key="sewing-dispatch-select">
+          <DispatchReport v-else-if="currentModule === 'cutting-dispatch'" schedule-type="cutting" key="cutting-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'printing-dispatch'" schedule-type="secondary" secondary-type="印花" key="printing-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'embroidery-dispatch'" schedule-type="secondary" secondary-type="刺绣" key="embroidery-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'template-dispatch'" schedule-type="secondary" secondary-type="模板" key="template-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'ironing-dispatch'" schedule-type="secondary" secondary-type="烫标" key="ironing-dispatch" />
+          <DispatchReport v-else-if="currentModule === 'sewing-dispatch' && sewingActiveWorkshop" schedule-type="sewing" :workshop="sewingActiveWorkshop" :key="'sewing-dispatch-' + sewingActiveWorkshop" />
+          <div v-else-if="currentModule === 'sewing-dispatch' && !sewingActiveWorkshop" class="sewing-dispatch-home" key="sewing-dispatch-select">
             <div class="sdh-header">
               <h2 class="sdh-title">缝制报工</h2>
               <p class="sdh-desc">选择车间查看或录入报工数据</p>
@@ -436,9 +431,9 @@ function getIcon(name) {
               </div>
             </div>
           </div>
-          <DeliveryEstimation v-else-if="currentModule === 'estimation' && DB" key="estimation" />
-          <ShippingPlan v-else-if="currentModule === 'shipping' && DB" key="shipping" />
-          <SchedulingStrategy v-else-if="currentModule === 'strategy' && DB" key="strategy" />
+          <DeliveryEstimation v-else-if="currentModule === 'estimation'" key="estimation" />
+          <ShippingPlan v-else-if="currentModule === 'shipping'" key="shipping" />
+          <SchedulingStrategy v-else-if="currentModule === 'strategy'" key="strategy" />
         </KeepAlive>
 
         <div v-if="!DB" class="loading-state">
