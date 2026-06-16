@@ -2369,7 +2369,7 @@ app.get('/api/fabric-loading/export', async (req, res) => {
       { header: '单位2', key: 'unit2', width: 8 },
       { header: '装柜日期', key: 'loading_date', width: 14 },
       { header: '装柜数量', key: 'loading_qty', width: 12 },
-      { header: '成衣数量', key: 'garment_qty', width: 12 },
+      { header: '成衣计划数量', key: 'garment_qty', width: 12 },
       { header: '备注', key: 'remark', width: 20 },
     ];
     ws.getRow(1).font = { bold: true };

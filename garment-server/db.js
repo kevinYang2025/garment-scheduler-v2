@@ -572,7 +572,7 @@ function migrateStyles() {
     }
   } catch (e) { console.log('style_category migration skip:', e.message); }
 
-  // 装柜清单添加成衣数量字段
+  // 装柜清单添加成衣计划数量字段
   try {
     const flcols = db.prepare("PRAGMA table_info(fabric_loading_list)").all().map(c => c.name);
     if (!flcols.includes('garment_qty')) {

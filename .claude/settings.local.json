@@ -222,7 +222,10 @@
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(len\\(d\\), 'records'\\); [print\\(r['id'], r['style_no'], r['plan_start'] or 'null', r['plan_end'] or 'null'\\) for r in d]\")",
       "Bash(curl -s http://localhost:5173/api/schedule/sewing)",
       "Bash(where ngrok *)",
-      "Bash(where cloudflared *)"
+      "Bash(where cloudflared *)",
+      "Bash(node -e \"const d=require\\('/tmp/tree.json'\\); const w=d.filter\\(n=>n.type==='workshop'\\); const t=[]; d.forEach\\(n=>{if\\(n.children\\)n.children.filter\\(c=>c.type==='team'\\).forEach\\(c=>t.push\\(c\\)\\)}\\); console.log\\('车间:',w.length,'班组:',t.length\\); console.log\\('状态:',t.reduce\\(\\(a,x\\)=>{a[x.status]=\\(a[x.status]||0\\)+1;return a},{}\\)\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const arr=JSON.parse\\(d\\);const w=arr.filter\\(n=>n.type==='workshop'\\);const t=[];arr.forEach\\(n=>{if\\(n.children\\)n.children.filter\\(c=>c.type==='team'\\).forEach\\(c=>t.push\\(c\\)\\)}\\);console.log\\('车间:',w.length,'班组:',t.length\\);console.log\\('状态:',JSON.stringify\\(t.reduce\\(\\(a,x\\)=>{a[x.status]=\\(a[x.status]||0\\)+1;return a},{}\\)\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const arr=JSON.parse\\(d\\);const w=arr.filter\\(n=>n.type==='workshop'\\);const t=[];arr.forEach\\(n=>{if\\(n.children\\)n.children.filter\\(c=>c.type==='team'\\).forEach\\(c=>t.push\\(c\\)\\)}\\);console.log\\('车间:',w.length,'班组:',t.length\\)}catch\\(e\\){console.log\\('err:',e.message\\)}}\\)\")"
     ]
   }
 }

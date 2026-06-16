@@ -22,7 +22,7 @@ const columns = [
   { field: 'unit2', label: '单位2', width: 70, type: 'text' },
   { field: 'loading_date', label: '装柜日期', width: 110, type: 'date' },
   { field: 'loading_qty', label: '装柜数量', width: 100, type: 'number' },
-  { field: 'garment_qty', label: '成衣数量', width: 100, type: 'number' },
+  { field: 'garment_qty', label: '成衣计划数量', width: 100, type: 'number' },
   { field: 'remark', label: '备注', width: 150, type: 'text' },
 ]
 
@@ -342,7 +342,7 @@ async function doImportParse() {
       '款号': 'style_no', '锅号': 'pot_no', '面料名称': 'fabric_name',
       '幅宽': 'width', '克重': 'weight', '颜色': 'color',
       '数量': 'qty', '单位': 'unit', '总匹数': 'total_pcs',
-      '单位2': 'unit2', '装柜日期': 'loading_date', '装柜数量': 'loading_qty', '成衣数量': 'garment_qty', '备注': 'remark'
+      '单位2': 'unit2', '装柜日期': 'loading_date', '装柜数量': 'loading_qty', '成衣计划数量': 'garment_qty', '备注': 'remark'
     }
     const colMap = {}
     headers.forEach((h, i) => { if (headerMap[h]) colMap[i] = headerMap[h] })
@@ -506,7 +506,7 @@ onUnmounted(() => {
           <el-col :span="6"><el-form-item label="总匹数"><el-input-number v-model="createForm.total_pcs" :min="0" style="width:100%" /></el-form-item></el-col>
           <el-col :span="6"><el-form-item label="装柜日期"><el-input v-model="createForm.loading_date" type="date" /></el-form-item></el-col>
           <el-col :span="6"><el-form-item label="装柜数量"><el-input-number v-model="createForm.loading_qty" :min="0" :precision="1" style="width:100%" /></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="成衣数量"><el-input-number v-model="createForm.garment_qty" :min="0" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="成衣计划数量"><el-input-number v-model="createForm.garment_qty" :min="0" style="width:100%" /></el-form-item></el-col>
           <el-col :span="6"><el-form-item label="备注"><el-input v-model="createForm.remark" /></el-form-item></el-col>
         </el-row>
       </el-form>
