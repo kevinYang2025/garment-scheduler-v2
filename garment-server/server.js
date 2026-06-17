@@ -31,9 +31,18 @@ db.init();
 
 if (!AUTH_ENABLED) {
   console.warn('⚠️  WARNING: Authentication is DISABLED. Set AUTH_ENABLED=true for production.');
+  // [B-06 fix] 生产环境强制要求开启 auth,避免裸奔
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ FATAL: AUTH_ENABLED must be true in production. Exiting.');
+    process.exit(1);
+  }
 }
 if (API_TOKEN === 'garment-dev-token') {
   console.warn('⚠️  WARNING: Using default API_TOKEN. Set API_TOKEN env var for production.');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ FATAL: API_TOKEN must be set in production. Exiting.');
+    process.exit(1);
+  }
 }
 
 // ============================================================
@@ -115,6 +124,13 @@ function validateStyle(s) {
   if (s.size_spec && s.size_spec.length > 30) errors.push('规格长度不能超过30');
   if (s.customer && s.customer.length > 100) errors.push('客户名长度不能超过100');
   if (s.plan_qty !== undefined && (isNaN(s.plan_qty) || s.plan_qty < 0)) errors.push('计划数量必须为非负数');
+  // [B-09 fix] 4 个日产量字段也校验
+  const dailyFields = ['embroidery_daily_output', 'printing_daily_output', 'ironing_daily_output', 'template_daily_output', 'target_daily_output'];
+  for (const f of dailyFields) {
+    if (s[f] !== undefined && s[f] !== '' && (isNaN(s[f]) || Number(s[f]) < 0)) {
+      errors.push(`${f} 必须为非负数`);
+    }
+  }
   return errors;
 }
 
@@ -145,6 +161,40 @@ function handleUniqueError(e, res) {
     return res.status(409).json({ error: '记录已存在（唯一约束冲突）' });
   }
   return res.status(500).json({ error: 'Internal server error' });
+}
+
+// ============================================================
+// 二次加工类型配置 [B-03/B-04 fix]
+// 4 个 daily-plan 端点共用同一套字段映射
+// ============================================================
+const SECONDARY_TYPES = {
+  printing:   { sqlField: 'printing',   startField: 'printing_start',   endField: 'printing_end',   dailyField: 'printing_daily_output',   label: '印花' },
+  embroidery: { sqlField: 'embroidery', startField: 'embroidery_start', endField: 'embroidery_end', dailyField: 'embroidery_daily_output', label: '刺绣' },
+  ironing:    { sqlField: 'ironing_label', startField: 'ironing_start', endField: 'ironing_end', dailyField: 'ironing_daily_output', label: '烫标' },
+  template:   { sqlField: 'template',   startField: 'template_start',   endField: 'template_end',   dailyField: 'template_daily_output',   label: '模板' },
+};
+
+// 日期范围:今天前后固定天数(所有 secondary 统一窗口,解决 B-04)
+const SEC_DAILY_PLAN_WINDOW = { beforeDays: 7, afterDays: 21 };
+
+// [B-10 fix] 通用 IN 查询 helper
+function inQuery(column, values) {
+  if (!values || values.length === 0) return { sql: '1=0', params: [] };
+  const placeholders = values.map(() => '?').join(',');
+  return { sql: `${column} IN (${placeholders})`, params: values };
+}
+
+// [B-12 fix] 产线名约定: production_lines.line_name 形如 "20班",
+//              main_plan/schedule_master.line_team 是裸数字 "20"
+//              用这个 helper 双向转换,避免各处散落的 .replace(/班$/, '')
+function stripLineSuffix(name) {
+  if (name == null) return '';
+  return String(name).replace(/班$/, '').trim();
+}
+// 反向:给裸数字加 "班" 后缀,用于查 production_lines
+function lineNameWithSuffix(num) {
+  if (!num) return '';
+  return /班$/.test(num) ? num : `${num}班`;
 }
 
 // ============================================================
@@ -1571,74 +1621,50 @@ app.post('/api/schedule/sewing-daily-plan/actual', (req, res) => {
   }
 });
 
-// ---------- \u4fdd\u5b58\u8ba1\u5212\u7f16\u8f91\uff08\u901a\u7528\uff09 ----------
+// ---------- 保存计划编辑（通用）[B-01/B-07 fix] ----------
+// 之前用 schedule_type='plan_override_<type>' 写入 actual_production,语义混乱
+// 改用专用表 schedule_plan_overrides,并包成事务
 function savePlanOverride(typeLabel, req, res) {
   try {
+    if (!SECONDARY_TYPES[typeLabel]) {
+      return res.status(400).json({ error: `未知二次加工类型: ${typeLabel}` });
+    }
     const { style_no, color, size_spec, order_qty, datePlans } = req.body;
-    if (!style_no) return res.status(400).json({ error: '\u7f3a\u5c11\u6b3e\u53f7' });
+    if (!style_no) return res.status(400).json({ error: '缺少款号' });
+    if (!datePlans || typeof datePlans !== 'object') {
+      return res.status(400).json({ error: '缺少 datePlans' });
+    }
     const rawDb = db.getDb();
-    db.run("DELETE FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = ?",
-      [style_no, color || '', size_spec || '', 'plan_override_' + typeLabel]);
-    const upsert = rawDb.prepare(
-      "INSERT INTO actual_production (style_id, style_no, color, size_spec, production_date, completed_qty, schedule_type) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    );
-    for (const [date, qty] of Object.entries(datePlans || {})) {
-      if (date && qty > 0) {
-        upsert.run(0, style_no, color || '', size_spec || '', date, qty, 'plan_override_' + typeLabel);
+    const txn = rawDb.transaction(() => {
+      // 先清掉这个 (type, style, color, size) 的所有旧覆盖
+      rawDb.prepare(`
+        DELETE FROM schedule_plan_overrides
+        WHERE secondary_type = ? AND style_no = ? AND color = ? AND size_spec = ?
+      `).run(typeLabel, style_no, color || '', size_spec || '');
+      // 再插新的覆盖
+      const ins = rawDb.prepare(`
+        INSERT OR REPLACE INTO schedule_plan_overrides
+          (secondary_type, style_no, color, size_spec, production_date, qty)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const [date, qty] of Object.entries(datePlans)) {
+        const q = Number(qty) || 0;
+        if (date && q > 0) {
+          ins.run(typeLabel, style_no, color || '', size_spec || '', date, q);
+        }
       }
-    }
-    if (order_qty != null && color && size_spec) {
-      db.run("UPDATE style_color_size SET plan_qty = ? WHERE style_no = ? AND color = ? AND size_spec = ?",
-        [order_qty, style_no, color, size_spec]);
-    }
+      // 如果前端带 order_qty,同步更新分色分尺码
+      if (order_qty != null && color && size_spec) {
+        rawDb.prepare(`UPDATE style_color_size SET plan_qty = ? WHERE style_no = ? AND color = ? AND size_spec = ?`)
+          .run(Number(order_qty) || 0, style_no, color, size_spec);
+      }
+    });
+    txn();
     res.json({ success: true });
   } catch (e) {
-    console.error('POST save plan error:', e);
+    console.error(`POST save plan (${typeLabel}) error:`, e);
     res.status(500).json({ error: 'Internal server error' });
   }
-}
-
-// 生成日期数据（含计划覆盖 + 实际产量）
-function generateDateData(style_no, color, size_spec, dateRange, startField, endField, planStartDate, planEndDate, cs_plan_qty) {
-  const dailyTarget = Math.ceil(cs_plan_qty / Math.max(1, Math.floor((new Date(planEndDate + 'T00:00:00') - new Date(planStartDate + 'T00:00:00')) / 86400000) + 1));
-
-  // 实际产量
-  const actuals = db.all(
-    "SELECT production_date, SUM(completed_qty) as qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND (schedule_type IS NULL OR schedule_type = '' OR schedule_type = 'secondary') GROUP BY production_date",
-    [style_no, color || '', size_spec || '']
-  );
-  const actualMap = {};
-  for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
-
-  // 计划覆盖
-  const overrides = db.all(
-    "SELECT production_date, completed_qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type LIKE 'plan_override_%'",
-    [style_no, color || '', size_spec || '']
-  );
-  const overrideMap = {};
-  for (const o of overrides) { overrideMap[o.production_date] = o.completed_qty; }
-
-  const dateData = [];
-  let totalPlan = 0, totalActual = 0;
-  for (const date of dateRange) {
-    let planQty = 0;
-    if (overrideMap[date] != null) {
-      planQty = overrideMap[date];
-    } else if (date >= planStartDate && date <= planEndDate && dailyTarget > 0) {
-      const sd2 = new Date(planStartDate + 'T00:00:00');
-      const cd = new Date(date + 'T00:00:00');
-      const dayIdx = Math.floor((cd - sd2) / 86400000);
-      const fullDays = Math.floor(cs_plan_qty / dailyTarget);
-      const remainder = cs_plan_qty % dailyTarget;
-      if (dayIdx < fullDays) planQty = dailyTarget;
-      else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
-    }
-    const actualQty = actualMap[date] || 0;
-    totalPlan += planQty;
-    totalActual += actualQty;
-    dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
-  }
-  return { dateData, totalPlan, totalActual };
 }
 
 app.post('/api/schedule/printing-daily-plan/plan', (req, res) => savePlanOverride('printing', req, res));
@@ -1646,531 +1672,160 @@ app.post('/api/schedule/embroidery-daily-plan/plan', (req, res) => savePlanOverr
 app.post('/api/schedule/ironing-daily-plan/plan', (req, res) => savePlanOverride('ironing', req, res));
 app.post('/api/schedule/template-daily-plan/plan', (req, res) => savePlanOverride('template', req, res));
 
+// ---------- 二次加工每日计划(统一处理)[B-03/B-04/B-05 fix] ----------
+// 4 种 secondary 共用同一份逻辑,字段差异通过 SECONDARY_TYPES 配置解决
+// 日期窗口统一:today-SEC_DAILY_PLAN_WINDOW.beforeDays ~ today+afterDays
+// 计划覆盖从 schedule_plan_overrides 表读(不再查 actual_production)
+function getSecondaryDailyPlan(secType, req, res) {
+  try {
+    const cfg = SECONDARY_TYPES[secType];
+    if (!cfg) return res.status(400).json({ error: `未知二次加工类型: ${secType}` });
+
+    // 1. 找到有这个 secondary 标志的款式
+    const styles = db.all(
+      `SELECT id, style_no, product_name, plan_qty, due_date, ${cfg.sqlField} as flag, ${cfg.dailyField} as daily_output
+       FROM styles WHERE ${cfg.sqlField} IS NOT NULL AND ${cfg.sqlField} != ''`
+    );
+    if (!styles.length) return res.json({ plans: [], dateRange: [], rows: [] });
+
+    // 2. 只保留在装柜清单里的款式
+    const styleNos = styles.map(s => s.style_no);
+    const loadingQ = inQuery('style_no', styleNos);
+    const loadingStyles = db.all(
+      `SELECT DISTINCT style_no FROM fabric_loading_list WHERE ${loadingQ.sql}`, loadingQ.params
+    );
+    const loadingSet = new Set(loadingStyles.map(r => r.style_no));
+    const validStyles = styles.filter(s => loadingSet.has(s.style_no));
+    if (!validStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
+
+    // 3. 从 main_plan 取该 secondary 的起止时间
+    const validStyleNos = validStyles.map(s => s.style_no);
+    const mpQ = inQuery('style_no', validStyleNos);
+    const mainPlans = db.all(
+      `SELECT style_no, product_name, plan_qty, ${cfg.startField} as sec_start, ${cfg.endField} as sec_end
+       FROM main_plan
+       WHERE ${cfg.startField} IS NOT NULL AND ${cfg.startField} != ''
+         AND ${mpQ.sql}
+       ORDER BY ${cfg.startField}, style_no`,
+      mpQ.params
+    );
+    const planMap = {};
+    for (const p of mainPlans) {
+      if (!planMap[p.style_no]) planMap[p.style_no] = p;
+    }
+    const activeStyles = validStyles.filter(s => planMap[s.style_no]);
+    if (!activeStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
+
+    // 4. 统一日期窗口
+    const today = new Date();
+    const sd = new Date(today); sd.setDate(sd.getDate() - SEC_DAILY_PLAN_WINDOW.beforeDays);
+    const ed = new Date(today); ed.setDate(ed.getDate() + SEC_DAILY_PLAN_WINDOW.afterDays);
+    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
+    const dateRange = [];
+    for (let i = 0; i < dayCount; i++) {
+      const dt = new Date(sd); dt.setDate(dt.getDate() + i);
+      dateRange.push(fmtLocal(dt));
+    }
+
+    // 5. 生成 plans + rows
+    const plans = [];
+    const rows = [];
+    for (const style of activeStyles) {
+      const mp = planMap[style.style_no];
+      const colorSizes = db.all(
+        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
+        [style.style_no]
+      );
+      const totalOrderQty = colorSizes.reduce((s, cs) => s + (cs.plan_qty || 0), 0) || style.plan_qty;
+
+      plans.push({
+        style_no: style.style_no,
+        product_name: style.product_name,
+        order_qty: totalOrderQty,
+        [`${secType}_start`]: mp.sec_start,
+        [`${secType}_end`]: mp.sec_end,
+        [`${secType}_daily_output`]: style.daily_output || 0,
+        due_date: style.due_date || '',
+      });
+
+      const csList = colorSizes.length ? colorSizes : [{ color: '', size_spec: '', plan_qty: style.plan_qty }];
+      const workingDays = Math.floor((new Date(mp.sec_end + 'T00:00:00') - new Date(mp.sec_start + 'T00:00:00')) / 86400000) + 1;
+
+      for (const cs of csList) {
+        if (cs.plan_qty <= 0) continue;
+        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
+
+        // 实际产量(从 actual_production 读,过滤 schedule_type=secondary 且匹配 secondary_type)
+        const actuals = db.all(
+          `SELECT production_date, SUM(completed_qty) as qty
+           FROM actual_production
+           WHERE style_no = ? AND color = ? AND size_spec = ?
+             AND schedule_type = 'secondary' AND secondary_type = ?
+           GROUP BY production_date`,
+          [style.style_no, cs.color || '', cs.size_spec || '', cfg.label]
+        );
+        const actualMap = {};
+        for (const a of actuals) actualMap[a.production_date] = a.qty || 0;
+
+        // 计划覆盖(从专用表 schedule_plan_overrides 读[B-01 fix])
+        const overrides = db.all(
+          `SELECT production_date, qty
+           FROM schedule_plan_overrides
+           WHERE secondary_type = ? AND style_no = ? AND color = ? AND size_spec = ?`,
+          [secType, style.style_no, cs.color || '', cs.size_spec || '']
+        );
+        const overrideMap = {};
+        for (const o of overrides) overrideMap[o.production_date] = o.qty;
+
+        const dateData = [];
+        let totalPlan = 0, totalActual = 0;
+        for (const date of dateRange) {
+          let planQty = 0;
+          if (overrideMap[date] != null) {
+            planQty = overrideMap[date];
+          } else if (date >= mp.sec_start && date <= mp.sec_end && dailyTarget > 0) {
+            const sd2 = new Date(mp.sec_start + 'T00:00:00');
+            const cd = new Date(date + 'T00:00:00');
+            const dayIdx = Math.floor((cd - sd2) / 86400000);
+            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
+            const remainder = cs.plan_qty % dailyTarget;
+            if (dayIdx < fullDays) planQty = dailyTarget;
+            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
+          }
+          const actualQty = actualMap[date] || 0;
+          totalPlan += planQty;
+          totalActual += actualQty;
+          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
+        }
+
+        rows.push({
+          style_no: style.style_no,
+          product_name: style.product_name,
+          color: cs.color || '',
+          size_spec: cs.size_spec || '',
+          order_qty: cs.plan_qty,
+          [`${secType}_start`]: mp.sec_start,
+          [`${secType}_end`]: mp.sec_end,
+          totalPlan, totalActual, totalDiff: totalActual - totalPlan,
+          dateData,
+        });
+      }
+    }
+
+    res.json({ plans, dateRange, rows });
+  } catch (e) {
+    console.error(`GET /api/schedule/${secType}-daily-plan error:`, e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+app.get('/api/schedule/printing-daily-plan',   (req, res) => getSecondaryDailyPlan('printing',   req, res));
+app.get('/api/schedule/embroidery-daily-plan', (req, res) => getSecondaryDailyPlan('embroidery', req, res));
+app.get('/api/schedule/ironing-daily-plan',    (req, res) => getSecondaryDailyPlan('ironing',    req, res));
+app.get('/api/schedule/template-daily-plan',   (req, res) => getSecondaryDailyPlan('template',   req, res));
+
+
 // ---------- \u5370\u82b1\u6bcf\u65e5\u8ba1\u5212\uff08\u6570\u636e\u6765\u6e90\uff1astyles + fabric_loading_list + style_color_size + main_plan\uff09----------
-app.get('/api/schedule/printing-daily-plan', (req, res) => {
-  try {
-    // 1. \u83b7\u53d6\u6709\u5370\u82b1\u7684\u6b3e\u5f0f\uff08styles.printing != ''\uff09
-    const printingStyles = db.all(
-      "SELECT id, style_no, product_name, plan_qty, due_date, printing, printing_daily_output FROM styles WHERE printing IS NOT NULL AND printing != ''"
-    );
-
-    if (!printingStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 2. \u68c0\u67e5 fabric_loading_list \u662f\u5426\u5b58\u5728\uff0c\u53ea\u4fdd\u7559\u5728\u88c5\u67dc\u6e05\u5355\u91cc\u7684\u6b3e\u5f0f
-    const styleNos = printingStyles.map(s => s.style_no);
-    const loadingStyles = db.all(
-      'SELECT DISTINCT style_no FROM fabric_loading_list WHERE style_no IN (' + styleNos.map(() => '?').join(',') + ')',
-      styleNos
-    );
-    const loadingSet = new Set(loadingStyles.map(r => r.style_no));
-    const validStyles = printingStyles.filter(s => loadingSet.has(s.style_no));
-
-    if (!validStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 3. \u4ece main_plan \u83b7\u53d6\u5370\u82b1\u4e0a\u7ebf/\u4e0b\u7ebf\u65f6\u95f4
-    const validStyleNos = validStyles.map(s => s.style_no);
-    const mainPlans = db.all(
-      'SELECT style_no, product_name, plan_qty, printing_start, printing_end FROM main_plan WHERE printing_start IS NOT NULL AND printing_start != \'\' AND style_no IN (' + validStyleNos.map(() => '?').join(',') + ') ORDER BY printing_start, style_no',
-      validStyleNos
-    );
-
-    // \u6309\u6b3e\u53f7\u7d22\u5f15 main_plan
-    const planMap = {};
-    for (const p of mainPlans) {
-      if (!planMap[p.style_no]) planMap[p.style_no] = p;
-    }
-
-    // \u53ea\u4fdd\u7559\u5728 main_plan \u4e2d\u6709\u5370\u82b1\u65e5\u671f\u7684\u6b3e\u5f0f
-    const activeStyles = validStyles.filter(s => planMap[s.style_no]);
-    if (!activeStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 计算日期范围：今天前一周 ~ 今天后三周
-    const today = new Date();
-    const sd = new Date(today);
-    sd.setDate(sd.getDate() - 7);  // 前一周
-    const ed = new Date(today);
-    ed.setDate(ed.getDate() + 21);  // 后三周
-    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
-    const dateRange = [];
-    for (let i = 0; i < dayCount; i++) {
-      const dt = new Date(sd);
-      dt.setDate(dt.getDate() + i);
-      dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
-    }
-
-    // 4. \u4e3a\u6bcf\u4e2a\u6b3e\u5f0f\u83b7\u53d6\u5206\u8272\u5206\u5c3a\u7801\u6570\u636e\uff0c\u751f\u6210\u8ba1\u5212\u884c
-    const plans = [];
-    const rows = [];
-
-    for (const style of activeStyles) {
-      const mp = planMap[style.style_no];
-      const colorSizes = db.all(
-        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
-        [style.style_no]
-      );
-
-      // \u539f\u5355\u91cf = \u5206\u8272\u5206\u5c3a\u7801\u7684\u603b\u548c
-      const totalOrderQty = colorSizes.reduce((s, cs) => s + (cs.plan_qty || 0), 0) || style.plan_qty;
-
-      plans.push({
-        style_no: style.style_no,
-        product_name: style.product_name,
-        order_qty: totalOrderQty,
-        printing_start: mp.printing_start,
-        printing_end: mp.printing_end,
-        printing_daily_output: style.printing_daily_output || 0,
-        due_date: style.due_date || '',
-      });
-
-      const csList = colorSizes.length ? colorSizes : [{ color: '', size_spec: '', plan_qty: style.plan_qty }];
-      const workingDays = Math.floor((new Date(mp.printing_end + 'T00:00:00') - new Date(mp.printing_start + 'T00:00:00')) / 86400000) + 1;
-
-      for (const cs of csList) {
-        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
-
-        // \u83b7\u53d6\u8be5\u989c\u8272\u5c3a\u7801\u7684\u5b9e\u9645\u4ea7\u91cf\uff08schedule_type='secondary'\uff09
-        const actuals = db.all(
-          "SELECT production_date, SUM(completed_qty) as qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = 'secondary' GROUP BY production_date",
-          [style.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const actualMap = {};
-        for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
-
-        // \u4e3a\u6bcf\u4e2a\u65e5\u671f\u751f\u6210\u8ba1\u5212/\u5b9e\u9645/\u5dee\u5f02
-        const dateData = [];
-        let totalPlan = 0, totalActual = 0;
-        for (const date of dateRange) {
-          let planQty = 0;
-          if (date >= mp.printing_start && date <= mp.printing_end && dailyTarget > 0) {
-            const sd2 = new Date(mp.printing_start + 'T00:00:00');
-            const cd = new Date(date + 'T00:00:00');
-            const dayIdx = Math.floor((cd - sd2) / 86400000);
-            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
-            const remainder = cs.plan_qty % dailyTarget;
-            if (dayIdx < fullDays) planQty = dailyTarget;
-            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
-          }
-          const actualQty = actualMap[date] || 0;
-          totalPlan += planQty;
-          totalActual += actualQty;
-          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
-        }
-
-        // 过滤 order_qty=0 的空行
-        if (cs.plan_qty <= 0) continue;
-
-        rows.push({
-          style_no: style.style_no,
-          product_name: style.product_name,
-          color: cs.color || '',
-          size_spec: cs.size_spec || '',
-          order_qty: cs.plan_qty,
-          printing_start: mp.printing_start,
-          printing_end: mp.printing_end,
-          totalPlan,
-          totalActual,
-          totalDiff: totalActual - totalPlan,
-          dateData,
-        });
-      }
-    }
-
-    res.json({ plans, dateRange, rows });
-  } catch (e) {
-    console.error('GET /api/schedule/printing-daily-plan error:', e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ---------- 刺绣每日计划（数据来源：styles + fabric_loading_list + style_color_size + main_plan）----------
-app.get('/api/schedule/embroidery-daily-plan', (req, res) => {
-  try {
-    // 1. 获取有刺绣的款式（styles.embroidery != ''）
-    const embStyles = db.all(
-      "SELECT id, style_no, product_name, plan_qty, due_date, embroidery, embroidery_daily_output FROM styles WHERE embroidery IS NOT NULL AND embroidery != ''"
-    );
-    if (!embStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 2. 检查 fabric_loading_list 是否存在
-    const styleNos = embStyles.map(s => s.style_no);
-    const loadingStyles = db.all(
-      'SELECT DISTINCT style_no FROM fabric_loading_list WHERE style_no IN (' + styleNos.map(() => '?').join(',') + ')',
-      styleNos
-    );
-    const loadingSet = new Set(loadingStyles.map(r => r.style_no));
-    const validStyles = embStyles.filter(s => loadingSet.has(s.style_no));
-    if (!validStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 3. 从 main_plan 获取刺绣上线/下线时间
-    const validStyleNos = validStyles.map(s => s.style_no);
-    const mainPlans = db.all(
-      'SELECT style_no, product_name, plan_qty, embroidery_start, embroidery_end FROM main_plan WHERE embroidery_start IS NOT NULL AND embroidery_start != \'\' AND style_no IN (' + validStyleNos.map(() => '?').join(',') + ') ORDER BY embroidery_start, style_no',
-      validStyleNos
-    );
-    const planMap = {};
-    for (const p of mainPlans) { if (!planMap[p.style_no]) planMap[p.style_no] = p; }
-
-    const activeStyles = validStyles.filter(s => planMap[s.style_no]);
-    if (!activeStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 计算整体日期范围（限制在今天前后合理范围，避免返回过多数据）
-    let minDate = null, maxDate = null;
-    for (const s of activeStyles) {
-      const mp = planMap[s.style_no];
-      if (!minDate || mp.embroidery_start < minDate) minDate = mp.embroidery_start;
-      if (!maxDate || mp.embroidery_end > maxDate) maxDate = mp.embroidery_end;
-    }
-    // 限制范围：今天-30天 到 今天+60天
-    const _today = new Date(); const _ty = _today.getFullYear(); const _tm = String(_today.getMonth()+1).padStart(2,'0'); const _td = String(_today.getDate()).padStart(2,'0');
-    const _todayStr = `${_ty}-${_tm}-${_td}`;
-    const _clampedStart = new Date(_todayStr + 'T00:00:00'); _clampedStart.setDate(_clampedStart.getDate() - 30);
-    const _clampedEnd = new Date(_todayStr + 'T00:00:00'); _clampedEnd.setDate(_clampedEnd.getDate() + 60);
-    const sd = new Date(minDate + 'T00:00:00') < _clampedStart ? _clampedStart : new Date(minDate + 'T00:00:00');
-    const ed = new Date(maxDate + 'T00:00:00') > _clampedEnd ? _clampedEnd : new Date(maxDate + 'T00:00:00');
-    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
-    const dateRange = [];
-    for (let i = 0; i < dayCount; i++) {
-      const dt = new Date(sd); dt.setDate(dt.getDate() + i);
-      dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`);
-    }
-
-    // 4. 为每个款式获取分色分尺码数据，生成计划行
-    const plans = [];
-    const rows = [];
-    for (const style of activeStyles) {
-      const mp = planMap[style.style_no];
-      const colorSizes = db.all(
-        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
-        [style.style_no]
-      );
-      const totalOrderQty = colorSizes.reduce((s, cs) => s + (cs.plan_qty || 0), 0) || style.plan_qty;
-
-      plans.push({
-        style_no: style.style_no, product_name: style.product_name,
-        order_qty: totalOrderQty, embroidery_start: mp.embroidery_start,
-        embroidery_end: mp.embroidery_end, embroidery_daily_output: style.embroidery_daily_output || 0,
-        due_date: style.due_date || '',
-      });
-
-      const csList = colorSizes.length ? colorSizes : [{ color: '', size_spec: '', plan_qty: style.plan_qty }];
-      const workingDays = Math.floor((new Date(mp.embroidery_end + 'T00:00:00') - new Date(mp.embroidery_start + 'T00:00:00')) / 86400000) + 1;
-
-      for (const cs of csList) {
-        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
-        const actuals = db.all(
-          "SELECT production_date, SUM(completed_qty) as qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = 'secondary' GROUP BY production_date",
-          [style.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const actualMap = {};
-        for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
-
-        // 查询计划覆盖
-        const planOverrides = db.all(
-          "SELECT production_date, completed_qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type LIKE 'plan_override_%'",
-          [style.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const overrideMap = {};
-        for (const po of planOverrides) { overrideMap[po.production_date] = po.completed_qty; }
-
-        const dateData = [];
-        let totalPlan = 0, totalActual = 0;
-        for (const date of dateRange) {
-          let planQty = 0;
-          if (overrideMap[date] != null) {
-            planQty = overrideMap[date];
-          } else if (date >= mp.embroidery_start && date <= mp.embroidery_end && dailyTarget > 0) {
-            const sd2 = new Date(mp.embroidery_start + 'T00:00:00');
-            const cd = new Date(date + 'T00:00:00');
-            const dayIdx = Math.floor((cd - sd2) / 86400000);
-            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
-            const remainder = cs.plan_qty % dailyTarget;
-            if (dayIdx < fullDays) planQty = dailyTarget;
-            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
-          }
-          const actualQty = actualMap[date] || 0;
-          totalPlan += planQty;
-          totalActual += actualQty;
-          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
-        }
-
-        rows.push({
-          style_no: style.style_no, product_name: style.product_name,
-          color: cs.color || '', size_spec: cs.size_spec || '',
-          order_qty: cs.plan_qty, embroidery_start: mp.embroidery_start,
-          embroidery_end: mp.embroidery_end, totalPlan, totalActual,
-          totalDiff: totalActual - totalPlan, dateData,
-        });
-      }
-    }
-    res.json({ plans, dateRange, rows });
-  } catch (e) {
-    console.error('GET /api/schedule/embroidery-daily-plan error:', e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ---------- 烫标每日计划（数据来源：styles + fabric_loading_list + style_color_size + main_plan）----------
-app.get('/api/schedule/ironing-daily-plan', (req, res) => {
-  try {
-    const ironStyles = db.all(
-      "SELECT id, style_no, product_name, plan_qty, due_date, ironing_label, ironing_daily_output FROM styles WHERE ironing_label IS NOT NULL AND ironing_label != ''"
-    );
-    if (!ironStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    const styleNos = ironStyles.map(s => s.style_no);
-    const loadingStyles = db.all(
-      'SELECT DISTINCT style_no FROM fabric_loading_list WHERE style_no IN (' + styleNos.map(() => '?').join(',') + ')',
-      styleNos
-    );
-    const loadingSet = new Set(loadingStyles.map(r => r.style_no));
-    const validStyles = ironStyles.filter(s => loadingSet.has(s.style_no));
-    if (!validStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    const validStyleNos = validStyles.map(s => s.style_no);
-    const mainPlans = db.all(
-      'SELECT style_no, product_name, plan_qty, ironing_start, ironing_end FROM main_plan WHERE ironing_start IS NOT NULL AND ironing_start != \'\' AND style_no IN (' + validStyleNos.map(() => '?').join(',') + ') ORDER BY ironing_start, style_no',
-      validStyleNos
-    );
-    const planMap = {};
-    for (const p of mainPlans) { if (!planMap[p.style_no]) planMap[p.style_no] = p; }
-
-    const activeStyles = validStyles.filter(s => planMap[s.style_no]);
-    if (!activeStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    let minDate = null, maxDate = null;
-    for (const s of activeStyles) {
-      const mp = planMap[s.style_no];
-      if (!minDate || mp.ironing_start < minDate) minDate = mp.ironing_start;
-      if (!maxDate || mp.ironing_end > maxDate) maxDate = mp.ironing_end;
-    }
-    // 限制范围：今天-30天 到 今天+60天
-    const _today2 = new Date(); const _ty2 = _today2.getFullYear(); const _tm2 = String(_today2.getMonth()+1).padStart(2,'0'); const _td2 = String(_today2.getDate()).padStart(2,'0');
-    const _todayStr2 = `${_ty2}-${_tm2}-${_td2}`;
-    const _cs2 = new Date(_todayStr2 + 'T00:00:00'); _cs2.setDate(_cs2.getDate() - 30);
-    const _ce2 = new Date(_todayStr2 + 'T00:00:00'); _ce2.setDate(_ce2.getDate() + 60);
-    const sd = new Date(minDate + 'T00:00:00') < _cs2 ? _cs2 : new Date(minDate + 'T00:00:00');
-    const ed = new Date(maxDate + 'T00:00:00') > _ce2 ? _ce2 : new Date(maxDate + 'T00:00:00');
-    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
-    const dateRange = [];
-    for (let i = 0; i < dayCount; i++) {
-      const dt = new Date(sd); dt.setDate(dt.getDate() + i);
-      dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`);
-    }
-
-    const plans = [];
-    const rows = [];
-    for (const style of activeStyles) {
-      const mp = planMap[style.style_no];
-      const colorSizes = db.all(
-        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
-        [style.style_no]
-      );
-      const totalOrderQty = colorSizes.reduce((s, cs) => s + (cs.plan_qty || 0), 0) || style.plan_qty;
-
-      plans.push({
-        style_no: style.style_no, product_name: style.product_name,
-        order_qty: totalOrderQty, ironing_start: mp.ironing_start,
-        ironing_end: mp.ironing_end, ironing_daily_output: style.ironing_daily_output || 0,
-        due_date: style.due_date || '',
-      });
-
-      const csList = colorSizes.length ? colorSizes : [{ color: '', size_spec: '', plan_qty: style.plan_qty }];
-      const workingDays = Math.floor((new Date(mp.ironing_end + 'T00:00:00') - new Date(mp.ironing_start + 'T00:00:00')) / 86400000) + 1;
-
-      for (const cs of csList) {
-        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
-        const actuals = db.all(
-          "SELECT production_date, SUM(completed_qty) as qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = 'secondary' GROUP BY production_date",
-          [style.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const actualMap = {};
-        for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
-
-        // 查询计划覆盖
-        const planOverrides = db.all(
-          "SELECT production_date, completed_qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type LIKE 'plan_override_%'",
-          [style.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const overrideMap = {};
-        for (const po of planOverrides) { overrideMap[po.production_date] = po.completed_qty; }
-
-        const dateData = [];
-        let totalPlan = 0, totalActual = 0;
-        for (const date of dateRange) {
-          let planQty = 0;
-          if (overrideMap[date] != null) {
-            planQty = overrideMap[date];
-          } else if (date >= mp.ironing_start && date <= mp.ironing_end && dailyTarget > 0) {
-            const sd2 = new Date(mp.ironing_start + 'T00:00:00');
-            const cd = new Date(date + 'T00:00:00');
-            const dayIdx = Math.floor((cd - sd2) / 86400000);
-            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
-            const remainder = cs.plan_qty % dailyTarget;
-            if (dayIdx < fullDays) planQty = dailyTarget;
-            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
-          }
-          const actualQty = actualMap[date] || 0;
-          totalPlan += planQty;
-          totalActual += actualQty;
-          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
-        }
-
-        rows.push({
-          style_no: style.style_no, product_name: style.product_name,
-          color: cs.color || '', size_spec: cs.size_spec || '',
-          order_qty: cs.plan_qty, ironing_start: mp.ironing_start,
-          ironing_end: mp.ironing_end, totalPlan, totalActual,
-          totalDiff: totalActual - totalPlan, dateData,
-        });
-      }
-    }
-    res.json({ plans, dateRange, rows });
-  } catch (e) {
-    console.error('GET /api/schedule/ironing-daily-plan error:', e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ---------- 模板每日计划（数据来源：styles + fabric_loading_list + style_color_size + main_plan）----------
-app.get('/api/schedule/template-daily-plan', (req, res) => {
-  try {
-    // 1. 获取有模板的款式（styles.template != ''）
-    const templateStyles = db.all(
-      "SELECT id, style_no, product_name, plan_qty, due_date, template, template_daily_output FROM styles WHERE template IS NOT NULL AND template != ''"
-    );
-
-    if (!templateStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 2. 检查 fabric_loading_list 是否存在，只保留在装柜清单里的款式
-    const styleNos = templateStyles.map(s => s.style_no);
-    const loadingStyles = db.all(
-      'SELECT DISTINCT style_no FROM fabric_loading_list WHERE style_no IN (' + styleNos.map(() => '?').join(',') + ')',
-      styleNos
-    );
-    const loadingSet = new Set(loadingStyles.map(r => r.style_no));
-    const validStyles = templateStyles.filter(s => loadingSet.has(s.style_no));
-
-    if (!validStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 3. 从 main_plan 获取模板上线/下线时间
-    const validStyleNos = validStyles.map(s => s.style_no);
-    const mainPlans = db.all(
-      'SELECT style_no, product_name, plan_qty, template_start, template_end FROM main_plan WHERE template_start IS NOT NULL AND template_start != \'\' AND style_no IN (' + validStyleNos.map(() => '?').join(',') + ') ORDER BY template_start, style_no',
-      validStyleNos
-    );
-
-    const planMap = {};
-    for (const p of mainPlans) {
-      if (!planMap[p.style_no]) planMap[p.style_no] = p;
-    }
-
-    const activeStyles = validStyles.filter(s => planMap[s.style_no]);
-    if (!activeStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 计算日期范围：今天前一周 ~ 今天后三周
-    const today = new Date();
-    const sd = new Date(today);
-    sd.setDate(sd.getDate() - 7);
-    const ed = new Date(today);
-    ed.setDate(ed.getDate() + 21);
-    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
-    const dateRange = [];
-    for (let i = 0; i < dayCount; i++) {
-      const dt = new Date(sd);
-      dt.setDate(dt.getDate() + i);
-      dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
-    }
-
-    // 4. 为每个款式获取分色分尺码数据，生成计划行
-    const plans = [];
-    const rows = [];
-
-    for (const style of activeStyles) {
-      const mp = planMap[style.style_no];
-      const colorSizes = db.all(
-        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
-        [style.style_no]
-      );
-
-      const totalOrderQty = colorSizes.reduce((s, cs) => s + (cs.plan_qty || 0), 0) || style.plan_qty;
-
-      plans.push({
-        style_no: style.style_no,
-        product_name: style.product_name,
-        order_qty: totalOrderQty,
-        template_start: mp.template_start,
-        template_end: mp.template_end,
-        template_daily_output: style.template_daily_output || 0,
-        due_date: style.due_date || '',
-      });
-
-      const csList = colorSizes.length ? colorSizes : [{ color: '', size_spec: '', plan_qty: style.plan_qty }];
-      const workingDays = Math.floor((new Date(mp.template_end + 'T00:00:00') - new Date(mp.template_start + 'T00:00:00')) / 86400000) + 1;
-
-      for (const cs of csList) {
-        if (cs.plan_qty <= 0) continue;
-        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
-
-        const actuals = db.all(
-          "SELECT production_date, SUM(completed_qty) as qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = 'secondary' GROUP BY production_date",
-          [style.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const actualMap = {};
-        for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
-
-        // 查询计划覆盖
-        const planOverrides = db.all(
-          "SELECT production_date, completed_qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type LIKE 'plan_override_%'",
-          [style.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const overrideMap = {};
-        for (const po of planOverrides) { overrideMap[po.production_date] = po.completed_qty; }
-
-        const dateData = [];
-        let totalPlan = 0, totalActual = 0;
-        for (const date of dateRange) {
-          let planQty = 0;
-          if (overrideMap[date] != null) {
-            planQty = overrideMap[date];
-          } else if (date >= mp.template_start && date <= mp.template_end && dailyTarget > 0) {
-            const sd2 = new Date(mp.template_start + 'T00:00:00');
-            const cd = new Date(date + 'T00:00:00');
-            const dayIdx = Math.floor((cd - sd2) / 86400000);
-            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
-            const remainder = cs.plan_qty % dailyTarget;
-            if (dayIdx < fullDays) planQty = dailyTarget;
-            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
-          }
-          const actualQty = actualMap[date] || 0;
-          totalPlan += planQty;
-          totalActual += actualQty;
-          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
-        }
-
-        rows.push({
-          style_no: style.style_no,
-          product_name: style.product_name,
-          color: cs.color || '',
-          size_spec: cs.size_spec || '',
-          order_qty: cs.plan_qty,
-          template_start: mp.template_start,
-          template_end: mp.template_end,
-          totalPlan,
-          totalActual,
-          totalDiff: totalActual - totalPlan,
-          dateData,
-        });
-      }
-    }
-
-    res.json({ plans, dateRange, rows });
-  } catch (e) {
-    console.error('GET /api/schedule/template-daily-plan error:', e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ---------- 排程管理（统一三行模型）----------
 app.get('/api/schedule/:scheduleType', (req, res) => {
   try {
     const { secondary_type } = req.query;
@@ -3125,10 +2780,27 @@ app.get('/api/capacity-precheck', (req, res) => {
   } catch (e) { console.error('GET /api/capacity-precheck error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// [fix#8] Override instead of accumulate
+// [B-02 fix] Override instead of accumulate
+// 增加 (color, size_spec, secondary_type) 维度精确匹配,避免一次报工污染所有 master
 function syncActualToDaily(record) {
-  const masters = db.all('SELECT id FROM schedule_master WHERE style_no = ? AND schedule_type = ?',
-    [record.style_no, record.schedule_type]);
+  const conditions = ['style_no = ?', 'schedule_type = ?'];
+  const params = [record.style_no, record.schedule_type];
+  if (record.color !== undefined) {
+    conditions.push('color = ?');
+    params.push(record.color || '');
+  }
+  if (record.size_spec !== undefined) {
+    conditions.push('size_spec = ?');
+    params.push(record.size_spec || '');
+  }
+  if (record.secondary_type) {
+    conditions.push('secondary_type = ?');
+    params.push(record.secondary_type);
+  }
+  const masters = db.all(
+    `SELECT id FROM schedule_master WHERE ${conditions.join(' AND ')}`,
+    params
+  );
   for (const m of masters) {
     const existing = db.get('SELECT id FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = ?',
       [m.id, record.production_date, 'ACTUAL']);
@@ -4251,7 +3923,7 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
     const workshops = allWorkshops.map(ws => ({
       name: ws.name,
       lines: ws.lines.map(line => {
-        const lineNum = line.line_name.replace(/班$/, '')
+        const lineNum = stripLineSuffix(line.line_name)  // [B-12 fix]
         const key = ws.name + '|' + lineNum
         return {
           name: line.line_name,
@@ -4300,10 +3972,13 @@ app.post('/api/visual-schedule/assign', (req, res) => {
     const plan = db.get('SELECT * FROM main_plan WHERE id = ?', [planId]);
     if (!plan) return res.status(404).json({ error: '计划不存在' });
     if (plan.is_scheduled) return res.status(400).json({ error: '该计划已排班' });
-    const lineNum = String(lineTeam).replace(/班$/, '')
+    const lineNum = stripLineSuffix(lineTeam)  // [B-12 fix] 用 helper 替代散落 .replace
 
-    // 查产线日产量
-    const lineId = db.get('SELECT id FROM production_lines WHERE line_name = ?', [lineTeam]);
+    // 查产线日产量(优先用完整 line_name,fallback 拼"班"后缀)
+    const lineId = db.get(
+      'SELECT id FROM production_lines WHERE line_name IN (?, ?)',
+      [lineTeam, lineNameWithSuffix(lineNum)]
+    );
     let dailyTarget = 0;
     if (lineId) {
       const cat = db.get('SELECT daily_output FROM line_style_categories WHERE line_id = ? ORDER BY sort_order LIMIT 1', [lineId.id]);
@@ -4385,11 +4060,14 @@ app.post('/api/visual-schedule/move', (req, res) => {
     // 查原排程记录
     const sm = db.get('SELECT * FROM schedule_master WHERE id = ?', [scheduleId]);
     if (!sm) return res.status(404).json({ error: '排程记录不存在' });
-    const newLineNum = String(newLineTeam).replace(/班$/, '');
+    const newLineNum = stripLineSuffix(newLineTeam);  // [B-12 fix]
     // 删除旧 schedule_master
     db.run('DELETE FROM schedule_master WHERE id = ?', [scheduleId]);
-    // 查新产线日产量
-    const lineId = db.get('SELECT id FROM production_lines WHERE line_name = ?', [newLineTeam]);
+    // 查新产线日产量(优先用完整 line_name,fallback 拼"班"后缀)
+    const lineId = db.get(
+      'SELECT id FROM production_lines WHERE line_name IN (?, ?)',
+      [newLineTeam, lineNameWithSuffix(newLineNum)]
+    );
     let dailyTarget = 0;
     if (lineId) {
       const cat = db.get('SELECT daily_output FROM line_style_categories WHERE line_id = ? ORDER BY sort_order LIMIT 1', [lineId.id]);
