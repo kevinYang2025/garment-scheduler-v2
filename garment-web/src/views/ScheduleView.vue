@@ -497,11 +497,18 @@ onUnmounted(() => {
 }
 .col-header span { font-weight: 500; font-size: 11px; flex-shrink: 0; color: var(--text-tertiary); letter-spacing: 0.3px; }
 
-.row-plan { background: var(--card); }
+.row-plan { background: #f5f0ff; }
+.row-actual { background: #f0fff4; }
+.row-diff { background: #fffaf0; }
+.row-diff td { border-bottom: 2px solid var(--border); }
+.first-group td { border-top: 2px solid var(--primary); }
+
 tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 
 .fix { position: sticky; left: 0; z-index: 1; background: inherit; }
-.row-plan .fix { background: var(--card); }
+.row-plan .fix { background: #f5f0ff; }
+.row-actual .fix { background: #f0fff4; }
+.row-diff .fix { background: #fffaf0; }
 .excel-table thead .fix { z-index: 4; background: var(--card); }
 
 .date-th { min-width: 50px; width: 50px; }
@@ -514,6 +521,19 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 .num { text-align: center !important; font-variant-numeric: tabular-nums; font-family: 'Helvetica Neue', Arial, sans-serif; }
 .sum-cell { font-weight: 700; }
 .type-label { font-weight: 600; font-size: 12px; }
-.plan-label { color: var(--primary); }
+.plan-label { color: #7c3aed; }
+.actual-label { color: #059669; }
+.diff-label { color: #d97706; }
+.diff-pos { color: #059669; font-weight: 600; }
+.diff-neg { color: #dc2626; font-weight: 600; }
 .cell-num { text-align: center !important; font-variant-numeric: tabular-nums; font-family: 'Helvetica Neue', Arial, sans-serif; }
+.editable-cell { padding: 2px 4px !important; }
+.cell-inp {
+  width: 48px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px;
+  text-align: center; font-size: 13px; font-variant-numeric: tabular-nums;
+  font-family: 'Helvetica Neue', Arial, sans-serif; background: transparent;
+  transition: border-color 0.15s;
+}
+.cell-inp:hover { border-color: var(--border); }
+.cell-inp:focus { border-color: var(--primary); outline: none; background: #fff; }
 </style>

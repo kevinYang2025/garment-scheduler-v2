@@ -1321,6 +1321,142 @@ app.get('/api/schedule/cutting/export', async (req, res) => {
   }
 });
 
+// ---------- 缝制每日计划（数据来源：预排总计划 + 分色分尺码 + 实际产量）----------
+app.get('/api/schedule/sewing-daily-plan', (req, res) => {
+  try {
+    // 获取所有有缝制日期的 main_plan
+    const plans = db.all(`
+      SELECT id, style_no, product_name, plan_qty, sewing_start, sewing_end
+      FROM main_plan
+      WHERE sewing_start IS NOT NULL AND sewing_end IS NOT NULL
+      ORDER BY sewing_start, style_no
+    `);
+
+    if (!plans.length) return res.json({ plans: [], dateRange: [], rows: [] });
+
+    // 计算整体日期范围
+    let minDate = null, maxDate = null;
+    for (const p of plans) {
+      if (!minDate || p.sewing_start < minDate) minDate = p.sewing_start;
+      if (!maxDate || p.sewing_end > maxDate) maxDate = p.sewing_end;
+    }
+    const sd = new Date(minDate + 'T00:00:00');
+    const ed = new Date(maxDate + 'T00:00:00');
+    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
+    const dateRange = [];
+    for (let i = 0; i < dayCount; i++) {
+      const dt = new Date(sd);
+      dt.setDate(dt.getDate() + i);
+      dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
+    }
+
+    // 为每个 plan 获取分色分尺码数据
+    const rows = [];
+    for (const plan of plans) {
+      const colorSizes = db.all(
+        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
+        [plan.style_no]
+      );
+
+      if (!colorSizes.length) {
+        // 没有分色分尺码数据时，用主计划自身
+        colorSizes.push({ color: '', size_spec: '', plan_qty: plan.plan_qty });
+      }
+
+      const workingDays = Math.floor((new Date(plan.sewing_end + 'T00:00:00') - new Date(plan.sewing_start + 'T00:00:00')) / 86400000) + 1;
+
+      for (const cs of colorSizes) {
+        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
+
+        // 获取该颜色尺码的实际产量
+        const actuals = db.all(
+          `SELECT production_date, SUM(completed_qty) as qty
+           FROM actual_production
+           WHERE style_no = ? AND color = ? AND size_spec = ?
+           GROUP BY production_date`,
+          [plan.style_no, cs.color || '', cs.size_spec || '']
+        );
+        const actualMap = {};
+        for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
+
+        // 为每个日期生成计划/实际/差异
+        const dateData = [];
+        let totalPlan = 0, totalActual = 0;
+        for (const date of dateRange) {
+          let planQty = 0;
+          if (date >= plan.sewing_start && date <= plan.sewing_end && dailyTarget > 0) {
+            const sd2 = new Date(plan.sewing_start + 'T00:00:00');
+            const cd = new Date(date + 'T00:00:00');
+            const dayIdx = Math.floor((cd - sd2) / 86400000);
+            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
+            const remainder = cs.plan_qty % dailyTarget;
+            if (dayIdx < fullDays) planQty = dailyTarget;
+            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
+          }
+          const actualQty = actualMap[date] || 0;
+          totalPlan += planQty;
+          totalActual += actualQty;
+          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
+        }
+
+        rows.push({
+          style_no: plan.style_no,
+          product_name: plan.product_name,
+          color: cs.color || '',
+          size_spec: cs.size_spec || '',
+          order_qty: cs.plan_qty,
+          sewing_start: plan.sewing_start,
+          sewing_end: plan.sewing_end,
+          totalPlan,
+          totalActual,
+          totalDiff: totalActual - totalPlan,
+          dateData,
+        });
+      }
+    }
+
+    res.json({ plans, dateRange, rows });
+  } catch (e) {
+    console.error('GET /api/schedule/sewing-daily-plan error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 保存某个颜色+尺码某日的实际产量
+app.post('/api/schedule/sewing-daily-plan/actual', (req, res) => {
+  try {
+    const { style_no, color, size_spec, production_date, completed_qty } = req.body;
+    if (!style_no || !production_date) {
+      return res.status(400).json({ error: '款号和日期不能为空' });
+    }
+
+    // 检查是否已存在
+    const existing = db.get(
+      `SELECT id FROM actual_production
+       WHERE style_no = ? AND color = ? AND size_spec = ? AND production_date = ?`,
+      [style_no, color || '', size_spec || '', production_date]
+    );
+
+    if (existing) {
+      db.run(
+        `UPDATE actual_production SET completed_qty = ?, recorded_at = datetime('now','localtime')
+         WHERE id = ?`,
+        [completed_qty || 0, existing.id]
+      );
+    } else {
+      db.run(
+        `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty)
+         VALUES ('sewing', 0, ?, ?, ?, ?, ?)`,
+        [style_no, color || '', size_spec || '', production_date, completed_qty || 0]
+      );
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/schedule/sewing-daily-plan/actual error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ---------- 排程管理（统一三行模型）----------
 app.get('/api/schedule/:scheduleType', (req, res) => {
   try {
@@ -1480,142 +1616,6 @@ app.get('/api/schedule/sewing/summary', (req, res) => {
     res.json({ plan: makeStats(planMasters), visual: makeStats(visualMasters) });
   } catch (e) {
     console.error('Sewing summary error:', e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ---------- 缝制每日计划（数据来源：预排总计划 + 分色分尺码 + 实际产量）----------
-app.get('/api/schedule/sewing-daily-plan', (req, res) => {
-  try {
-    // 获取所有有缝制日期的 main_plan
-    const plans = db.all(`
-      SELECT id, style_no, product_name, plan_qty, sewing_start, sewing_end
-      FROM main_plan
-      WHERE sewing_start IS NOT NULL AND sewing_end IS NOT NULL
-      ORDER BY sewing_start, style_no
-    `);
-
-    if (!plans.length) return res.json({ plans: [], dateRange: [], rows: [] });
-
-    // 计算整体日期范围
-    let minDate = null, maxDate = null;
-    for (const p of plans) {
-      if (!minDate || p.sewing_start < minDate) minDate = p.sewing_start;
-      if (!maxDate || p.sewing_end > maxDate) maxDate = p.sewing_end;
-    }
-    const sd = new Date(minDate + 'T00:00:00');
-    const ed = new Date(maxDate + 'T00:00:00');
-    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
-    const dateRange = [];
-    for (let i = 0; i < dayCount; i++) {
-      const dt = new Date(sd);
-      dt.setDate(dt.getDate() + i);
-      dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
-    }
-
-    // 为每个 plan 获取分色分尺码数据
-    const rows = [];
-    for (const plan of plans) {
-      const colorSizes = db.all(
-        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
-        [plan.style_no]
-      );
-
-      if (!colorSizes.length) {
-        // 没有分色分尺码数据时，用主计划自身
-        colorSizes.push({ color: '', size_spec: '', plan_qty: plan.plan_qty });
-      }
-
-      const workingDays = Math.floor((new Date(plan.sewing_end + 'T00:00:00') - new Date(plan.sewing_start + 'T00:00:00')) / 86400000) + 1;
-
-      for (const cs of colorSizes) {
-        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
-
-        // 获取该颜色尺码的实际产量
-        const actuals = db.all(
-          `SELECT production_date, SUM(completed_qty) as qty
-           FROM actual_production
-           WHERE style_no = ? AND color = ? AND size_spec = ?
-           GROUP BY production_date`,
-          [plan.style_no, cs.color || '', cs.size_spec || '']
-        );
-        const actualMap = {};
-        for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
-
-        // 为每个日期生成计划/实际/差异
-        const dateData = [];
-        let totalPlan = 0, totalActual = 0;
-        for (const date of dateRange) {
-          let planQty = 0;
-          if (date >= plan.sewing_start && date <= plan.sewing_end && dailyTarget > 0) {
-            const sd2 = new Date(plan.sewing_start + 'T00:00:00');
-            const cd = new Date(date + 'T00:00:00');
-            const dayIdx = Math.floor((cd - sd2) / 86400000);
-            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
-            const remainder = cs.plan_qty % dailyTarget;
-            if (dayIdx < fullDays) planQty = dailyTarget;
-            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
-          }
-          const actualQty = actualMap[date] || 0;
-          totalPlan += planQty;
-          totalActual += actualQty;
-          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
-        }
-
-        rows.push({
-          style_no: plan.style_no,
-          product_name: plan.product_name,
-          color: cs.color || '',
-          size_spec: cs.size_spec || '',
-          order_qty: cs.plan_qty,
-          sewing_start: plan.sewing_start,
-          sewing_end: plan.sewing_end,
-          totalPlan,
-          totalActual,
-          totalDiff: totalActual - totalPlan,
-          dateData,
-        });
-      }
-    }
-
-    res.json({ plans, dateRange, rows });
-  } catch (e) {
-    console.error('GET /api/schedule/sewing-daily-plan error:', e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// 保存某个颜色+尺码某日的实际产量
-app.post('/api/schedule/sewing-daily-plan/actual', (req, res) => {
-  try {
-    const { style_no, color, size_spec, production_date, completed_qty } = req.body;
-    if (!style_no || !production_date) {
-      return res.status(400).json({ error: '款号和日期不能为空' });
-    }
-
-    // 检查是否已存在
-    const existing = db.get(
-      `SELECT id FROM actual_production
-       WHERE style_no = ? AND color = ? AND size_spec = ? AND production_date = ?`,
-      [style_no, color || '', size_spec || '', production_date]
-    );
-
-    if (existing) {
-      db.run(
-        `UPDATE actual_production SET completed_qty = ?, recorded_at = datetime('now','localtime')
-         WHERE id = ?`,
-        [completed_qty || 0, existing.id]
-      );
-    } else {
-      db.run(
-        `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty)
-         VALUES ('sewing', 0, ?, ?, ?, ?, ?)`,
-        [style_no, color || '', size_spec || '', production_date, completed_qty || 0]
-      );
-    }
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('POST /api/schedule/sewing-daily-plan/actual error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
