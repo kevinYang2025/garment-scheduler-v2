@@ -76,7 +76,13 @@ export default {
 
   // 印花排程
   getPrintingPlanData: () => api.get('/printing-plan-data'),
+  getPrintingDailyPlan: () => api.get('/schedule/printing-daily-plan'),
+  getEmbroideryDailyPlan: () => api.get('/schedule/embroidery-daily-plan'),
+  getTemplateDailyPlan: () => api.get('/schedule/template-daily-plan'),
+  getIroningDailyPlan: () => api.get('/schedule/ironing-daily-plan'),
+  savePrintingActual: (data) => api.post('/schedule/sewing-daily-plan/actual', data),
   confirmPrintingPlan: (data) => api.post('/printing-plan-data/confirm', data),
+  confirmTemplatePlan: (data) => api.post('/template-plan-data/confirm', data),
 
   // 实际生产数据
   getActual: (scheduleType) => api.get('/actual', { params: { scheduleType } }),
@@ -91,9 +97,11 @@ export default {
   // Missing cutting API methods
   saveCutting: (data) => api.post('/schedule/cutting', data),
   deleteCutting: (id) => api.delete(`/schedule/cutting/${id}`),
-  // 裁剪排程（基于 main_plan + style_color_size）
+  // 裁剪排程（基于 fabric_loading_list ∩ style_color_size + main_plan.cutting_start/cutting_end）
   getCuttingSchedule: () => api.get('/schedule/cutting'),
   exportCuttingSchedule: () => api.get('/schedule/cutting/export', { responseType: 'blob' }),
+  getCuttingDailyActual: (params) => api.get('/schedule/cutting/daily', { params }),
+  updateMainPlanCutting: (id, data) => api.put(`/main-plan/${id}/cutting`, data),
   // Missing secondary API methods
   saveSecondary: (data) => api.post('/schedule/secondary', data),
   deleteSecondary: (id) => api.delete(`/schedule/secondary/${id}`),

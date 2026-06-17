@@ -115,27 +115,21 @@ function groupRowCount(styleNo) { return planRows.value.filter(r => r.style_no =
 
 // 按款号分组 + 预构建日期Map + 折叠汇总
 const groupedRows = computed(() => {
-  // 按款号聚合
   const styleGroups = {}
   for (const r of filteredRows.value) {
     if (!styleGroups[r.style_no]) styleGroups[r.style_no] = { product_name: r.product_name, rows: [] }
     styleGroups[r.style_no].rows.push(r)
   }
-
   const result = []
   let lastStyle = ''
   for (const r of filteredRows.value) {
     const firstOfGroup = r.style_no !== lastStyle
     lastStyle = r.style_no
-
     if (firstOfGroup && !expandedSet.value.has(r.style_no)) {
-      // 折叠状态：插入汇总行
       const group = styleGroups[r.style_no]
       const totalOrder = group.rows.reduce((s, x) => s + x.order_qty, 0)
       const totalPlan = group.rows.reduce((s, x) => s + x.totalPlan, 0)
       const totalActual = group.rows.reduce((s, x) => s + x.totalActual, 0)
-      const totalDiff = totalActual - totalPlan
-      // 聚合日期数据
       const dateMap = {}
       for (const rr of group.rows) {
         for (const dd of rr.dateData) {
@@ -148,13 +142,12 @@ const groupedRows = computed(() => {
       result.push({
         style_no: r.style_no, product_name: r.product_name,
         color: '', size_spec: '',
-        order_qty: totalOrder, totalPlan, totalActual, totalDiff,
+        order_qty: totalOrder, totalPlan, totalActual, totalDiff: totalActual - totalPlan,
         dateMap, firstOfGroup: true, collapsed: true,
       })
       continue
     }
-    if (firstOfGroup === false && !expandedSet.value.has(r.style_no)) continue
-
+    if (!firstOfGroup && !expandedSet.value.has(r.style_no)) continue
     const dateMap = {}
     for (const dd of r.dateData) { dateMap[dd.date] = dd }
     result.push({ ...r, firstOfGroup, dateMap })
@@ -183,12 +176,12 @@ const vtVisibleRows = computed(() => tableRows.value.slice(vtStartIndex.value, v
 
 async function load() {
   try {
-    const { data } = await api.getPrintingDailyPlan()
+    const { data } = await api.getTemplateDailyPlan()
     planRows.value = data.rows || []
     dateRange.value = data.dateRange || []
   } catch (e) {
-    console.error('加载印花排程失败:', e)
-    ElMessage.error('加载印花排程失败')
+    console.error('加载模板排程失败:', e)
+    ElMessage.error('加载模板排程失败')
   }
 }
 
@@ -214,7 +207,7 @@ function doExport() {
   const bom = '\uFEFF'
   const blob = new Blob([bom + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a'); a.href = url; a.download = '印花排程.csv'; a.click()
+  const a = document.createElement('a'); a.href = url; a.download = '模板排程.csv'; a.click()
   URL.revokeObjectURL(url)
 }
 
@@ -226,7 +219,7 @@ function openCreate() {
 async function create() {
   if (!form.value.style_no) { ElMessage.warning('款号不能为空'); return }
   try {
-    await api.confirmPrintingPlan({
+    await api.confirmTemplatePlan({
       style_no: form.value.style_no, color: form.value.color, size_spec: form.value.size_spec,
       plan_start: form.value.plan_start, plan_end: form.value.plan_end,
       plan_qty: form.value.plan_qty, daily_target: form.value.daily_target,
@@ -257,8 +250,8 @@ async function doImport() {
       if (!row || row.every(c => c == null)) continue
       records.push({
         '款号': row[0], '颜色': row[1], '尺码': row[2],
-        '原单量': parseInt(row[3]) || 0, '印花日产量': parseInt(row[4]) || 0,
-        '印花开始': row[5], '印花结束': row[6],
+        '原单量': parseInt(row[3]) || 0, '模板日产量': parseInt(row[4]) || 0,
+        '模板开始': row[5], '模板结束': row[6],
       })
     }
     importPreview.value = records
@@ -271,10 +264,10 @@ async function confirmImport() {
   importing.value = true
   try {
     for (const rec of importPreview.value) {
-      await api.confirmPrintingPlan({
+      await api.confirmTemplatePlan({
         style_no: rec['款号'], color: rec['颜色'], size_spec: rec['尺码'],
-        plan_start: rec['印花开始'], plan_end: rec['印花结束'],
-        plan_qty: rec['原单量'], daily_target: rec['印花日产量'],
+        plan_start: rec['模板开始'], plan_end: rec['模板结束'],
+        plan_qty: rec['原单量'], daily_target: rec['模板日产量'],
       })
     }
     ElMessage.success(`导入完成: ${importPreview.value.length} 条`)
@@ -309,7 +302,7 @@ async function saveActual(row, date) {
 function dateLabel(d) { return d ? d.slice(5) : '' }
 
 // 编辑模式
-const editingKey = ref(null) // 'styleNo|color|sizeSpec'
+const editingKey = ref(null)
 const editForm = ref({})
 
 function startEdit(row) {
@@ -335,7 +328,6 @@ function cancelEdit() {
 }
 
 async function savePlanEdit(row) {
-  // 更新本地数据
   row.order_qty = editForm.value.order_qty
   let newTotal = 0
   for (const d of visibleDates.value) {
@@ -350,9 +342,8 @@ async function savePlanEdit(row) {
   row.totalPlan = newTotal
   row.totalDiff = row.totalActual - row.totalPlan
 
-  // 保存到后端
   try {
-    await api.post('/schedule/printing-daily-plan/plan', {
+    await api.post('/schedule/template-daily-plan/plan', {
       style_no: row.style_no,
       color: row.color,
       size_spec: row.size_spec,
@@ -381,7 +372,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="printing-detail">
+  <div class="template-detail">
     <div class="detail-header">
       <div class="header-left">
         <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
@@ -402,9 +393,9 @@ onMounted(async () => {
     </div>
 
     <div v-if="!planRows.length" style="text-align:center;padding:60px;color:var(--text-tertiary)">
-      暂无印花排程数据
+      暂无模板排程数据
       <div style="margin-top:12px;font-size:12px;color:var(--text-tertiary)">
-        需要：1. 款式管理中有印花款式 2. 面料装柜清单存在该款式 3. 预排总计划有印花日期
+        需要：1. 款式管理中有模板款式 2. 面料装柜清单存在该款式 3. 预排总计划有模板日期
       </div>
     </div>
 
@@ -547,7 +538,7 @@ onMounted(async () => {
   </div>
 
   <!-- 新增排程弹窗 -->
-  <el-dialog v-model="dialogVisible" title="新增印花排程" width="520px">
+  <el-dialog v-model="dialogVisible" title="新增模板排程" width="520px">
     <el-form :model="form" label-width="90px" size="small">
       <el-row :gutter="12">
         <el-col :span="12"><el-form-item label="款号"><el-input v-model="form.style_no" placeholder="例：NTJ62633" /></el-form-item></el-col>
@@ -558,8 +549,8 @@ onMounted(async () => {
         <el-col :span="12"><el-form-item label="原单量"><el-input-number v-model="form.plan_qty" :min="1" style="width:100%" /></el-form-item></el-col>
       </el-row>
       <el-row :gutter="12">
-        <el-col :span="12"><el-form-item label="印花上线"><el-input v-model="form.plan_start" type="date" /></el-form-item></el-col>
-        <el-col :span="12"><el-form-item label="印花日产量"><el-input-number v-model="form.daily_target" :min="1" :step="100" style="width:100%" /></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="模板上线"><el-input v-model="form.plan_start" type="date" /></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="模板日产量"><el-input-number v-model="form.daily_target" :min="1" :step="100" style="width:100%" /></el-form-item></el-col>
       </el-row>
     </el-form>
     <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" @click="create">创建</el-button></template>
@@ -585,7 +576,7 @@ onMounted(async () => {
         <el-table-column label="颜色" width="80"><template #default="{row}">{{ row['颜色'] }}</template></el-table-column>
         <el-table-column label="尺码" width="60"><template #default="{row}">{{ row['尺码'] }}</template></el-table-column>
         <el-table-column label="原单量" width="80"><template #default="{row}">{{ row['原单量'] }}</template></el-table-column>
-        <el-table-column label="开始" width="95"><template #default="{row}">{{ row['印花开始'] }}</template></el-table-column>
+        <el-table-column label="开始" width="95"><template #default="{row}">{{ row['模板开始'] }}</template></el-table-column>
       </el-table>
     </div>
     <template #footer>
@@ -596,7 +587,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.printing-detail { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.template-detail { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
 .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); gap: 12px; flex-shrink: 0; }
 .header-left { display: flex; align-items: center; flex-shrink: 0; }
@@ -643,12 +634,13 @@ onMounted(async () => {
 .row-plan { background: #f5f0ff; }
 .row-actual { background: #f0fff4; }
 .row-diff { background: #fffaf0; }
+.editing-row { background: #fff3cd !important; }
+.collapsed-row { background: #f8f5ff !important; opacity: 0.85; }
+.editing-row .fix { background: #fff3cd !important; }
 .row-diff td { border-bottom: 2px solid var(--border); }
 .first-group td { border-top: 2px solid var(--primary); }
 .collapse-btn { cursor: pointer; user-select: none; margin-right: 4px; font-size: 10px; color: var(--text-tertiary); transition: color 0.15s; }
 .collapse-btn:hover { color: var(--primary); }
-.collapsed-row { background: #f8f5ff !important; opacity: 0.85; }
-.collapsed-row .fix { background: #f8f5ff !important; }
 
 tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 
@@ -683,8 +675,6 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 }
 .cell-inp:hover { border-color: var(--border); }
 .cell-inp:focus { border-color: var(--primary); outline: none; background: #fff; }
-.editing-row td { background: var(--primary-light) !important; box-shadow: inset 3px 0 0 var(--primary); }
-.editing-row .fix { background: var(--primary-light) !important; }
 .scroll-top-btn {
   position: fixed;
   bottom: 24px;

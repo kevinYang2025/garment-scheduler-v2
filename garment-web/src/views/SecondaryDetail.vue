@@ -5,6 +5,13 @@ import api from '../api'
 import StylePicker from '../components/StylePicker.vue'
 import DailyScheduleTable from '../components/DailyScheduleTable.vue'
 import PrintingPlanDetail from './PrintingPlanDetail.vue'
+import EmbroideryPlanDetail from './EmbroideryPlanDetail.vue'
+import TemplatePlanDetail from './TemplatePlanDetail.vue'
+import IroningPlanDetail from './IroningPlanDetail.vue'
+import { useVirtualScroll } from '../composables/useVirtualScroll'
+
+// 虚拟滚动（行高 50px：el-table 默认小号行高）
+const vs = useVirtualScroll(50, 8)
 
 const props = defineProps({
   secondaryType: { type: String, required: true },
@@ -40,6 +47,11 @@ const expandedSet = ref(new Set())
 const expandedRows = computed(() => Array.from(expandedSet.value))
 const editingId = ref(null)
 const editForm = ref({})
+
+// 虚拟滚动切片：每个 master = 1 行（不含展开行；展开行作为附加 tr 紧跟主行）
+const vtStartIndex = computed(() => Math.max(0, Math.floor(vs.scrollTop.value / vs.rowHeight) - vs.bufferRows))
+const vtVisibleCount = computed(() => Math.ceil(vs.containerHeight.value / vs.rowHeight) + vs.bufferRows * 2)
+const vtVisibleRows = computed(() => masters.value.slice(vtStartIndex.value, vtStartIndex.value + vtVisibleCount.value))
 
 const defaultForm = () => ({
   style_id: null, style_no: '', product_name: '', color: '', size_spec: '',
@@ -256,11 +268,19 @@ watch(() => props.secondaryType, () => {
   editForm.value = {}
   load()
 })
+function scrollToTop() {
+  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  if (el) el.scrollTop = 0
+}
+
 onMounted(load)
 </script>
 
 <template>
   <PrintingPlanDetail v-if="secondaryType === 'printing'" @back="emit('back')" />
+  <EmbroideryPlanDetail v-else-if="secondaryType === 'embroidery'" @back="emit('back')" />
+  <IroningPlanDetail v-else-if="secondaryType === 'ironing'" @back="emit('back')" />
+  <TemplatePlanDetail v-else-if="secondaryType === 'template'" @back="emit('back')" />
   <div v-else class="secondary-detail">
     <!-- 顶部操作栏 -->
     <div class="detail-header">
@@ -297,72 +317,98 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- 排程列表 -->
-    <el-table
-      :data="masters" size="small" border stripe style="width:100%"
-      row-key="id" :expand-row-keys="expandedRows"
-      @expand-change="(row, expanded) => toggleExpand(row)"
-    >
-      <el-table-column type="expand">
-        <template #default="{ row }">
-          <div class="expand-content">
-            <DailyScheduleTable
-              :master-id="row.id"
-              schedule-type="secondary"
-              :style-no="row.style_no"
-              :color="row.color"
-              :size-spec="row.size_spec"
-            />
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="style_no" label="款号" width="100" />
-      <el-table-column prop="product_name" label="品名" width="140" />
-      <el-table-column prop="color" label="颜色" width="80" />
-      <el-table-column prop="size_spec" label="规格" width="80" />
-      <el-table-column prop="plan_qty" label="计划数" width="90" align="right" />
-      <el-table-column label="计划上线" width="130">
-        <template #default="{ row }">
-          <template v-if="editingId === row.id">
-            <el-input v-model="editForm.plan_start" type="date" size="small" />
+    <!-- 排程列表（自实现虚拟滚动，绕开 el-table-v2 兼容问题） -->
+    <div ref="vs.container" class="vt-container" @scroll="vs.onScroll">
+      <table class="excel-table">
+        <colgroup>
+          <col style="width:40px">
+          <col style="width:100px"><col style="width:140px"><col style="width:80px"><col style="width:80px">
+          <col style="width:90px"><col style="width:130px"><col style="width:130px">
+          <col style="width:180px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th>
+            <th>款号</th>
+            <th>品名</th>
+            <th>颜色</th>
+            <th>规格</th>
+            <th>计划数</th>
+            <th>计划上线</th>
+            <th>计划下线</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 顶部占位 -->
+          <tr v-if="vtStartIndex > 0" :style="{ height: (vtStartIndex * vs.rowHeight) + 'px' }">
+            <td :colspan="9" style="padding:0;border:0"></td>
+          </tr>
+          <template v-for="row in vtVisibleRows" :key="row.id">
+            <tr :class="{ 'editing-row': editingId === row.id }">
+              <td>
+                <span class="collapse-btn" @click="toggleExpand(row)">
+                  {{ expandedSet.has(row.id) ? '▼' : '▶' }}
+                </span>
+              </td>
+              <td>{{ row.style_no }}</td>
+              <td>{{ row.product_name }}</td>
+              <td>{{ row.color }}</td>
+              <td>{{ row.size_spec }}</td>
+              <td class="num">{{ row.plan_qty?.toLocaleString() }}</td>
+              <td>
+                <el-input v-if="editingId === row.id" v-model="editForm.plan_start" type="date" size="small" />
+                <span v-else>{{ row.plan_start }}</span>
+              </td>
+              <td>
+                <el-input v-if="editingId === row.id" v-model="editForm.plan_end" type="date" size="small" />
+                <span v-else>{{ row.plan_end }}</span>
+              </td>
+              <td>
+                <template v-if="editingId === row.id">
+                  <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
+                  <el-button size="small" text @click="cancelEdit">取消</el-button>
+                </template>
+                <template v-else>
+                  <el-button size="small" text @click="toggleExpand(row)">
+                    {{ expandedSet.has(row.id) ? '收起' : '展开' }}
+                  </el-button>
+                  <el-button
+                    v-if="hasPermission(`secondary:${secondaryType}:edit`)"
+                    size="small" text @click="startEdit(row)"
+                  >编辑</el-button>
+                  <el-button
+                    v-if="hasPermission(`secondary:${secondaryType}:edit`)"
+                    size="small" text type="danger" @click="remove(row.id)"
+                  >删除</el-button>
+                </template>
+              </td>
+            </tr>
+            <!-- 展开行：固定高度 240px，包含 DailyScheduleTable -->
+            <tr v-if="expandedSet.has(row.id)" class="expand-row">
+              <td :colspan="9" style="padding:12px;background:var(--bg)">
+                <DailyScheduleTable
+                  :master-id="row.id"
+                  schedule-type="secondary"
+                  :style-no="row.style_no"
+                  :color="row.color"
+                  :size-spec="row.size_spec"
+                />
+              </td>
+            </tr>
           </template>
-          <template v-else>{{ row.plan_start }}</template>
-        </template>
-      </el-table-column>
-      <el-table-column label="计划下线" width="130">
-        <template #default="{ row }">
-          <template v-if="editingId === row.id">
-            <el-input v-model="editForm.plan_end" type="date" size="small" />
-          </template>
-          <template v-else>{{ row.plan_end }}</template>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
-        <template #default="{ row }">
-          <template v-if="editingId === row.id">
-            <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
-            <el-button size="small" text @click="cancelEdit">取消</el-button>
-          </template>
-          <template v-else>
-            <el-button size="small" text @click="toggleExpand(row)">
-              {{ expandedRows.includes(row.id) ? '收起' : '展开' }}
-            </el-button>
-            <el-button
-              v-if="hasPermission(`secondary:${secondaryType}:edit`)"
-              size="small" text @click="startEdit(row)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              v-if="hasPermission(`secondary:${secondaryType}:edit`)"
-              size="small" text type="danger" @click="remove(row.id)"
-            >
-              删除
-            </el-button>
-          </template>
-        </template>
-      </el-table-column>
-    </el-table>
+          <!-- 底部占位 -->
+          <tr v-if="(vtStartIndex + vtVisibleRows.length) < masters.length" :style="{ height: ((masters.length - vtStartIndex - vtVisibleRows.length) * vs.rowHeight) + 'px' }">
+            <td :colspan="9" style="padding:0;border:0"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 回到顶部 -->
+    <div class="scroll-top-btn" @click="scrollToTop">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
+    </div>
 
     <!-- 新增排程弹窗 -->
     <el-dialog v-model="dialogVisible" title="新增排程" width="550px">
@@ -457,6 +503,31 @@ onMounted(load)
 </template>
 
 <style scoped>
+.vt-container {
+  flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card);
+}
+.excel-table { border-collapse: collapse; font-size: 13px; color: var(--text); width: 100%; }
+.excel-table thead th {
+  padding: 12px 14px; background: var(--card); color: var(--text-tertiary); font-size: 11px;
+  font-weight: 500; letter-spacing: 0.3px; border-bottom: 1px solid var(--border);
+  text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 3;
+}
+.excel-table td {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-light); white-space: nowrap; text-align: center;
+  height: 50px;
+}
+.excel-table tbody tr:hover td { background: var(--primary-light); }
+.editing-row td { background: var(--primary-light) !important; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; font-family: 'Helvetica Neue', Arial, sans-serif; }
+.collapse-btn {
+  cursor: pointer; user-select: none; font-size: 10px; color: var(--text-tertiary);
+  transition: color 0.15s;
+}
+.collapse-btn:hover { color: var(--primary); }
+.expand-row td { padding: 0 !important; }
+</style>
+
+<style scoped>
 .secondary-detail {
   max-width: 1400px;
 }
@@ -517,4 +588,21 @@ onMounted(load)
   font-size: 13px;
   color: var(--text-secondary);
 }
+.scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scroll-top-btn:hover { background: var(--primary-hover); }
 </style>

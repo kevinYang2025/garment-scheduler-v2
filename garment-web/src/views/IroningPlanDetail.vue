@@ -3,71 +3,57 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import TextFilter from '../components/TextFilter.vue'
-import NumberFilter from '../components/NumberFilter.vue'
-import DateFilter from '../components/DateFilter.vue'
 import { useVirtualScroll } from '../composables/useVirtualScroll'
 
 // 虚拟滚动（行高 38px：10+14 padding + 13px font + 1px border）
 const vs = useVirtualScroll(38, 8)
+import NumberFilter from '../components/NumberFilter.vue'
 
 const emit = defineEmits(['back'])
 
 const planRows = ref([])
 const dateRange = ref([])
 
-// 导入相关
-const importDialogVisible = ref(false)
-const importFile = ref(null)
-const importPreview = ref(null)
-const importing = ref(false)
-const importMode = ref('skip')
-
-// 新增排程相关
-const dialogVisible = ref(false)
-const form = ref({})
-
-// 筛选排序
+// 筛选 & 排序
 const textFilters = ref({})
 const numFilters = ref({})
-const dateFilters = ref({})
 const sortState = ref({ field: '', sortBy: 'name', dir: 'asc' })
 
 function onTextFilter(field, f) { textFilters.value = { ...textFilters.value, [field]: { ...f, applied: true } } }
 function onNumFilter(field, f) { numFilters.value = { ...numFilters.value, [field]: { ...f, applied: true } } }
-function onDateFilter(field, f) { dateFilters.value = { ...dateFilters.value, [field]: { validDates: f.validDates, hasEmpty: f.hasEmpty } } }
-function isFilterActive(field, type) {
-  if (type === 'date') { const df = dateFilters.value[field]; return df && (df.validDates?.size > 0 || df.hasEmpty) }
+function isFilterActive(field) {
   return !!textFilters.value[field]?.applied || !!numFilters.value[field]?.applied
 }
 function onSort(field, sortBy, dir) { sortState.value = { field, sortBy, dir } }
 
-const filteredRows = computed(() => {
-  let list = planRows.value.filter(r => r.order_qty > 0)  // 过滤空行
+const filteredPlanRows = computed(() => {
+  let list = planRows.value.slice()
   for (const [field, f] of Object.entries(textFilters.value)) {
     if (!f || !f.applied) continue
     list = list.filter(r => {
-      const val = r[field] || ''; const hasVal = !!val
-      if (hasVal && !f.checked.has(val)) return false
-      if (!hasVal && !f.includeEmpty) return false
+      const val = r[field] || ''
+      if (val && !f.checked.has(val)) return false
+      if (!val && !f.includeEmpty) return false
       return true
     })
   }
-  for (const [field, f] of Object.entries(dateFilters.value)) {
-    if (!f || ((!f.validDates || f.validDates.size === 0) && !f.hasEmpty)) continue
+  for (const [field, f] of Object.entries(numFilters.value)) {
+    if (!f || !f.applied) continue
     list = list.filter(r => {
-      const d = r[field] || ''
-      if (d && f.validDates && !f.validDates.has(d)) return false
-      if (!d && !f.hasEmpty) return false
+      const v = parseInt(r[field]) || 0
+      if (f.min != null && v < f.min) return false
+      if (f.max != null && v > f.max) return false
       return true
     })
   }
   if (sortState.value.field) {
-    const { field, sortBy, dir } = sortState.value; const mul = dir === 'asc' ? 1 : -1
+    const { field, sortBy, dir } = sortState.value
+    const mul = dir === 'asc' ? 1 : -1
     list.sort((a, b) => {
       let va, vb
-      if (sortBy === 'number') { va = parseInt(a[field]) || 0; vb = parseInt(b[field]) || 0; return (va - vb) * mul }
-      va = a[field] || ''; vb = b[field] || ''
-      return va.localeCompare(vb, 'zh') * mul
+      if (sortBy === 'number') { va = parseInt(a[field]) || 0; vb = parseInt(b[field]) || 0 }
+      else { va = a[field] || ''; vb = b[field] || '' }
+      return va < vb ? -mul : va > vb ? mul : 0
     })
   }
   return list
@@ -80,19 +66,16 @@ function shiftWeek(dir) { viewOffset.value += dir * 7 }
 const _d = new Date()
 const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
 
-// 可见日期列 — 直接按窗口计算，不受API dateRange限制
+// 可见日期列：从前一周到后三周，自行生成
 const visibleDates = computed(() => {
   const d = new Date(today + 'T00:00:00')
   const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
   const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
   const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
-  const result = []
+  const dates = []
   const cur = new Date(ws)
-  while (cur <= we) {
-    result.push(fmt(cur))
-    cur.setDate(cur.getDate() + 1)
-  }
-  return result
+  while (cur <= we) { dates.push(fmt(cur)); cur.setDate(cur.getDate() + 1) }
+  return dates
 })
 
 const dateRangeLabel = computed(() => {
@@ -113,29 +96,23 @@ function toggleCollapse(styleNo) {
 function isCollapsed(styleNo) { return !expandedSet.value.has(styleNo) }
 function groupRowCount(styleNo) { return planRows.value.filter(r => r.style_no === styleNo).length }
 
-// 按款号分组 + 预构建日期Map + 折叠汇总
+// 按款号分组 + 折叠汇总
 const groupedRows = computed(() => {
-  // 按款号聚合
   const styleGroups = {}
-  for (const r of filteredRows.value) {
+  for (const r of filteredPlanRows.value) {
     if (!styleGroups[r.style_no]) styleGroups[r.style_no] = { product_name: r.product_name, rows: [] }
     styleGroups[r.style_no].rows.push(r)
   }
-
   const result = []
   let lastStyle = ''
-  for (const r of filteredRows.value) {
+  for (const r of filteredPlanRows.value) {
     const firstOfGroup = r.style_no !== lastStyle
     lastStyle = r.style_no
-
     if (firstOfGroup && !expandedSet.value.has(r.style_no)) {
-      // 折叠状态：插入汇总行
       const group = styleGroups[r.style_no]
       const totalOrder = group.rows.reduce((s, x) => s + x.order_qty, 0)
       const totalPlan = group.rows.reduce((s, x) => s + x.totalPlan, 0)
       const totalActual = group.rows.reduce((s, x) => s + x.totalActual, 0)
-      const totalDiff = totalActual - totalPlan
-      // 聚合日期数据
       const dateMap = {}
       for (const rr of group.rows) {
         for (const dd of rr.dateData) {
@@ -148,13 +125,12 @@ const groupedRows = computed(() => {
       result.push({
         style_no: r.style_no, product_name: r.product_name,
         color: '', size_spec: '',
-        order_qty: totalOrder, totalPlan, totalActual, totalDiff,
+        order_qty: totalOrder, totalPlan, totalActual, totalDiff: totalActual - totalPlan,
         dateMap, firstOfGroup: true, collapsed: true,
       })
       continue
     }
-    if (firstOfGroup === false && !expandedSet.value.has(r.style_no)) continue
-
+    if (!firstOfGroup && !expandedSet.value.has(r.style_no)) continue
     const dateMap = {}
     for (const dd of r.dateData) { dateMap[dd.date] = dd }
     result.push({ ...r, firstOfGroup, dateMap })
@@ -183,111 +159,17 @@ const vtVisibleRows = computed(() => tableRows.value.slice(vtStartIndex.value, v
 
 async function load() {
   try {
-    const { data } = await api.getPrintingDailyPlan()
+    const { data } = await api.getIroningDailyPlan()
     planRows.value = data.rows || []
     dateRange.value = data.dateRange || []
   } catch (e) {
-    console.error('加载印花排程失败:', e)
-    ElMessage.error('加载印花排程失败')
+    console.error('加载烫标排程失败:', e)
+    ElMessage.error('加载烫标排程失败')
   }
-}
-
-function doExport() {
-  // 导出CSV
-  if (!planRows.value.length) { ElMessage.warning('暂无数据'); return }
-  const headers = ['款号', '品名', '颜色', '尺码', '原单量', '合计', '类型', ...dateRange.value]
-  const csvRows = [headers.join(',')]
-  for (const row of groupedRows.value) {
-    const planLine = [row.style_no, row.product_name, row.color, row.size_spec, row.order_qty, row.totalPlan, '计划']
-    for (const d of dateRange.value) {
-      const dd = row.dateMap[d]
-      planLine.push(dd ? dd.plan : '')
-    }
-    csvRows.push(planLine.join(','))
-    const actLine = ['', '', '', '', '', row.totalActual, '实际']
-    for (const d of dateRange.value) {
-      const dd = row.dateMap[d]
-      actLine.push(dd ? dd.actual : '')
-    }
-    csvRows.push(actLine.join(','))
-  }
-  const bom = '\uFEFF'
-  const blob = new Blob([bom + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a'); a.href = url; a.download = '印花排程.csv'; a.click()
-  URL.revokeObjectURL(url)
-}
-
-function openCreate() {
-  form.value = { style_no: '', color: '', size_spec: '', plan_qty: 0, plan_start: '', plan_end: '', daily_target: 0 }
-  dialogVisible.value = true
-}
-
-async function create() {
-  if (!form.value.style_no) { ElMessage.warning('款号不能为空'); return }
-  try {
-    await api.confirmPrintingPlan({
-      style_no: form.value.style_no, color: form.value.color, size_spec: form.value.size_spec,
-      plan_start: form.value.plan_start, plan_end: form.value.plan_end,
-      plan_qty: form.value.plan_qty, daily_target: form.value.daily_target,
-    })
-    dialogVisible.value = false
-    ElMessage.success('创建成功')
-    await load()
-  } catch (e) { ElMessage.error('创建失败') }
-}
-
-function onImportFileChange(e) { importFile.value = e.target.files[0] }
-
-async function doImport() {
-  if (!importFile.value || importing.value) return
-  if (importFile.value.size > 5 * 1024 * 1024) { ElMessage.warning('文件大小不能超过 5 MB'); return }
-  importing.value = true
-  try {
-    const XLSX = await import('xlsx')
-    const data = await importFile.value.arrayBuffer()
-    const wb = XLSX.read(data, { type: 'array' })
-    const ws = wb.Sheets[wb.SheetNames[0]]
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
-    if (rows.length < 2) { importing.value = false; return ElMessage.error('格式不正确') }
-    const headers = rows[0]
-    const records = []
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i]
-      if (!row || row.every(c => c == null)) continue
-      records.push({
-        '款号': row[0], '颜色': row[1], '尺码': row[2],
-        '原单量': parseInt(row[3]) || 0, '印花日产量': parseInt(row[4]) || 0,
-        '印花开始': row[5], '印花结束': row[6],
-      })
-    }
-    importPreview.value = records
-  } catch (e) { ElMessage.error('解析失败: ' + e.message) }
-  importing.value = false
-}
-
-async function confirmImport() {
-  if (!importPreview.value?.length) return
-  importing.value = true
-  try {
-    for (const rec of importPreview.value) {
-      await api.confirmPrintingPlan({
-        style_no: rec['款号'], color: rec['颜色'], size_spec: rec['尺码'],
-        plan_start: rec['印花开始'], plan_end: rec['印花结束'],
-        plan_qty: rec['原单量'], daily_target: rec['印花日产量'],
-      })
-    }
-    ElMessage.success(`导入完成: ${importPreview.value.length} 条`)
-    importDialogVisible.value = false
-    importPreview.value = null
-    importFile.value = null
-    await load()
-  } catch (e) { ElMessage.error('导入失败: ' + (e.response?.data?.error || e.message)) }
-  importing.value = false
 }
 
 async function saveActual(row, date) {
-  const dd = row.dateMap[date]
+  const dd = row.dateData.find(d => d.date === date)
   if (!dd) return
   try {
     await api.post('/schedule/sewing-daily-plan/actual', {
@@ -309,7 +191,7 @@ async function saveActual(row, date) {
 function dateLabel(d) { return d ? d.slice(5) : '' }
 
 // 编辑模式
-const editingKey = ref(null) // 'styleNo|color|sizeSpec'
+const editingKey = ref(null)
 const editForm = ref({})
 
 function startEdit(row) {
@@ -335,7 +217,6 @@ function cancelEdit() {
 }
 
 async function savePlanEdit(row) {
-  // 更新本地数据
   row.order_qty = editForm.value.order_qty
   let newTotal = 0
   for (const d of visibleDates.value) {
@@ -350,9 +231,8 @@ async function savePlanEdit(row) {
   row.totalPlan = newTotal
   row.totalDiff = row.totalActual - row.totalPlan
 
-  // 保存到后端
   try {
-    await api.post('/schedule/printing-daily-plan/plan', {
+    await api.post('/schedule/ironing-daily-plan/plan', {
       style_no: row.style_no,
       color: row.color,
       size_spec: row.size_spec,
@@ -368,6 +248,113 @@ async function savePlanEdit(row) {
   editForm.value = {}
 }
 
+// 导出
+function doExport() {
+  try {
+    const XLSX = require('xlsx')  // fallback
+  } catch {}
+  const headers = ['款号', '品名', '颜色', '尺码', '原单量', '合计(计划)', '合计(实际)', '合计(差异)', ...visibleDates.value.map(d => d.slice(5))]
+  const lines = [headers.join(',')]
+  for (const row of planRows.value) {
+    const line = [
+      row.style_no, row.product_name, row.color, row.size_spec,
+      row.order_qty, row.totalPlan, row.totalActual, row.totalDiff,
+      ...visibleDates.value.map(d => {
+        const dd = row.dateData?.find(x => x.date === d)
+        return dd ? dd.plan : ''
+      })
+    ]
+    lines.push(line.map(v => `"${v ?? ''}"`).join(','))
+  }
+  const bom = '﻿'
+  const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `烫标排程_${today}.csv`; a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('导出成功')
+}
+
+// 导入实际产量
+const importDialogVisible = ref(false)
+const importFile = ref(null)
+const importing = ref(false)
+const importMode = ref('skip')
+const importPreview = ref(null)
+
+function onImportFileChange(e) { importFile.value = e.target.files[0] }
+
+async function doImport() {
+  if (!importFile.value) return
+  if (importing.value) return
+  importing.value = true
+  try {
+    const XLSX = await import('xlsx')
+    const data = await importFile.value.arrayBuffer()
+    const wb = XLSX.read(data, { type: 'array' })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+    if (rows.length < 2) { importing.value = false; return ElMessage.error('格式不正确') }
+    const records = []
+    for (const r of rows) {
+      const styleNo = r['款号'] || r['style_no'] || ''
+      const color = r['颜色'] || r['color'] || ''
+      const sizeSpec = r['尺码'] || r['size_spec'] || r['规格'] || ''
+      const date = r['日期'] || r['date'] || r['production_date'] || ''
+      const qty = parseInt(r['数量'] || r['qty'] || r['completed_qty'] || 0)
+      if (styleNo && date && qty > 0) {
+        records.push({ style_no: styleNo, color, size_spec: sizeSpec, production_date: date, completed_qty: qty, schedule_type: 'secondary' })
+      }
+    }
+    importPreview.value = records
+  } catch (e) {
+    ElMessage.error('文件解析失败: ' + (e.message || '请检查格式'))
+    importPreview.value = null
+  }
+  importing.value = false
+}
+
+async function confirmImport() {
+  if (!importPreview.value?.length) return
+  importing.value = true
+  try {
+    const { data } = await api.importSchedule('secondary', importPreview.value, importMode.value)
+    ElMessage.success(`导入完成: ${data.imported} 条, 跳过 ${data.skipped} 条`)
+    importDialogVisible.value = false
+    importPreview.value = null; importFile.value = null
+    await load()
+  } catch (e) { ElMessage.error('导入失败: ' + (e.response?.data?.error || e.message)) }
+  importing.value = false
+}
+
+// 新增排程弹窗
+const createDialogVisible = ref(false)
+const createForm = ref({ style_no: '', product_name: '', color: '', size_spec: '', plan_qty: 0, ironing_start: '', ironing_end: '' })
+
+function openCreate() {
+  createForm.value = { style_no: '', product_name: '', color: '', size_spec: '', plan_qty: 0, ironing_start: today, ironing_end: today }
+  createDialogVisible.value = true
+}
+
+async function createSchedule() {
+  if (!createForm.value.style_no) { ElMessage.warning('请填写款号'); return }
+  try {
+    await api.post('/schedule/secondary', {
+      style_no: createForm.value.style_no,
+      product_name: createForm.value.product_name,
+      color: createForm.value.color,
+      size_spec: createForm.value.size_spec,
+      plan_qty: createForm.value.plan_qty,
+      plan_start: createForm.value.ironing_start,
+      plan_end: createForm.value.ironing_end,
+      secondary_type: 'ironing',
+    })
+    createDialogVisible.value = false
+    ElMessage.success('新增成功')
+    await load()
+  } catch (e) { ElMessage.error('新增失败: ' + (e.response?.data?.error || e.message)) }
+}
+
 // Drag-to-scroll 已删除（虚拟滚动用滚轮/触摸板即可）
 
 function scrollToTop() {
@@ -381,7 +368,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="printing-detail">
+  <div class="ironing-detail">
     <div class="detail-header">
       <div class="header-left">
         <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
@@ -395,16 +382,16 @@ onMounted(async () => {
         <span class="date-range-label">{{ dateRangeLabel }}</span>
       </div>
       <div class="header-actions">
-        <el-button type="primary" @click="importDialogVisible = true">导入Excel</el-button>
+        <el-button type="primary" @click="importDialogVisible = true">导入实际产量</el-button>
         <el-button @click="doExport">导出Excel</el-button>
         <el-button type="success" @click="openCreate">+ 新增排程</el-button>
       </div>
     </div>
 
     <div v-if="!planRows.length" style="text-align:center;padding:60px;color:var(--text-tertiary)">
-      暂无印花排程数据
+      暂无烫标排程数据
       <div style="margin-top:12px;font-size:12px;color:var(--text-tertiary)">
-        需要：1. 款式管理中有印花款式 2. 面料装柜清单存在该款式 3. 预排总计划有印花日期
+        需要：1. 款式管理中有烫标款式 2. 面料装柜清单存在该款式 3. 预排总计划有烫标日期
       </div>
     </div>
 
@@ -544,75 +531,80 @@ onMounted(async () => {
     <div class="scroll-top-btn" @click="scrollToTop">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
     </div>
+    <div class="data-source-hint">数据来源：基础数据/款式管理 → 面料装柜清单 → 分色分尺码 → 预排总计划</div>
+
+    <!-- 新增排程弹窗 -->
+    <el-dialog v-model="createDialogVisible" title="新增烫标排程" width="520px">
+      <el-form :model="createForm" label-width="90px" size="small">
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="款号" required><el-input v-model="createForm.style_no" placeholder="例：C3-E402" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="品名"><el-input v-model="createForm.product_name" placeholder="例：圆领长袖/烫标" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="颜色"><el-input v-model="createForm.color" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="尺码"><el-input v-model="createForm.size_spec" /></el-form-item></el-col>
+        </el-row>
+        <el-form-item label="原单量"><el-input-number v-model="createForm.plan_qty" :min="0" style="width:100%" /></el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="烫标上线"><el-input v-model="createForm.ironing_start" type="date" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="烫标下线"><el-input v-model="createForm.ironing_end" type="date" /></el-form-item></el-col>
+        </el-row>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible=false">取消</el-button>
+        <el-button type="primary" @click="createSchedule">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入弹窗 -->
+    <el-dialog v-model="importDialogVisible" title="导入实际产量" width="600px">
+      <div style="margin-bottom:12px">
+        <input type="file" accept=".xlsx,.xls" @change="onImportFileChange" />
+        <span v-if="importFile" style="margin-left:8px;color:var(--primary-dark)">{{ importFile.name }}</span>
+      </div>
+      <div v-if="importFile" style="margin-bottom:12px">
+        <el-button @click="doImport" type="primary" :loading="importing">解析预览</el-button>
+        <el-radio-group v-model="importMode" style="margin-left:12px">
+          <el-radio value="skip">跳过重复</el-radio>
+          <el-radio value="overwrite">覆盖已有</el-radio>
+        </el-radio-group>
+      </div>
+      <div v-if="importPreview?.length" style="max-height:300px;overflow:auto">
+        <div style="margin-bottom:4px;font-size:12px;color:var(--text-secondary)">共 {{ importPreview.length }} 条</div>
+        <el-table :data="importPreview" size="small" border max-height="220">
+          <el-table-column label="款号" width="100"><template #default="{row}">{{ row.style_no }}</template></el-table-column>
+          <el-table-column label="颜色" width="60"><template #default="{row}">{{ row.color }}</template></el-table-column>
+          <el-table-column label="尺码" width="60"><template #default="{row}">{{ row.size_spec }}</template></el-table-column>
+          <el-table-column label="日期" width="95"><template #default="{row}">{{ row.production_date }}</template></el-table-column>
+          <el-table-column label="数量" width="60"><template #default="{row}">{{ row.completed_qty }}</template></el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmImport" :loading="importing" :disabled="!importPreview?.length">确认导入</el-button>
+      </template>
+    </el-dialog>
   </div>
-
-  <!-- 新增排程弹窗 -->
-  <el-dialog v-model="dialogVisible" title="新增印花排程" width="520px">
-    <el-form :model="form" label-width="90px" size="small">
-      <el-row :gutter="12">
-        <el-col :span="12"><el-form-item label="款号"><el-input v-model="form.style_no" placeholder="例：NTJ62633" /></el-form-item></el-col>
-        <el-col :span="12"><el-form-item label="颜色"><el-input v-model="form.color" placeholder="例：K 黑" /></el-form-item></el-col>
-      </el-row>
-      <el-row :gutter="12">
-        <el-col :span="12"><el-form-item label="尺码"><el-input v-model="form.size_spec" placeholder="例：140" /></el-form-item></el-col>
-        <el-col :span="12"><el-form-item label="原单量"><el-input-number v-model="form.plan_qty" :min="1" style="width:100%" /></el-form-item></el-col>
-      </el-row>
-      <el-row :gutter="12">
-        <el-col :span="12"><el-form-item label="印花上线"><el-input v-model="form.plan_start" type="date" /></el-form-item></el-col>
-        <el-col :span="12"><el-form-item label="印花日产量"><el-input-number v-model="form.daily_target" :min="1" :step="100" style="width:100%" /></el-form-item></el-col>
-      </el-row>
-    </el-form>
-    <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" @click="create">创建</el-button></template>
-  </el-dialog>
-
-  <!-- 导入Excel弹窗 -->
-  <el-dialog v-model="importDialogVisible" title="导入Excel" width="600px">
-    <div style="margin-bottom:12px">
-      <input type="file" accept=".xlsx,.xls" @change="onImportFileChange" />
-      <span v-if="importFile" style="margin-left:8px;color:var(--primary-dark)">{{ importFile.name }}</span>
-    </div>
-    <div v-if="importFile" style="margin-bottom:12px">
-      <el-button @click="doImport" type="primary" :loading="importing">解析预览</el-button>
-      <el-radio-group v-model="importMode" style="margin-left:12px">
-        <el-radio value="skip">跳过重复</el-radio>
-        <el-radio value="overwrite">覆盖已有</el-radio>
-      </el-radio-group>
-    </div>
-    <div v-if="importPreview?.length" style="max-height:300px;overflow:auto">
-      <div style="margin-bottom:4px;font-size:12px;color:var(--text-secondary)">共 {{ importPreview.length }} 条</div>
-      <el-table :data="importPreview" size="small" border max-height="220">
-        <el-table-column label="款号" width="100"><template #default="{row}">{{ row['款号'] }}</template></el-table-column>
-        <el-table-column label="颜色" width="80"><template #default="{row}">{{ row['颜色'] }}</template></el-table-column>
-        <el-table-column label="尺码" width="60"><template #default="{row}">{{ row['尺码'] }}</template></el-table-column>
-        <el-table-column label="原单量" width="80"><template #default="{row}">{{ row['原单量'] }}</template></el-table-column>
-        <el-table-column label="开始" width="95"><template #default="{row}">{{ row['印花开始'] }}</template></el-table-column>
-      </el-table>
-    </div>
-    <template #footer>
-      <el-button @click="importDialogVisible = false">取消</el-button>
-      <el-button type="primary" @click="confirmImport" :loading="importing" :disabled="!importPreview?.length">确认导入</el-button>
-    </template>
-  </el-dialog>
 </template>
 
 <style scoped>
-.printing-detail { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ironing-detail { display: flex; flex-direction: column; height: 100%; }
 
-.detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); gap: 12px; flex-shrink: 0; }
+.detail-header { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); gap: 12px; }
 .header-left { display: flex; align-items: center; flex-shrink: 0; }
 .header-nav { display: flex; align-items: center; gap: 8px; justify-content: center; flex: 1; }
-.header-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
-.data-source-hint { font-size: 11px; color: var(--text-tertiary); background: var(--bg); padding: 4px 8px; border-radius: var(--radius-sm); }
+.header-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; margin-left: auto; }
+.data-source-hint { font-size: 11px; color: var(--text-tertiary); background: var(--bg); padding: 4px 8px; border-radius: var(--radius-sm); margin-top: auto; }
 
-.nav-arrows { display: flex; align-items: center; gap: 4px; }
+.nav-arrows { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .nav-btn {
   padding: 6px 12px; background: var(--primary); color: #fff; border: none;
   border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 500;
-  transition: var(--transition); line-height: 1;
+  transition: var(--transition); line-height: 1; white-space: nowrap; flex-shrink: 0;
 }
 .nav-btn:hover { background: var(--primary-dark); }
 .nav-btn.today-btn { font-weight: 600; padding: 6px 14px; }
-.date-range-label { font-size: 14px; font-weight: 600; color: var(--text); min-width: 120px; text-align: center; margin-left: 4px; }
+.date-range-label { font-size: 14px; font-weight: 600; color: var(--text); min-width: 120px; text-align: center; margin-left: 4px; white-space: nowrap; }
 
 .excel-wrap {
   flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card);
@@ -643,6 +635,8 @@ onMounted(async () => {
 .row-plan { background: #f5f0ff; }
 .row-actual { background: #f0fff4; }
 .row-diff { background: #fffaf0; }
+.editing-row { background: #fff3cd !important; }
+.editing-row .fix { background: #fff3cd !important; }
 .row-diff td { border-bottom: 2px solid var(--border); }
 .first-group td { border-top: 2px solid var(--primary); }
 .collapse-btn { cursor: pointer; user-select: none; margin-right: 4px; font-size: 10px; color: var(--text-tertiary); transition: color 0.15s; }
@@ -683,8 +677,6 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 }
 .cell-inp:hover { border-color: var(--border); }
 .cell-inp:focus { border-color: var(--primary); outline: none; background: #fff; }
-.editing-row td { background: var(--primary-light) !important; box-shadow: inset 3px 0 0 var(--primary); }
-.editing-row .fix { background: var(--primary-light) !important; }
 .scroll-top-btn {
   position: fixed;
   bottom: 24px;
