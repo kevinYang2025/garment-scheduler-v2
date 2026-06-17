@@ -507,6 +507,20 @@ function createTables() {
       plan_qty INTEGER DEFAULT 0,
       created_at TEXT DEFAULT ''
     );
+
+    -- [B-01 fix] 计划覆盖：用户手动编辑 daily-plan 时的"覆盖值"
+    -- 之前用 actual_production.schedule_type='plan_override_<type>' 复用,语义混乱
+    -- 拆出来独立成表
+    CREATE TABLE IF NOT EXISTS schedule_plan_overrides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      secondary_type TEXT NOT NULL,    -- printing/embroidery/template/ironing
+      style_no TEXT NOT NULL,
+      color TEXT DEFAULT '',
+      size_spec TEXT DEFAULT '',
+      production_date TEXT NOT NULL,
+      qty INTEGER DEFAULT 0,
+      UNIQUE(secondary_type, style_no, color, size_spec, production_date)
+    );
   `);
 }
 
@@ -654,6 +668,34 @@ function migrateStyles() {
 
   // 迁移：产线加日产量字段
   try { db.prepare("ALTER TABLE production_lines ADD COLUMN daily_output INTEGER DEFAULT 0").run() } catch {}
+
+  // [B-01 fix] 一次性迁移:把旧的 plan_override_<type> 行从 actual_production 复制到 schedule_plan_overrides
+  // 完成后不删除旧行(保留审计);新代码不再读旧位置
+  try {
+    const oldOverrides = db.prepare(`
+      SELECT * FROM actual_production
+      WHERE schedule_type LIKE 'plan_override_%'
+    `).all();
+    if (oldOverrides.length > 0) {
+      const ins = db.prepare(`
+        INSERT OR IGNORE INTO schedule_plan_overrides
+          (secondary_type, style_no, color, size_spec, production_date, qty)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      let migrated = 0;
+      const txn = db.transaction(() => {
+        for (const r of oldOverrides) {
+          // schedule_type 形如 'plan_override_printing'
+          const sec = String(r.schedule_type).replace(/^plan_override_/, '');
+          ins.run(sec, r.style_no || '', r.color || '', r.size_spec || '',
+                  r.production_date || '', r.completed_qty || 0);
+          migrated++;
+        }
+      });
+      txn();
+      console.log(`✅ 迁移 plan_override 数据: ${migrated} 条 → schedule_plan_overrides`);
+    }
+  } catch (e) { console.log('plan_override migration skip:', e.message); }
 }
 
 function seedDefaultData() {
