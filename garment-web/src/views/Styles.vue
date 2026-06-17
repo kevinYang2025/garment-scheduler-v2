@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, shallowRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { useVirtualScroll } from '../composables/useVirtualScroll'
 import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
@@ -197,6 +198,12 @@ const filteredStyles = computed(() => {
   })
 })
 
+// ============ 虚拟滚动 ============
+const vs = useVirtualScroll(36, 8)
+const vtTotalHeight = computed(() => filteredStyles.value.length * vs.rowHeight)
+const vtStartIndex = computed(() => Math.max(0, Math.floor(vs.scrollTop.value / vs.rowHeight) - vs.bufferRows))
+const vtVisibleCount = computed(() => Math.ceil(vs.containerHeight.value / vs.rowHeight) + vs.bufferRows * 2)
+const vtVisibleRows = computed(() => filteredStyles.value.slice(vtStartIndex.value, vtStartIndex.value + vtVisibleCount.value))
 
 async function loadStyles() {
   loading.value = true
@@ -379,7 +386,7 @@ onUnmounted(() => {
     </div>
 
     <div class="excel-wrap">
-      <div class="excel-body" ref="bodyRef">
+      <div class="excel-body" ref="vs.container" @scroll="vs.onScroll" @mousedown="onDragStart">
         <table class="excel-table">
           <thead>
             <tr>
@@ -397,7 +404,11 @@ onUnmounted(() => {
             </tr>
           </thead>
           <tbody>
-          <tr v-for="row in filteredStyles" :key="row.id" :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id) }">
+          <!-- 顶部占位 -->
+          <tr v-if="vtStartIndex > 0" :style="{ height: (vtStartIndex * vs.rowHeight) + 'px' }">
+            <td :colspan="1 + columns.length + 1" style="padding:0;border:0"></td>
+          </tr>
+          <tr v-for="row in vtVisibleRows" :key="row.id" :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id) }">
             <td class="chk-cell" style="width:40px">
               <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
             </td>
@@ -518,9 +529,13 @@ onUnmounted(() => {
               </template>
             </td>
           </tr>
+          <!-- 底部占位 -->
+          <tr v-if="(vtStartIndex + vtVisibleRows.length) < filteredStyles.length" :style="{ height: ((filteredStyles.length - vtStartIndex - vtVisibleRows.length) * vs.rowHeight) + 'px' }">
+            <td :colspan="1 + columns.length + 1" style="padding:0;border:0"></td>
+          </tr>
         </tbody>
       </table>
-    </div>
+      </div>
     </div>
 
     <!-- 回到顶部 -->

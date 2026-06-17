@@ -346,6 +346,11 @@ function onDragEnd() {
   dragging = false; dragWrap = null
 }
 
+function scrollToTop() {
+  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  if (el) el.scrollTop = 0
+}
+
 onMounted(() => {
   loadRecords()
   document.addEventListener('mousemove', onDragMove)
@@ -427,6 +432,11 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- 回到顶部 -->
+    <div class="scroll-top-btn" @click="scrollToTop">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
+    </div>
+
     <!-- 新增弹窗 -->
     <el-dialog v-model="createDialogVisible" title="新增分色分尺码" width="700px" destroy-on-close>
       <el-form :model="createForm" label-width="80px" label-position="right">
@@ -506,4 +516,21 @@ onUnmounted(() => {
 .selected-row { background: #ede9fe; }
 .action-cell { white-space: nowrap; }
 .excel-table tbody tr:hover { background: #f8f9ff; }
+.scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scroll-top-btn:hover { background: var(--primary-hover); }
 </style>

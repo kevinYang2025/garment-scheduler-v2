@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+/* 虚拟滚动容器稳定层：防止滚动抖动 */
+.vt-container,
+.excel-body {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}

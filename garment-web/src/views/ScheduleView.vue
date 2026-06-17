@@ -138,12 +138,26 @@ async function loadSewingDailyPlan() {
   } catch { /* ignore */ }
 }
 
+// ========== 裁剪每日计划（数据来源：预排总计划 + 分色分尺码 + 实际产量） ==========
+const cuttingPlanRows = ref([])
+const cuttingDateRange = ref([])
+
+async function loadCuttingDailyPlan() {
+  try {
+    const { data } = await api.get('/schedule/cutting-daily-plan')
+    cuttingPlanRows.value = data.rows || []
+    cuttingDateRange.value = data.dateRange || []
+  } catch { /* ignore */ }
+}
+
 const _d = new Date()
 const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
 
 // 日期窗口导航
 const viewOffset = ref(0)
+const cuttingViewOffset = ref(0)
 function shiftWeek(dir) { viewOffset.value += dir * 7 }
+function shiftCuttingWeek(dir) { cuttingViewOffset.value += dir * 7 }
 
 // 可见日期列（滚动窗口：今天前一周 ~ 今天后三周）
 const visibleSewingDates = computed(() => {
@@ -155,15 +169,38 @@ const visibleSewingDates = computed(() => {
   return sewingDateRange.value.filter(date => date >= fmt(ws) && date <= fmt(we))
 })
 
+const visibleCuttingDates = computed(() => {
+  if (!cuttingDateRange.value.length) return []
+  const d = new Date(today + 'T00:00:00')
+  const ws = new Date(d); ws.setDate(ws.getDate() - 7 + cuttingViewOffset.value)
+  const we = new Date(d); we.setDate(we.getDate() + 21 + cuttingViewOffset.value)
+  const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
+  return cuttingDateRange.value.filter(date => date >= fmt(ws) && date <= fmt(we))
+})
+
 const sewingDateRangeLabel = computed(() => {
   if (!visibleSewingDates.value.length) return ''
   return visibleSewingDates.value[0].slice(5) + ' ~ ' + visibleSewingDates.value[visibleSewingDates.value.length - 1].slice(5)
+})
+
+const cuttingDateRangeLabel = computed(() => {
+  if (!visibleCuttingDates.value.length) return ''
+  return visibleCuttingDates.value[0].slice(5) + ' ~ ' + visibleCuttingDates.value[visibleCuttingDates.value.length - 1].slice(5)
 })
 
 // 按款号分组（同款只在第一行显示款号和品名）
 const groupedSewingRows = computed(() => {
   let lastStyle = ''
   return sewingPlanRows.value.map(r => {
+    const firstOfGroup = r.style_no !== lastStyle
+    lastStyle = r.style_no
+    return { ...r, firstOfGroup }
+  })
+})
+
+const groupedCuttingRows = computed(() => {
+  let lastStyle = ''
+  return cuttingPlanRows.value.map(r => {
     const firstOfGroup = r.style_no !== lastStyle
     lastStyle = r.style_no
     return { ...r, firstOfGroup }
@@ -186,6 +223,25 @@ async function saveSewingActual(row, date) {
     row.totalDiff = row.totalActual - row.totalPlan
   } catch (e) {
     console.error('保存实际产量失败:', e)
+  }
+}
+
+async function saveCuttingActual(row, date) {
+  const dd = row.dateData.find(d => d.date === date)
+  if (!dd) return
+  try {
+    await api.post('/schedule/cutting-daily-plan/actual', {
+      style_no: row.style_no,
+      color: row.color,
+      size_spec: row.size_spec,
+      production_date: date,
+      completed_qty: dd.actual,
+    })
+    dd.diff = dd.actual - dd.plan
+    row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
+    row.totalDiff = row.totalActual - row.totalPlan
+  } catch (e) {
+    console.error('保存裁剪实际产量失败:', e)
   }
 }
 
@@ -212,10 +268,16 @@ function sOnDragEnd() {
   sDragging = false; sDragWrap = null
 }
 
+function scrollToTop() {
+  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  if (el) el.scrollTop = 0
+}
+
 onMounted(() => {
   load()
   if (props.scheduleType === 'cutting') {
     loadSewingDailyPlan()
+    loadCuttingDailyPlan()
   }
   const body = sewingBodyRef.value
   if (body) {
@@ -318,6 +380,91 @@ onUnmounted(() => {
       </el-table-column>
     </el-table>
 
+    <!-- ========== 裁剪每日计划（数据来源：预排总计划 + 分色分尺码 + 实际产量） ========== -->
+    <div v-if="scheduleType === 'cutting' && cuttingPlanRows.length" class="sewing-section">
+      <div class="sewing-header">
+        <h3>裁剪每日计划</h3>
+        <div class="sewing-nav">
+          <button class="nav-btn" @click="shiftCuttingWeek(-1)">&laquo;</button>
+          <button class="nav-btn today-btn" @click="cuttingViewOffset=0">今天</button>
+          <button class="nav-btn" @click="shiftCuttingWeek(1)">&raquo;</button>
+          <span class="date-range-label">{{ cuttingDateRangeLabel }}</span>
+        </div>
+      </div>
+
+      <div class="excel-wrap">
+        <table class="excel-table">
+          <thead>
+            <tr>
+              <th class="fix" style="min-width:95px"><div class="col-header"><span>款号</span></div></th>
+              <th class="fix" style="min-width:120px"><div class="col-header"><span>品名</span></div></th>
+              <th class="fix" style="min-width:65px"><div class="col-header"><span>颜色</span></div></th>
+              <th class="fix" style="min-width:60px"><div class="col-header"><span>尺码</span></div></th>
+              <th class="fix" style="min-width:70px"><div class="col-header"><span>原单量</span></div></th>
+              <th class="fix" style="min-width:70px"><div class="col-header"><span>合计</span></div></th>
+              <th class="fix" style="min-width:50px"><div class="col-header"><span>类型</span></div></th>
+              <th v-for="d in visibleCuttingDates" :key="d" class="date-th" :class="{ 'today-col': d === today }">{{ dateLabel(d) }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="(row, ri) in groupedCuttingRows" :key="ri">
+              <!-- 计划行 -->
+              <tr class="row-plan">
+                <td class="fix" :class="{ 'first-group': row.firstOfGroup }">{{ row.firstOfGroup ? row.style_no : '' }}</td>
+                <td class="fix" :class="{ 'first-group': row.firstOfGroup }">{{ row.firstOfGroup ? row.product_name : '' }}</td>
+                <td class="fix">{{ row.color }}</td>
+                <td class="fix">{{ row.size_spec }}</td>
+                <td class="fix num">{{ row.order_qty?.toLocaleString() }}</td>
+                <td class="fix num sum-cell">{{ row.totalPlan?.toLocaleString() }}</td>
+                <td class="fix type-label plan-label">计划</td>
+                <td v-for="d in visibleCuttingDates" :key="'cp'+d" class="cell-num" :class="{ 'today-col': d === today }">
+                  {{ (row.dateData.find(dd => dd.date === d) || {}).plan || '' }}
+                </td>
+              </tr>
+              <!-- 实际行 -->
+              <tr class="row-actual">
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix num sum-cell">{{ row.totalActual?.toLocaleString() }}</td>
+                <td class="fix type-label actual-label">实际</td>
+                <td v-for="d in visibleCuttingDates" :key="'ca'+d" class="cell-num editable-cell" :class="{ 'today-col': d === today }">
+                  <input
+                    class="cell-inp"
+                    type="number"
+                    min="0"
+                    :value="(row.dateData.find(dd => dd.date === d) || {}).actual || ''"
+                    @change="e => {
+                      const dd = row.dateData.find(dd2 => dd2.date === d)
+                      if (dd) { dd.actual = parseInt(e.target.value) || 0 }
+                      saveCuttingActual(row, d)
+                    }"
+                  />
+                </td>
+              </tr>
+              <!-- 差异行 -->
+              <tr class="row-diff">
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix"></td>
+                <td class="fix num sum-cell" :class="{ 'diff-pos': row.totalDiff > 0, 'diff-neg': row.totalDiff < 0 }">{{ row.totalDiff > 0 ? '+' : '' }}{{ row.totalDiff?.toLocaleString() }}</td>
+                <td class="fix type-label diff-label">差异</td>
+                <td v-for="d in visibleCuttingDates" :key="'cf'+d" class="cell-num" :class="{ 'today-col': d === today }">
+                  <span :class="{ 'diff-pos': (row.dateData.find(dd => dd.date === d) || {}).diff > 0, 'diff-neg': (row.dateData.find(dd => dd.date === d) || {}).diff < 0 }">
+                    {{ (() => { const v = (row.dateData.find(dd => dd.date === d) || {}).diff; return v > 0 ? '+' + v : v; })() || '' }}
+                  </span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ========== 缝制每日计划（数据来源：预排总计划 + 分色分尺码 + 实际产量） ========== -->
     <div v-if="scheduleType === 'cutting' && sewingPlanRows.length" class="sewing-section">
       <div class="sewing-header">
@@ -401,6 +548,11 @@ onUnmounted(() => {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!-- 回到顶部 -->
+    <div class="scroll-top-btn" @click="scrollToTop">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
     </div>
 
     <el-dialog v-model="dialogVisible" title="新增排程" width="550px">
@@ -536,4 +688,21 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 }
 .cell-inp:hover { border-color: var(--border); }
 .cell-inp:focus { border-color: var(--primary); outline: none; background: #fff; }
+.scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scroll-top-btn:hover { background: var(--primary-hover); }
 </style>

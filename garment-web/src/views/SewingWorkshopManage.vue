@@ -436,6 +436,11 @@ async function doImport() {
   importing.value = false
 }
 
+function scrollToTop() {
+  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  if (el) el.scrollTop = 0
+}
+
 onMounted(() => {
   loadTree()
   const body = bodyRef.value
@@ -589,6 +594,11 @@ onUnmounted(() => {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!-- 回到顶部 -->
+    <div class="scroll-top-btn" @click="scrollToTop">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
     </div>
 
     <!-- 新增弹窗 -->
@@ -775,4 +785,21 @@ onUnmounted(() => {
 .inp:focus { box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2); }
 
 .action-cell { white-space: nowrap; }
+.scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scroll-top-btn:hover { background: var(--primary-hover); }
 </style>

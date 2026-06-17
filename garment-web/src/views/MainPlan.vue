@@ -7,6 +7,10 @@ import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
 import MainPlanGantt from './MainPlanGantt.vue'
+import { useVirtualScroll } from '../composables/useVirtualScroll'
+
+// 虚拟滚动（行高 40px：12+12 padding + 13px font + 1px border）
+const vs = useVirtualScroll(40, 8)
 
 const columns = [
   { field: 'style_no', label: '款号', width: 120, type: 'text' },
@@ -197,6 +201,28 @@ const filteredPlans = computed(() => {
     return aStart.localeCompare(bStart)
   })
 })
+
+// 虚拟滚动切片
+const totalRows = computed(() => filteredPlans.value.length)
+const visibleCount = computed(() => Math.ceil(vs.containerHeight.value / vs.rowHeight) + vs.bufferRows * 2)
+const startIndex = computed(() => {
+  const idx = Math.floor(vs.scrollTop.value / vs.rowHeight) - vs.bufferRows
+  return idx < 0 ? 0 : (idx > totalRows.value ? totalRows.value : idx)
+})
+const visibleRows = computed(() => filteredPlans.value.slice(startIndex.value, startIndex.value + visibleCount.value))
+const topPad = computed(() => startIndex.value * vs.rowHeight)
+const bottomPad = computed(() => Math.max(0, (totalRows.value - startIndex.value - visibleRows.value.length) * vs.rowHeight))
+
+// 是否在绝对索引 idx 的数据行上面插一个分组标题行
+function showSection(absIdx) {
+  if (absIdx <= 0 || absIdx >= totalRows.value) return false
+  const cur = filteredPlans.value[absIdx]
+  const prev = filteredPlans.value[absIdx - 1]
+  if (!cur || !prev) return false
+  const curAssigned = !!(cur.workshop && cur.line_team)
+  const prevAssigned = !!(prev.workshop && prev.line_team)
+  return curAssigned !== prevAssigned
+}
 
 // 未排班组数量
 const unassignedCount = computed(() => plans.value.filter(r => !r.workshop || !r.line_team).length)
@@ -458,6 +484,11 @@ function syncHeaderScroll() {
   if (!headerRef.value || !bodyRef.value) return
   headerRef.value.scrollLeft = bodyRef.value.scrollLeft
 }
+// 统一滚动处理：同时驱动虚拟滚动 + 同步表头横向偏移
+function onBodyScroll(e) {
+  vs.onScroll(e)
+  syncHeaderScroll()
+}
 function syncColWidths() {
   if (!headerRef.value || !bodyRef.value) return
   const hThs = headerRef.value.querySelectorAll('th')
@@ -481,12 +512,10 @@ onMounted(() => {
     body.addEventListener('mousedown', onDragStart)
     document.addEventListener('mousemove', onDragMove)
     document.addEventListener('mouseup', onDragEnd)
-    body.addEventListener('scroll', syncHeaderScroll)
   }
 })
 onUnmounted(() => {
   if (bodyRef.value) {
-    bodyRef.value.removeEventListener('scroll', syncHeaderScroll)
     bodyRef.value.removeEventListener('mousedown', onDragStart)
   }
   document.removeEventListener('mousemove', onDragMove)
@@ -551,30 +580,20 @@ onUnmounted(() => {
         </table>
       </div>
       <!-- 可滚动表体 -->
-      <div class="excel-body" ref="bodyRef" @scroll="syncHeaderScroll">
+      <div class="excel-body" ref="bodyRef" @scroll="onBodyScroll">
         <table class="excel-table">
           <colgroup><col v-for="(w, i) in colWidths" :key="i" :style="{ width: w + 'px' }" /></colgroup>
           <tbody>
-          <template v-for="(row, idx) in filteredPlans" :key="row.id">
-          <!-- 分组分隔线：未排班组 → 已排班组 -->
-          <tr v-if="idx === 0 && (!row.workshop || !row.line_team)" class="section-row">
+          <tr v-if="topPad > 0" :style="{ height: topPad + 'px' }"><td :colspan="columns.length + 2" style="padding:0;border:0"></td></tr>
+          <template v-for="(row, i) in visibleRows" :key="row.id">
+          <!-- 分组分隔线（基于绝对索引判断） -->
+          <tr v-if="showSection(startIndex + i) && !(row.workshop && row.line_team)" class="section-row">
             <td :colspan="columns.length + 2" class="section-label">
               <span class="section-tag unassigned">待排班组款式 ({{ unassignedCount }})</span>
               <span class="section-hint">缝制提醒到期的已置顶</span>
             </td>
           </tr>
-          <tr v-if="idx > 0 && (!row.workshop || !row.line_team) && (filteredPlans[idx-1].workshop && filteredPlans[idx-1].line_team)" class="section-row">
-            <td :colspan="columns.length + 2" class="section-label">
-              <span class="section-tag unassigned">待排班组款式 ({{ unassignedCount }})</span>
-              <span class="section-hint">缝制提醒到期的已置顶</span>
-            </td>
-          </tr>
-          <tr v-if="idx === 0 && row.workshop && row.line_team" class="section-row">
-            <td :colspan="columns.length + 2" class="section-label">
-              <span class="section-tag assigned">已排班组款式 ({{ assignedCount }})</span>
-            </td>
-          </tr>
-          <tr v-if="idx > 0 && row.workshop && row.line_team && (!filteredPlans[idx-1].workshop || !filteredPlans[idx-1].line_team)" class="section-row">
+          <tr v-if="showSection(startIndex + i) && (row.workshop && row.line_team)" class="section-row">
             <td :colspan="columns.length + 2" class="section-label">
               <span class="section-tag assigned">已排班组款式 ({{ assignedCount }})</span>
             </td>
@@ -685,6 +704,7 @@ onUnmounted(() => {
             </td>
           </tr>
           </template>
+          <tr v-if="bottomPad > 0" :style="{ height: bottomPad + 'px' }"><td :colspan="columns.length + 2" style="padding:0;border:0"></td></tr>
         </tbody>
       </table>
     </div>

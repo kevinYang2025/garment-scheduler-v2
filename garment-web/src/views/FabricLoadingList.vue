@@ -5,6 +5,10 @@ import api from '../api'
 import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
+import { useVirtualScroll } from '../composables/useVirtualScroll'
+
+// 虚拟滚动（行高 40px：12+12 padding + 13px font + 1px border）
+const vs = useVirtualScroll(40, 8)
 
 const columns = [
   { field: 'inbound_date', label: '入库日期', width: 110, type: 'date' },
@@ -26,7 +30,6 @@ const columns = [
   { field: 'remark', label: '备注', width: 150, type: 'text' },
 ]
 
-const bodyRef = ref(null)
 const records = ref([])
 const searchKeyword = ref('')
 const loading = ref(false)
@@ -222,6 +225,17 @@ const filteredRecords = computed(() => {
   return list
 })
 
+// 虚拟滚动切片
+const totalRows = computed(() => filteredRecords.value.length)
+const visibleCount = computed(() => Math.ceil(vs.containerHeight.value / vs.rowHeight) + vs.bufferRows * 2)
+const startIndex = computed(() => {
+  const idx = Math.floor(vs.scrollTop.value / vs.rowHeight) - vs.bufferRows
+  return idx < 0 ? 0 : (idx > totalRows.value ? totalRows.value : idx)
+})
+const visibleRows = computed(() => filteredRecords.value.slice(startIndex.value, startIndex.value + visibleCount.value))
+const topPad = computed(() => startIndex.value * vs.rowHeight)
+const bottomPad = computed(() => Math.max(0, (totalRows.value - startIndex.value - visibleRows.value.length) * vs.rowHeight))
+
 function onSearchInput() {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => loadRecords(), 300)
@@ -381,6 +395,11 @@ async function confirmImport() {
   importing.value = false
 }
 
+function scrollToTop() {
+  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  if (el) el.scrollTop = 0
+}
+
 // Drag-to-scroll
 let dragging = false, dragX = 0, dragY = 0, dragSL = 0, dragST = 0, dragWrap = null
 function onDragStart(e) {
@@ -432,7 +451,7 @@ onUnmounted(() => {
     </div>
 
     <div class="excel-wrap">
-      <div class="excel-body" ref="bodyRef" @mousedown="onDragStart">
+      <div class="excel-body" ref="vs.container" @scroll="vs.onScroll" @mousedown="onDragStart">
         <table class="excel-table">
           <thead>
             <tr>
@@ -450,7 +469,8 @@ onUnmounted(() => {
             </tr>
           </thead>
           <tbody>
-          <tr v-for="row in filteredRecords" :key="row.id" :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id) }">
+          <tr v-if="topPad > 0" :style="{ height: topPad + 'px' }"><td :colspan="columns.length + 2" style="padding:0;border:0"></td></tr>
+          <tr v-for="row in visibleRows" :key="row.id" :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id) }">
             <td class="chk-cell" style="width:40px">
               <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
             </td>
@@ -478,9 +498,14 @@ onUnmounted(() => {
               </template>
             </td>
           </tr>
+          <tr v-if="bottomPad > 0" :style="{ height: bottomPad + 'px' }"><td :colspan="columns.length + 2" style="padding:0;border:0"></td></tr>
         </tbody>
         </table>
       </div>
+    </div>
+    <!-- 回到顶部 -->
+    <div class="scroll-top-btn" @click="scrollToTop">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
     </div>
 
     <!-- 新增弹窗 -->
@@ -581,4 +606,21 @@ tbody tr:hover td { background: var(--primary-light); }
 
 .inp { width: 100%; border: 1px solid var(--border); text-align: left; font-size: 13px; padding: 4px 8px; background: var(--card); border-radius: 4px; font-family: inherit; }
 .inp:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(0,0,0,.06); }
+.scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scroll-top-btn:hover { background: var(--primary-hover); }
 </style>

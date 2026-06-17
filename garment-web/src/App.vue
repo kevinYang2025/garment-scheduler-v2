@@ -18,6 +18,9 @@ import VisualSchedule from './views/VisualSchedule.vue'
 import OperationLogs from './views/OperationLogs.vue'
 import WorkCalendar from './views/WorkCalendar.vue'
 import DispatchReport from './views/DispatchReport.vue'
+import CuttingDispatch from './views/CuttingDispatch.vue'
+import SewingDispatch from './views/SewingDispatch.vue'
+import SecondaryDispatch from './views/SecondaryDispatch.vue'
 import DeliveryEstimation from './views/DeliveryEstimation.vue'
 import ShippingPlan from './views/ShippingPlan.vue'
 import SchedulingStrategy from './views/SchedulingStrategy.vue'
@@ -407,12 +410,12 @@ function getIcon(name) {
               </div>
             </div>
           </div>
-          <DispatchReport v-else-if="currentModule === 'cutting-dispatch'" schedule-type="cutting" key="cutting-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'printing-dispatch'" schedule-type="secondary" secondary-type="印花" key="printing-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'embroidery-dispatch'" schedule-type="secondary" secondary-type="刺绣" key="embroidery-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'template-dispatch'" schedule-type="secondary" secondary-type="模板" key="template-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'ironing-dispatch'" schedule-type="secondary" secondary-type="烫标" key="ironing-dispatch" />
-          <DispatchReport v-else-if="currentModule === 'sewing-dispatch' && sewingActiveWorkshop" schedule-type="sewing" :workshop="sewingActiveWorkshop" :key="'sewing-dispatch-' + sewingActiveWorkshop" />
+          <CuttingDispatch v-else-if="currentModule === 'cutting-dispatch'" @back="currentModule = 'home'" key="cutting-dispatch" />
+          <SecondaryDispatch v-else-if="currentModule === 'printing-dispatch'" report-type="printing" @back="currentModule = 'home'" key="printing-dispatch" />
+          <SecondaryDispatch v-else-if="currentModule === 'embroidery-dispatch'" report-type="embroidery" @back="currentModule = 'home'" key="embroidery-dispatch" />
+          <SecondaryDispatch v-else-if="currentModule === 'template-dispatch'" report-type="template" @back="currentModule = 'home'" key="template-dispatch" />
+          <SecondaryDispatch v-else-if="currentModule === 'ironing-dispatch'" report-type="ironing" @back="currentModule = 'home'" key="ironing-dispatch" />
+          <SewingDispatch v-else-if="currentModule === 'sewing-dispatch' && sewingActiveWorkshop" :workshop="sewingActiveWorkshop" @back="sewingActiveWorkshop = ''" :key="'sewing-dispatch-' + sewingActiveWorkshop" />
           <div v-else-if="currentModule === 'sewing-dispatch' && !sewingActiveWorkshop" class="sewing-dispatch-home" key="sewing-dispatch-select">
             <div class="sdh-header">
               <h2 class="sdh-title">缝制报工</h2>
@@ -876,7 +879,7 @@ body {
 .main-content {
   flex: 1;
   overflow: auto;
-  padding: 24px;
+  padding: 4px 24px 24px 24px;
   background: var(--bg);
 }
 .main-content::-webkit-scrollbar { width: 6px; }

@@ -1,8 +1,9 @@
 <script setup>
 // Excel列映射严格按照用户提供的《缝制排程模板.xlsx》调整
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, shallowRef, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { useVirtualScroll } from '../composables/useVirtualScroll'
 import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
@@ -10,7 +11,7 @@ import StylePicker from '../components/StylePicker.vue'
 
 const emit = defineEmits(['back'])
 
-const masters = ref([])
+const masters = shallowRef([])
 const dailyData = ref({})
 const dialogVisible = ref(false)
 const form = ref({})
@@ -182,10 +183,42 @@ const groups = computed(() => {
   })
 })
 
+// ============ 虚拟滚动 ============
+const vs = useVirtualScroll(36, 8)
+
+// 把每个 group 展开成 3 个 row：plan/actual/diff
+const tableRows = computed(() => {
+  const out = []
+  for (const g of groups.value) {
+    out.push({
+      _key: `m${g.master.id}_plan`, _type: 'plan',
+      master: g.master, daily: g.daily,
+      _planSum: g.planSum, _actualSum: g.actualSum, _diffSum: dailyDiffSum(g.master.id),
+    })
+    out.push({
+      _key: `m${g.master.id}_actual`, _type: 'actual',
+      master: g.master, daily: g.daily,
+      _planSum: g.planSum, _actualSum: g.actualSum, _diffSum: dailyDiffSum(g.master.id),
+    })
+    out.push({
+      _key: `m${g.master.id}_diff`, _type: 'diff',
+      master: g.master, daily: g.daily,
+      _planSum: g.planSum, _actualSum: g.actualSum, _diffSum: dailyDiffSum(g.master.id),
+    })
+  }
+  return out
+})
+
+const vtTotalHeight = computed(() => tableRows.value.length * vs.rowHeight)
+const vtStartIndex = computed(() => Math.max(0, Math.floor(vs.scrollTop.value / vs.rowHeight) - vs.bufferRows))
+const vtVisibleCount = computed(() => Math.ceil(vs.containerHeight.value / vs.rowHeight) + vs.bufferRows * 2)
+const vtVisibleRows = computed(() => tableRows.value.slice(vtStartIndex.value, vtStartIndex.value + vtVisibleCount.value))
+
 async function load() {
   try {
     const { data } = await api.getSchedule('sewing')
-    masters.value = data || []
+    // 冻结每个 master，避免 Vue Proxy
+    masters.value = Object.freeze((data || []).map(m => Object.freeze(m)))
   } catch { ElMessage.error('加载排程失败') }
 }
 
@@ -410,6 +443,11 @@ async function confirmImport() {
   importing.value = false
 }
 
+function scrollToTop() {
+  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  if (el) el.scrollTop = 0
+}
+
 // Drag-to-scroll on empty td areas
 const bodyRef = ref(null)
 let dragging = false, dragX = 0, dragY = 0, dragSL = 0, dragST = 0, dragWrap = null
@@ -480,8 +518,8 @@ onUnmounted(() => {
       暂无排程数据，点击"新增排程"或"导入Excel"开始
     </div>
 
-    <!-- Excel-style table -->
-    <div v-else ref="bodyRef" class="excel-wrap">
+    <!-- 虚拟滚动表格：保留表头 13 列 filter，tbody 只渲染可见行 -->
+    <div v-else ref="vs.container" class="vt-container" @scroll.passive="vs.onScroll">
       <table class="excel-table">
         <thead>
           <tr>
@@ -589,94 +627,113 @@ onUnmounted(() => {
           </tr>
         </thead>
         <tbody>
-          <template v-for="(g, gi) in groups" :key="g.master.id">
-            <!-- 计划行 -->
-            <tr class="row-plan" :class="{ 'editing-row': editingId === g.master.id }">
+          <!-- 顶部占位 -->
+          <tr v-if="vtStartIndex > 0" :style="{ height: (vtStartIndex * vs.rowHeight) + 'px' }">
+            <td :colspan="13 + visibleDateCols.length" style="padding:0;border:0"></td>
+          </tr>
+          <!-- 可见行：每个 group 渲染 plan/actual/diff -->
+          <template v-for="row in vtVisibleRows" :key="row._key">
+            <tr :class="['row-' + row._type, { 'editing-row': editingId === row.master.id && row._type === 'plan' }]">
+              <!-- 计划行才显示固定列数据 -->
+              <template v-if="row._type === 'plan'">
+                <td class="fix">
+                  <template v-if="editingId === row.master.id"><input class="inp" v-model="editForm.workshop" /></template>
+                  <template v-else>{{ row.master.workshop || '' }}</template>
+                </td>
+                <td class="fix">
+                  <template v-if="editingId === row.master.id"><input class="inp" v-model="editForm.line_team" /></template>
+                  <template v-else>{{ row.master.line_team || '' }}</template>
+                </td>
+                <td class="fix" style="width:80px">
+                  <el-tag v-if="row.master.task_status === 'COMPLETED'" type="success" size="small">已完成</el-tag>
+                  <el-tag v-else-if="row.master.task_status === 'IN_PROGRESS'" type="primary" size="small">进行中</el-tag>
+                  <el-tag v-else type="info" size="small">待生产</el-tag>
+                  <div v-if="row.master.progress_pct > 0" class="progress-mini">
+                    <div class="progress-bar" :style="{ width: row.master.progress_pct + '%' }"></div>
+                  </div>
+                </td>
+                <td class="fix">{{ row.master.style_no }}</td>
+                <td class="fix">{{ row.master.product_name }}</td>
+                <td class="fix num">
+                  <template v-if="editingId === row.master.id"><input class="inp" v-model.number="editForm.cutting_plan_qty" type="number" min="1" style="text-align:right" /></template>
+                  <template v-else>{{ formatQty(row.master.cutting_plan_qty || row.master.plan_qty) }}</template>
+                </td>
+                <td class="fix">
+                  <template v-if="editingId === row.master.id"><input class="inp" v-model="editForm.due_date" type="date" /></template>
+                  <template v-else>{{ row.master.due_date || '' }}</template>
+                </td>
+                <td class="fix num">
+                  <template v-if="editingId === row.master.id"><input class="inp" v-model.number="editForm.daily_target" type="number" min="1" style="text-align:right" /></template>
+                  <template v-else>{{ formatQty(row.master.daily_target) }}</template>
+                </td>
+                <td class="fix">
+                  <template v-if="editingId === row.master.id"><input class="inp" v-model="editForm.plan_start" type="date" /></template>
+                  <template v-else>{{ row.master.plan_start || '' }}</template>
+                </td>
+                <td class="fix">
+                  <template v-if="editingId === row.master.id"><span style="color:var(--text-secondary)">{{ editForm.plan_end || '自动计算' }}</span></template>
+                  <template v-else>{{ row.master.plan_end || '' }}</template>
+                </td>
+                <td class="fix num sum-cell">{{ formatQty(row._planSum) }}</td>
+                <td class="fix type-label plan-label">计划</td>
+              </template>
+              <template v-else-if="row._type === 'actual'">
+                <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+                <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+                <td class="fix"></td><td class="fix"></td>
+                <td class="fix num sum-cell">{{ formatQty(row._actualSum) }}</td>
+                <td class="fix type-label" style="color:var(--success)">实际QC1</td>
+              </template>
+              <template v-else>
+                <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+                <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
+                <td class="fix"></td><td class="fix"></td>
+                <td class="fix num sum-cell" :style="{color: colorFor(row._diffSum)}">
+                  {{ row._diffSum > 0 ? '+' : '' }}{{ formatQty(row._diffSum) }}
+                </td>
+                <td class="fix type-label" style="color:var(--warning)">日差异</td>
+              </template>
+              <!-- 日期网格列 -->
+              <td v-for="d in visibleDateCols" :key="row._key + d"
+                  :class="['cell-num', { 'today-col': d === today, 'cell-edit': row._type === 'actual' && d <= today }]"
+                  :style="row._type === 'diff' && dailyDiffVal(row.master.id, d) != null ? { color: colorFor(dailyDiffVal(row.master.id, d)) } : null">
+                <input v-if="row._type === 'actual' && d <= today" type="number" class="inp-qty"
+                  :value="dailyQty(row.master.id, d, 'actual')"
+                  @change="e => updateDailyActual(row.master.id, d, e.target.value)" min="0" max="99999" />
+                <span v-else-if="row._type === 'actual' && d > today">—</span>
+                <span v-else-if="row._type === 'plan'">{{ formatQty(dailyQty(row.master.id, d, 'plan')) }}</span>
+                <span v-else-if="row._type === 'diff'">
+                  <template v-if="dailyDiffVal(row.master.id, d) != null">
+                    {{ dailyDiffVal(row.master.id, d) > 0 ? '+' : '' }}{{ formatQty(dailyDiffVal(row.master.id, d)) }}
+                  </template>
+                  <template v-else>—</template>
+                </span>
+              </td>
+              <!-- 操作列（仅 plan 行） -->
               <td class="fix">
-                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.workshop" /></template>
-                <template v-else>{{ g.master.workshop || '' }}</template>
-              </td>
-              <td class="fix">
-                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.line_team" /></template>
-                <template v-else>{{ g.master.line_team || '' }}</template>
-              </td>
-              <td class="fix" style="width:80px">
-                <el-tag v-if="g.master.task_status === 'COMPLETED'" type="success" size="small">已完成</el-tag>
-                <el-tag v-else-if="g.master.task_status === 'IN_PROGRESS'" type="primary" size="small">进行中</el-tag>
-                <el-tag v-else type="info" size="small">待生产</el-tag>
-                <div v-if="g.master.progress_pct > 0" class="progress-mini">
-                  <div class="progress-bar" :style="{ width: g.master.progress_pct + '%' }"></div>
-                </div>
-              </td>
-              <td class="fix">{{ g.master.style_no }}</td>
-              <td class="fix">{{ g.master.product_name }}</td>
-              <td class="fix num">
-                <template v-if="editingId === g.master.id"><input class="inp" v-model.number="editForm.cutting_plan_qty" type="number" min="1" style="text-align:right" /></template>
-                <template v-else>{{ formatQty(g.master.cutting_plan_qty || g.master.plan_qty) }}</template>
-              </td>
-              <td class="fix">
-                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.due_date" type="date" /></template>
-                <template v-else>{{ g.master.due_date || '' }}</template>
-              </td>
-              <td class="fix num">
-                <template v-if="editingId === g.master.id"><input class="inp" v-model.number="editForm.daily_target" type="number" min="1" style="text-align:right" /></template>
-                <template v-else>{{ formatQty(g.master.daily_target) }}</template>
-              </td>
-              <td class="fix">
-                <template v-if="editingId === g.master.id"><input class="inp" v-model="editForm.plan_start" type="date" /></template>
-                <template v-else>{{ g.master.plan_start || '' }}</template>
-              </td>
-              <td class="fix">
-                <template v-if="editingId === g.master.id"><span style="color:var(--text-secondary)">{{ editForm.plan_end || '自动计算' }}</span></template>
-                <template v-else>{{ g.master.plan_end || '' }}</template>
-              </td>
-              <td class="fix num sum-cell">{{ formatQty(g.planSum) }}</td>
-              <td class="fix type-label plan-label">计划</td>
-              <td v-for="d in visibleDateCols" :key="'p'+d" class="cell-num" :class="{ 'today-col': d === today }">
-                {{ formatQty(dailyQty(g.master.id, d, 'plan')) }}
-              </td>
-              <td class="fix">
-                <template v-if="editingId === g.master.id">
-                  <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
-                  <el-button size="small" text @click="cancelEdit">取消</el-button>
+                <template v-if="row._type === 'plan'">
+                  <template v-if="editingId === row.master.id">
+                    <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
+                    <el-button size="small" text @click="cancelEdit">取消</el-button>
+                  </template>
+                  <template v-else>
+                    <el-button size="small" text @click="startEdit({master: row.master})">编辑</el-button>
+                    <el-button size="small" text type="danger" @click="remove(row.master.id)">删除</el-button>
+                  </template>
                 </template>
-                <template v-else>
-                  <el-button size="small" text @click="startEdit(g)">编辑</el-button>
-                  <el-button size="small" text type="danger" @click="remove(g.master.id)">删除</el-button>
-                </template>
               </td>
-            </tr>
-            <!-- 实际QC1行 -->
-            <tr class="row-actual">
-              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
-              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
-              <td class="fix num sum-cell">{{ formatQty(g.actualSum) }}</td>
-              <td class="fix type-label" style="color:var(--success)">实际QC1</td>
-              <td v-for="d in visibleDateCols" :key="'a'+d" class="cell-num cell-edit" :class="{ 'today-col': d === today }">
-                <input type="number" class="inp-qty" :value="dailyQty(g.master.id, d, 'actual')"
-                  :disabled="d > today"
-                  @change="e => updateDailyActual(g.master.id, d, e.target.value)" min="0" max="99999" />
-              </td>
-              <td class="fix"></td>
-            </tr>
-            <!-- 日差异行 -->
-            <tr class="row-diff">
-              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
-              <td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td><td class="fix"></td>
-              <td class="fix num sum-cell" :style="{color: colorFor(dailyDiffSum(g.master.id))}">
-                {{ dailyDiffSum(g.master.id) > 0 ? '+' : '' }}{{ formatQty(dailyDiffSum(g.master.id)) }}
-              </td>
-              <td class="fix type-label" style="color:var(--warning)">日差异</td>
-              <td v-for="d in visibleDateCols" :key="'dd'+d" class="cell-num" :class="{ 'today-col': d === today }"
-                :style="{color: colorFor(dailyDiffVal(g.master.id, d))}">
-                <template v-if="dailyDiffVal(g.master.id, d) != null">{{ dailyDiffVal(g.master.id, d) > 0 ? '+' : '' }}{{ formatQty(dailyDiffVal(g.master.id, d)) }}</template>
-                <template v-else>—</template>
-              </td>
-              <td class="fix"></td>
             </tr>
           </template>
+          <!-- 底部占位 -->
+          <tr v-if="(vtStartIndex + vtVisibleRows.length) < tableRows.length" :style="{ height: ((tableRows.length - vtStartIndex - vtVisibleRows.length) * vs.rowHeight) + 'px' }">
+            <td :colspan="13 + visibleDateCols.length" style="padding:0;border:0"></td>
+          </tr>
         </tbody>
       </table>
+    </div>
+    <!-- 回到顶部 -->
+    <div class="scroll-top-btn" @click="scrollToTop">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
     </div>
 
     <!-- 新增弹窗 -->
@@ -777,7 +834,8 @@ onUnmounted(() => {
   margin-left: 4px;
 }
 
-.excel-wrap {
+.excel-wrap,
+.vt-container {
   flex: 1;
   overflow: auto;
   border: 1px solid var(--border);
@@ -937,4 +995,21 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
   border-radius: 2px;
   transition: width .3s ease;
 }
+.scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scroll-top-btn:hover { background: var(--primary-hover); }
 </style>
