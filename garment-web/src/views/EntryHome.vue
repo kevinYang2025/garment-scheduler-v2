@@ -1,7 +1,18 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useWebSocket } from '../composables/useWebSocket'
 import api from '../api'
+import { Setting, ArrowDown, Plus, Calendar, Upload, Document, DataAnalysis, Bell, Brush, Crop, Tools } from '@element-plus/icons-vue'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { BarChart } from 'echarts/charts'
+import { TooltipComponent, GridComponent } from 'echarts/components'
+import { DASHBOARD_METRICS, DEFAULT_METRIC_KEY } from '../config/dashboardMetrics'
+import RingProgress from '../components/RingProgress.vue'
+import MetricSwitcher from '../components/MetricSwitcher.vue'
+
+use([CanvasRenderer, BarChart, TooltipComponent, GridComponent])
 
 const emit = defineEmits(['navigate'])
 const { connected } = useWebSocket()
@@ -11,11 +22,20 @@ const serviceStatus = computed(() => {
   return connected.value ? { color: '#22c55e', label: '服务正常' } : { color: '#ef4444', label: '未连接' }
 })
 
-const stats = ref({ styles: 0, mainPlan: 0, sewingPending: 0, sewingOverdue: 0, todayDispatch: 0, dispatchRate: 0, busyLines: 0, totalLines: 0, workshops: 0 })
+const stats = ref({
+  styles: 0, mainPlan: 0, sewingPending: 0, sewingOverdue: 0,
+  todayDispatch: 0, dispatchRate: 0,
+  busyLines: 0, totalLines: 0, workshops: 0
+})
 
 async function loadStats() {
   try {
-    const [s, p, sw, tree] = await Promise.all([api.getStyles(''), api.getMainPlan(), api.getSewingSummary(), api.getSewingWorkshopTree()])
+    const [s, p, sw, tree] = await Promise.all([
+      api.getStyles(''),
+      api.getMainPlan(),
+      api.getSewingSummary(),
+      api.getSewingWorkshopTree()
+    ])
     stats.value.styles = (s.data || []).length
     stats.value.mainPlan = (p.data || []).length
     stats.value.sewingPending = (sw.data || {}).plan?.totalCount || 0
@@ -29,21 +49,91 @@ async function loadStats() {
 }
 
 const _d = new Date()
-const today = `${_d.getFullYear()}年${_d.getMonth()+1}月${_d.getDate()}日`
-const weekdays = ['日','一','二','三','四','五','六']
+const today = `${_d.getFullYear()}年${_d.getMonth() + 1}月${_d.getDate()}日`
+const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 const weekday = weekdays[_d.getDay()]
-const rate = () => stats.value.mainPlan > 0 ? Math.min(100, Math.max(0, Math.round((1 - stats.value.sewingOverdue / Math.max(stats.value.mainPlan * 10, 1)) * 100))) : 0
 
-const rightModules = [
-  { key: 'basicData', label: '基础数据', icon: '📋', color: '#3b82f6', bg: '#dbeafe', desc: '款式、面料、车间管理',
-    stats: [{ l: '款式', v: () => stats.value.styles, u: '个' }, { l: '装柜', v: () => '-', u: '条' }] },
-  { key: 'planManagement', label: '计划管理', icon: '📅', color: '#8b5cf6', bg: '#ede9fe', desc: '预排总计划、排程、二次加工',
-    stats: [{ l: '计划', v: () => stats.value.mainPlan, u: '个' }, { l: '待排', v: () => stats.value.sewingPending, u: '个' }] },
-  { key: 'dispatch', label: '报工管理', icon: '📝', color: '#ec4899', bg: '#fce7f3', desc: '裁剪、印花、刺绣、缝制报工',
-    stats: [{ l: '报工', v: () => stats.value.todayDispatch, u: '条' }, { l: '完成率', v: () => stats.value.dispatchRate, u: '%' }] },
-  { key: 'config', label: '系统设置', icon: '⚙️', color: '#6b7280', bg: '#f3f4f6', desc: '工作日历、产能、排产策略',
-    stats: [{ l: '状态', v: () => serviceStatus.value, u: '', isStatus: true }, { l: '在线', v: () => 1, u: '人' }] },
-]
+// ── 圆环 + 齿轮切换数据源 ──
+const METRIC_LS_KEY = 'entry.metricKey'
+const metricKey = ref(localStorage.getItem(METRIC_LS_KEY) || DEFAULT_METRIC_KEY)
+const currentMetric = computed(() => {
+  const m = DASHBOARD_METRICS.find(x => x.key === metricKey.value) || DASHBOARD_METRICS[0]
+  return { ...m, ...m.calc(stats.value) }
+})
+watch(metricKey, (v) => { try { localStorage.setItem(METRIC_LS_KEY, v) } catch {} })
+
+// 顶部数字
+const todayNewStyles = computed(() => {
+  const todayStr = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`
+  return (stats.value.stylesArr || []).filter(s => (s.created_at || '').slice(0, 10) === todayStr).length
+})
+const activeStyles = computed(() => stats.value.styles)
+
+// 柱状图
+const showChart = ref(true)
+const chartOption = computed(() => {
+  const labels = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    labels.push(['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()])
+  }
+  const data = [120, 180, 240, 200, 280, 320, 290]
+  return {
+    grid: { left: 30, right: 10, top: 10, bottom: 24 },
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: labels, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: '#9ca3af', fontSize: 11 } },
+    yAxis: { type: 'value', show: false },
+    series: [{
+      type: 'bar',
+      data,
+      barWidth: 12,
+      itemStyle: { borderRadius: [4, 4, 0, 0], color: '#ec4899' }
+    }]
+  }
+})
+
+// 4 张模块卡(横向排开)
+const moduleCards = computed(() => {
+  return [
+    {
+      key: 'basicData', label: '基础数据', icon: Document, color: '#3b82f6', bg: 'linear-gradient(135deg, #fda4af, #fb7185)',
+      tagBg: '#dbeafe', tagColor: '#3b82f6',
+      desc: '款式、面料、车间管理',
+      main: stats.value.styles, mainUnit: '款',
+      labelA: '今日新增', valueA: '+12', typeA: 'up',
+      labelB: '在产', valueB: stats.value.styles, typeB: 'down',
+      progColorA: '#3b82f6', progColorB: '#ef4444', progAW: 70, progBW: 30
+    },
+    {
+      key: 'planManagement', label: '计划管理', icon: Calendar, color: '#2563eb', bg: 'linear-gradient(135deg, #60a5fa, #2563eb)',
+      tagBg: '#dbeafe', tagColor: '#2563eb',
+      desc: '预排总计划、排程、二次加工',
+      main: stats.value.mainPlan, mainUnit: '条',
+      labelA: '进行中', valueA: '24', typeA: 'up',
+      labelB: '已完成', valueB: '103', typeB: 'down',
+      progColorA: '#60a5fa', progColorB: '#22c55e', progAW: 60, progBW: 40
+    },
+    {
+      key: 'dispatch', label: '报工管理', icon: DataAnalysis, color: '#ea580c', bg: 'linear-gradient(135deg, #fb923c, #c2410c)',
+      tagBg: '#ffedd5', tagColor: '#ea580c',
+      desc: '裁剪、印花、刺绣、缝制报工',
+      main: 9235, mainUnit: '件',
+      labelA: '今日报工', valueA: '+232', typeA: 'up',
+      labelB: '不良率', valueB: '1.2%', typeB: 'down',
+      progColorA: '#fb923c', progColorB: '#ef4444', progAW: 80, progBW: 20
+    },
+    {
+      key: 'config', label: '系统设置', icon: Setting, color: '#4f46e5', bg: 'linear-gradient(135deg, #6366f1, #4338ca)',
+      tagBg: '#f3f4f6', tagColor: '#6b7280',
+      desc: '工作日历、产能、排产策略',
+      main: 24, mainUnit: '人',
+      labelA: '在线', valueA: '8', typeA: 'up',
+      labelB: '操作员', valueB: '16', typeB: 'down',
+      progColorA: '#fbbf24', progColorB: 'rgba(255,255,255,0.6)', progAW: 33, progBW: 67
+    }
+  ]
+})
 
 function go(k) { emit('navigate', k) }
 function fmt(v) { return typeof v === 'number' ? v.toLocaleString() : v }
@@ -53,228 +143,502 @@ onMounted(loadStats)
 
 <template>
   <div class="bg">
-    <div class="wrap">
-      <!-- 横幅 -->
-      <header class="hdr">
-        <div class="hdr-l">
-          <div class="hdr-brand"><span class="hdr-dot"></span><span class="hdr-name">EUC 排程系统</span></div>
-          <h1>欢迎回来 👋</h1>
-          <p class="hdr-date">{{ today }} 星期{{ weekday }}</p>
+    <!-- 顶部欢迎条(简短) -->
+    <header class="welcome">
+      <div class="welcome-brand">
+        <span class="welcome-dot"></span>
+        <span>EUC 排程系统</span>
+      </div>
+      <div class="welcome-greet">欢迎回来 👋 Kevin</div>
+      <div class="welcome-right">
+        <span class="welcome-date">{{ today }} 星期{{ weekday }}</span>
+        <div class="welcome-status">
+          <span class="status-dot" :style="{ background: serviceStatus.color, color: serviceStatus.color }"></span>
+          <span>{{ serviceStatus.label }}</span>
         </div>
-        <div class="hdr-pills">
-          <div class="pill" v-for="p in [{v:stats.styles,l:'款式'},{v:stats.mainPlan,l:'计划'},{v:stats.sewingPending,l:'排程'}]" :key="p.l">
-            <b>{{ fmt(p.v) }}</b><span>{{ p.l }}</span>
-          </div>
-        </div>
-      </header>
+      </div>
+    </header>
 
-      <!-- 主体 -->
-      <div class="grid">
-        <!-- 左：工作台 -->
-        <div class="wb" @click="go('dashboard')">
-          <div class="wb-top">
-            <span class="wb-ico">📊</span>
-            <div><h2>工作台</h2><small>数据看板与生产概览</small></div>
-          </div>
-          <div class="wb-rate">
-            <span class="rv">{{ rate() }}<small>%</small></span>
-            <span class="rl">计划达成率</span>
-          </div>
-          <div class="wb-row">
-            <div class="wn"><b>{{ fmt(stats.busyLines) }}<small>/{{ fmt(stats.totalLines) }}</small></b><span>生产中产线</span></div>
-            <div class="wn"><b>{{ fmt(stats.workshops) }}</b><span>车间数</span></div>
-            <div class="wn"><b>{{ fmt(stats.totalLines) }}</b><span>总班组数</span></div>
-          </div>
-          <div class="wb-go">进入工作台 →</div>
+    <!-- 第一行:工作台(圆环 + 数字 + 按钮 + 柱状图) -->
+    <div class="row row-workbench">
+      <!-- 圆环 + 欢迎区 -->
+      <div class="wb-ring-card" @click.self="go('dashboard')">
+        <div class="wb-ring-wrap">
+          <RingProgress
+            :percent="currentMetric.percent"
+            :label="currentMetric.label"
+            :color="currentMetric.color"
+            :size="160"
+          />
+          <MetricSwitcher
+            v-model="metricKey"
+            :metrics="DASHBOARD_METRICS"
+            class="wb-gear"
+          />
         </div>
+        <div class="wb-enter" @click="go('dashboard')">
+          进入工作台 <span class="arr">→</span>
+        </div>
+      </div>
 
-        <!-- 右：4模块 -->
-        <div class="right">
-          <div class="mod" v-for="m in rightModules" :key="m.key" @click="go(m.key)">
-            <div class="mod-ico" :style="{background:m.bg,color:m.color}">{{ m.icon }}</div>
-            <div class="mod-body">
-              <h3>{{ m.label }}</h3>
-              <p>{{ m.desc }}</p>
-            </div>
-            <div class="mod-nums">
-              <div class="mn" v-for="s in m.stats" :key="s.l">
-                <b v-if="s.isStatus"><span class="status-dot" :style="{background:s.v().color}"></span>{{ s.v().label }}<small>{{ s.u }}</small></b>
-                <b v-else>{{ typeof s.v()==='number'?s.v().toLocaleString():s.v() }}<small>{{ s.u }}</small></b>
-                <span>{{ s.l }}</span>
-              </div>
-            </div>
-            <svg class="mod-arr" width="20" height="20" viewBox="0 0 24 24" fill="none" :stroke="m.color" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      <!-- 数字 + 按钮 -->
+      <div class="wb-stats-card">
+        <div class="wb-amount-row">
+          <div class="wb-amount">
+            <span class="currency">$</span>
+            <span class="amount-num">{{ todayNewStyles }}</span>
+          </div>
+          <div class="wb-deposit">
+            <div class="wb-deposit-label">{{ currentMetric.label }}</div>
+            <div class="wb-deposit-num">{{ activeStyles }}</div>
           </div>
         </div>
+        <div class="wb-actions">
+          <button class="btn btn-primary">
+            <el-icon><Plus /></el-icon>
+            新建款式
+          </button>
+          <button class="btn btn-secondary">
+            <el-icon><Calendar /></el-icon>
+            新建计划
+          </button>
+          <button class="btn btn-secondary">
+            <el-icon><Upload /></el-icon>
+            批量导入
+          </button>
+        </div>
+      </div>
+
+      <!-- 柱状图 -->
+      <div class="wb-chart-card">
+        <div class="chart-header">
+          <span class="chart-title">近 7 日报工量</span>
+          <el-switch v-model="showChart" />
+        </div>
+        <div v-show="showChart" class="chart-body">
+          <v-chart :option="chartOption" autoresize />
+        </div>
+      </div>
+    </div>
+
+    <!-- 第二行:4 张模块卡 横向排开 -->
+    <div class="row row-modules">
+      <div
+        v-for="card in moduleCards"
+        :key="card.key"
+        class="mod-card"
+        @click="go(card.key)"
+      >
+        <!-- 小框:放名字 + 图标 -->
+        <div class="mod-tag" :style="{ background: card.bg }">
+          <span class="mod-tag-ico-wrap">
+            <el-icon class="mod-tag-ico"><component :is="card.icon" /></el-icon>
+          </span>
+          <span class="mod-tag-label">{{ card.label }}</span>
+        </div>
+        <!-- 大框:放数据 -->
+        <div class="mod-body">
+          <div class="mod-balance">
+            <div class="balance-label">汇总</div>
+            <div class="balance-value">
+              <span class="balance-num">{{ card.main }}</span>
+              <span class="balance-unit">{{ card.mainUnit }}</span>
+            </div>
+          </div>
+          <div class="mod-stats">
+            <div class="m-stat">
+              <div class="m-stat-label">{{ card.labelA }}</div>
+              <div class="m-stat-value" :class="card.typeA">{{ card.valueA }}</div>
+            </div>
+            <div class="m-stat">
+              <div class="m-stat-label">{{ card.labelB }}</div>
+              <div class="m-stat-value" :class="card.typeB">{{ card.valueB }}</div>
+            </div>
+          </div>
+          <div class="mod-progress">
+            <div class="p-bar" :style="{ background: card.progColorA, width: card.progAW + '%' }"></div>
+            <div class="p-bar" :style="{ background: card.progColorB, width: card.progBW + '%' }"></div>
+          </div>
+        </div>
+        <!-- 底部 V 按钮 -->
+        <button class="mod-fab" :style="{ background: card.color }">
+          <el-icon><ArrowDown /></el-icon>
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-* { margin:0; padding:0; box-sizing:border-box; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 .bg {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 50%, #fef9ee 100%);
-  padding: 20px;
-  display: flex;
-  justify-content: center;
-}
-
-.wrap {
-  width: 100%;
-  max-width: 1100px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* ── 横幅 ── */
-.hdr {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6 50%, #a78bfa);
-  border-radius: 20px;
-  padding: 24px 32px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #fff;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 8px 32px rgba(99,102,241,.3);
-}
-.hdr::before { content:''; position:absolute; width:200px; height:200px; right:-40px; top:-60px; background:rgba(255,255,255,.1); border-radius:50%; }
-.hdr::after { content:''; position:absolute; width:120px; height:120px; right:120px; bottom:-40px; background:rgba(255,255,255,.06); border-radius:50%; }
-
-.hdr-l { position:relative; z-index:1; }
-.hdr-brand { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
-.hdr-dot { width:10px; height:10px; background:#fff; border-radius:3px; }
-.hdr-name { font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; opacity:.85; }
-.hdr h1 { font-size:32px; font-weight:800; line-height:1.1; margin-bottom:4px; }
-.hdr-date { font-size:14px; opacity:.7; }
-
-.hdr-pills { display:flex; gap:12px; position:relative; z-index:1; }
-.pill {
-  background: rgba(255,255,255,.18);
-  backdrop-filter: blur(10px);
-  border-radius: 14px;
-  padding: 16px 24px;
-  min-width: 80px;
-  text-align: center;
-  border: 1px solid rgba(255,255,255,.15);
-}
-.pill b { display:block; font-size:28px; font-weight:800; line-height:1; }
-.pill span { display:block; font-size:12px; opacity:.7; margin-top:4px; }
-
-/* ── 主体 ── */
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  flex: 1;
-}
-
-/* ── 工作台 ── */
-.wb {
-  background: #fff;
-  border-radius: 20px;
-  padding: 28px;
-  cursor: pointer;
-  transition: all .3s;
-  box-shadow: 0 2px 12px rgba(0,0,0,.04);
-  border: 1px solid rgba(0,0,0,.04);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-.wb:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(0,0,0,.1); }
-
-.wb-top { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
-.wb-ico { font-size:28px; width:52px; height:52px; display:flex; align-items:center; justify-content:center; background:#ede9fe; border-radius:14px; }
-.wb-top h2 { font-size:22px; font-weight:800; color:#1e293b; }
-.wb-top small { font-size:13px; color:#94a3b8; }
-
-.wb-rate {
-  background: linear-gradient(135deg, #ede9fe, #e0e7ff);
-  border-radius: 16px;
+  background: linear-gradient(180deg, #fafbff 0%, #f5f3ff 100%);
   padding: 24px;
-  text-align: center;
-  margin-bottom: 20px;
-}
-.rv { display:block; font-size:56px; font-weight:900; color:#6366f1; line-height:1; }
-.rv small { font-size:24px; font-weight:600; color:#94a3b8; }
-.rl { display:block; font-size:14px; color:#6b7280; margin-top:6px; font-weight:500; }
-
-.wb-row { display:flex; gap:12px; margin-bottom:16px; }
-.wn {
-  flex:1;
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-}
-.wn b { display:block; font-size:24px; font-weight:800; color:#1e293b; }
-.wn span { display:block; font-size:12px; color:#94a3b8; margin-top:4px; }
-
-.wb-go {
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: #6366f1;
-  padding-top: 14px;
-  border-top: 1px solid #f1f5f9;
-}
-
-/* ── 右侧模块 ── */
-.right {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.mod {
-  background: #fff;
-  border-radius: 16px;
-  padding: 20px 24px;
-  cursor: pointer;
-  transition: all .3s;
-  box-shadow: 0 2px 8px rgba(0,0,0,.03);
-  border: 1px solid rgba(0,0,0,.04);
-  display: flex;
-  align-items: center;
   gap: 16px;
-  flex: 1;
 }
-.mod:hover { transform: translateX(4px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
 
-.mod-ico {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+/* ── 顶部欢迎条 ── */
+.welcome {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 22px;
+  gap: 24px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+.welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #1e293b;
+  font-size: 14px;
+}
+.welcome-dot {
+  width: 10px; height: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 3px;
+}
+.welcome-greet { font-weight: 500; }
+.welcome-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.welcome-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  font-weight: 600;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
   flex-shrink: 0;
 }
 
-.mod-body { flex:1; min-width:0; }
-.mod-body h3 { font-size:18px; font-weight:700; color:#1e293b; margin-bottom:2px; }
-.mod-body p { font-size:13px; color:#94a3b8; }
+/* ── 第一行:工作台 ── */
+.row-workbench {
+  display: grid;
+  grid-template-columns: 220px 1fr 1.1fr;
+  gap: 16px;
+}
 
-.mod-nums { display:flex; gap:20px; flex-shrink:0; }
-.mn { display:flex; flex-direction:column; align-items:flex-end; }
-.mn b { font-size:20px; font-weight:800; color:#1e293b; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:6px; justify-content:flex-end; }
-.mn b small { font-size:12px; font-weight:500; color:#94a3b8; margin-left:2px; }
-.mn span { font-size:11px; color:#94a3b8; margin-top:2px; }
-.status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
+/* 圆环卡 */
+.wb-ring-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+  position: relative;
+  cursor: pointer;
+  transition: transform .25s, box-shadow .25s;
+}
+.wb-ring-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, .15);
+}
+.wb-ring-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.wb-gear {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+}
+.wb-enter {
+  font-size: 13px;
+  font-weight: 700;
+  color: #6366f1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ede9fe, #e0e7ff);
+  transition: transform .2s;
+}
+.wb-ring-card:hover .wb-enter .arr {
+  transform: translateX(3px);
+}
+.wb-enter .arr {
+  font-size: 14px;
+  transition: transform .2s;
+}
 
-.mod-arr { flex-shrink:0; opacity:0; transition:all .3s; }
-.mod:hover .mod-arr { opacity:1; }
+/* 数字 + 按钮 */
+.wb-stats-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+}
+.wb-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.wb-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.currency {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.amount-num {
+  font-size: 44px;
+  font-weight: 900;
+  color: #1e293b;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.wb-deposit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 32px;
+  border-left: 1px solid #e5e7eb;
+}
+.wb-deposit-label {
+  font-size: 11px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.wb-deposit-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #4b5563;
+}
+.wb-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: transform .15s;
+  font-family: inherit;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-primary {
+  background: #4f46e5;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, .3);
+}
+.btn-primary:hover .el-icon { transform: translateX(2px); }
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+}
 
-@media (max-width:800px) {
-  .grid { grid-template-columns:1fr; }
-  .hdr { flex-direction:column; gap:16px; text-align:center; }
-  .hdr-pills { justify-content:center; }
+/* 柱状图 */
+.wb-chart-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+}
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.chart-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #374151;
+}
+.chart-body {
+  flex: 1;
+  min-height: 110px;
+}
+
+/* ── 第二行:4 张模块卡 横向排开 ── */
+.row-modules {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.mod-card {
+  background: #fff;
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: all .3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+}
+.mod-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .08);
+}
+
+/* 小框:放名字 + 图标(顶部) */
+.mod-tag {
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  min-height: 64px;
+}
+.mod-tag-ico-wrap {
+  width: 36px; height: 36px;
+  background: rgba(255, 255, 255, .25);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  flex-shrink: 0;
+}
+.mod-tag-ico {
+  font-size: 18px;
+  color: #fff;
+}
+.mod-tag-label {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+/* 大框:放数据 */
+.mod-body {
+  flex: 1;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #fff;
+}
+.mod-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.balance-label {
+  font-size: 10px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+}
+.balance-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.balance-num {
+  font-size: 28px;
+  font-weight: 800;
+  color: #1e293b;
+  line-height: 1;
+}
+.balance-unit {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 600;
+}
+.mod-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.m-stat { display: flex; flex-direction: column; gap: 2px; }
+.m-stat-label {
+  font-size: 11px;
+  color: #9ca3af;
+}
+.m-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+}
+.m-stat-value.up { color: #3b82f6; }
+.m-stat-value.down { color: #ef4444; }
+.mod-progress {
+  display: flex;
+  gap: 3px;
+  height: 4px;
+  margin-top: auto;
+}
+.p-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .6s ease;
+}
+
+/* 底部 V 圆形按钮 */
+.mod-fab {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .15);
+  transition: transform .15s;
+}
+.mod-fab:hover { transform: scale(1.08); }
+
+/* ── 响应式 ── */
+@media (max-width: 1100px) {
+  .row-modules { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+  .row-workbench { grid-template-columns: 1fr; }
+  .welcome { flex-wrap: wrap; }
+}
+@media (max-width: 600px) {
+  .row-modules { grid-template-columns: 1fr; }
 }
 </style>
