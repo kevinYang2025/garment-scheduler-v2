@@ -14,7 +14,7 @@
 //       <tr v-if="(startIndex + visibleRows.length) < rows.length" :style="{ height: ((rows.length - startIndex - visibleRows.length) * vs.rowHeight) + 'px' }"></td></tr>
 //     </table>
 //   </div>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 
 export function useVirtualScroll(rowHeight = 36, bufferRows = 8) {
   const container = ref(null)
@@ -25,6 +25,23 @@ export function useVirtualScroll(rowHeight = 36, bufferRows = 8) {
   let resizeTimer = null
   let isScrolling = false
   let scrollTimer = null
+
+  // [F-04 fix] 如果 setup 时 container 还没挂载,等 ref 就绪再挂监听
+  // 否则在父组件 v-if / KeepAlive 切回时 scroll/resize 监听会静默丢失
+  function attachTo(el) {
+    if (!el) return
+    containerHeight.value = el.clientHeight || 600
+    ro = new ResizeObserver(([entry]) => {
+      debouncedResize(entry.contentRect.height)
+    })
+    ro.observe(el)
+    window.addEventListener('resize', onWindowResize, { passive: true })
+  }
+
+  function detachAll() {
+    if (ro) { ro.disconnect(); ro = null }
+    window.removeEventListener('resize', onWindowResize)
+  }
 
   function onScroll(e) {
     // 标记滚动中，冻结 ResizeObserver 更新
@@ -62,22 +79,23 @@ export function useVirtualScroll(rowHeight = 36, bufferRows = 8) {
     }
   }
 
-  onMounted(() => {
+  onMounted(async () => {
+    // [F-04 fix] 用 nextTick + watch 兜底,处理 KeepAlive 切回时 ref 还没就绪的情况
+    await nextTick()
     if (container.value) {
-      containerHeight.value = container.value.clientHeight
-      ro = new ResizeObserver(([entry]) => {
-        debouncedResize(entry.contentRect.height)
-      })
-      ro.observe(container.value)
-      window.addEventListener('resize', onWindowResize, { passive: true })
+      attachTo(container.value)
+    } else {
+      // ref 还没绑定(父组件还没渲染),开 watch 等就绪
+      const stop = watch(container, (el) => {
+        if (el) { attachTo(el); stop() }
+      }, { immediate: false })
     }
   })
   onUnmounted(() => {
     if (raf) cancelAnimationFrame(raf)
     clearTimeout(resizeTimer)
     clearTimeout(scrollTimer)
-    if (ro) ro.disconnect()
-    window.removeEventListener('resize', onWindowResize)
+    detachAll()
   })
 
   return {

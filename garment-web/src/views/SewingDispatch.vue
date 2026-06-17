@@ -4,6 +4,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { todayLocal } from '../utils/date'
 
 const props = defineProps({
   workshop: { type: String, default: '' },
@@ -19,13 +20,13 @@ const showEntry = ref(false)
 const form = ref({
   schedule_type: 'sewing',
   style_no: '', product_name: '', color: '', size_spec: '',
-  production_date: new Date().toISOString().slice(0, 10),
+  production_date: todayLocal(),  // [F-01 fix]
   completed_qty: 0, defect_qty: 0,
   workshop: '', line_team: '',
   remark: '',
 })
 
-// 根据车间过滤
+// [F-03 fix] workshop 单一可信源:始终用 props.workshop,不让选款式时改
 const filteredMasters = computed(() => {
   if (!props.workshop) return sewingMasters.value
   return sewingMasters.value.filter(m => m.workshop === props.workshop)
@@ -38,10 +39,13 @@ const teams = computed(() => {
 
 // 选中班组后的款式
 const stylesForTeam = computed(() => {
-  if (!form.value.line_team || !form.value.workshop) {
+  if (!form.value.line_team) {
     return sewingMasters.value
   }
-  return sewingMasters.value.filter(m => m.workshop === form.value.workshop && m.line_team === form.value.line_team)
+  return sewingMasters.value.filter(m =>
+    (!props.workshop || m.workshop === props.workshop) &&  // 优先用 props.workshop
+    m.line_team === form.value.line_team
+  )
 })
 
 // 选款号后自动带出的信息
@@ -50,8 +54,8 @@ const selectedMaster = computed(() => {
 })
 
 function onTeamSelect(lineTeam) {
-  form.value.workshop = props.workshop
   form.value.line_team = lineTeam
+  form.value.workshop = props.workshop  // 单一源:从 props 复制
   form.value.style_no = ''
   form.value.product_name = ''
   form.value.color = ''
@@ -64,8 +68,8 @@ function onStyleSelect(styleNo) {
     form.value.product_name = master.product_name || ''
     form.value.color = master.color || ''
     form.value.size_spec = master.size_spec || ''
-    form.value.workshop = master.workshop || ''
     form.value.line_team = master.line_team || ''
+    // [F-03 fix] 不再覆盖 workshop,统一用 props.workshop
   }
 }
 
@@ -75,6 +79,7 @@ async function loadSewingMasters() {
     sewingMasters.value = data || []
   } catch (e) {
     console.error('加载缝制排程失败:', e)
+    ElMessage.error('加载缝制排程失败')
   }
 }
 
@@ -83,7 +88,10 @@ async function loadRecords() {
   try {
     const { data } = await api.getActual('sewing')
     records.value = (data || []).sort((a, b) => (b.production_date || '').localeCompare(a.production_date || ''))
-  } catch (e) { console.error('加载报工记录失败:', e) }
+  } catch (e) {
+    console.error('加载报工记录失败:', e)
+    ElMessage.error('加载报工记录失败')
+  }
   loading.value = false
 }
 
@@ -92,9 +100,10 @@ function openAdd(prefill) {
     schedule_type: 'sewing',
     style_no: prefill?.style_no || '', product_name: prefill?.product_name || '',
     color: prefill?.color || '', size_spec: prefill?.size_spec || '',
-    production_date: new Date().toISOString().slice(0, 10),
+    production_date: todayLocal(),  // [F-01 fix]
     completed_qty: 0, defect_qty: 0,
-    workshop: prefill?.workshop || '', line_team: prefill?.line_team || '',
+    workshop: props.workshop || prefill?.workshop || '',  // 优先 props
+    line_team: prefill?.line_team || '',
     remark: '',
   }
   showEntry.value = true

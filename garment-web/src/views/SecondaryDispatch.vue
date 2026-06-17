@@ -4,19 +4,15 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { todayLocal } from '../utils/date'
+import { getSecondaryTypeConfig } from '../constants/secondaryTypes'
 
 const props = defineProps({
   reportType: { type: String, required: true },  // printing/embroidery/template/ironing
 })
 const emit = defineEmits(['back'])
 
-const typeConfig = {
-  printing:   { label: '印花报工', icon: '🎨', secondary_type: '印花',   api: 'getPrintingDailyPlan' },
-  embroidery: { label: '刺绣报工', icon: '🧵', secondary_type: '刺绣',   api: 'getEmbroideryDailyPlan' },
-  template:   { label: '模板报工', icon: '📐', secondary_type: '模板',   api: 'getTemplateDailyPlan' },
-  ironing:    { label: '烫标报工', icon: '🔥', secondary_type: '烫标',   api: 'getIroningDailyPlan' },
-}
-const config = computed(() => typeConfig[props.reportType] || typeConfig.printing)
+const config = computed(() => getSecondaryTypeConfig(props.reportType))
 
 const records = ref([])
 const scheduleStyles = ref([])
@@ -29,9 +25,9 @@ const form = ref(getDefaultForm())
 function getDefaultForm() {
   return {
     schedule_type: 'secondary',
-    secondary_type: config.value.secondary_type,
+    secondary_type: config.value.name,  // '印花'/'刺绣'/'模板'/'烫标' — 后端 secondary_type 字段值
     style_no: '', color: '', size_spec: '',
-    production_date: new Date().toISOString().slice(0, 10),
+    production_date: todayLocal(),  // [F-01 fix]
     completed_qty: 0,
     defect_qty: 0,
     remark: '',
@@ -55,7 +51,10 @@ const selectedProductName = computed(() => {
 async function loadScheduleStyles() {
   try {
     const fn = api[config.value.api]
-    if (!fn) return
+    if (!fn) {
+      console.warn(`api.${config.value.api} not found`)
+      return
+    }
     const { data } = await fn()
     scheduleStyles.value = (data.rows || []).map(r => ({
       style_no: r.style_no, product_name: r.product_name || '',
@@ -63,6 +62,7 @@ async function loadScheduleStyles() {
     }))
   } catch (e) {
     console.error('加载排程数据失败:', e)
+    ElMessage.error('加载排程数据失败')
   }
 }
 
@@ -71,9 +71,12 @@ async function loadRecords() {
   try {
     const { data } = await api.getActual('secondary')
     records.value = (data || [])
-      .filter(r => r.secondary_type === config.value.secondary_type)
+      .filter(r => r.secondary_type === config.value.name)
       .sort((a, b) => (b.production_date || '').localeCompare(a.production_date || ''))
-  } catch (e) { console.error('加载报工记录失败:', e) }
+  } catch (e) {
+    console.error('加载报工记录失败:', e)
+    ElMessage.error('加载报工记录失败')
+  }
   loading.value = false
 }
 
@@ -92,7 +95,7 @@ async function saveEntry() {
   if (!form.value.completed_qty || form.value.completed_qty <= 0) { ElMessage.warning('完成数量必须大于0'); return }
   saving.value = true
   try {
-    form.value.secondary_type = config.value.secondary_type
+    form.value.secondary_type = config.value.name  // 后端用短名
     await api.saveActual(form.value)
     ElMessage.success('报工成功')
     showEntry.value = false
@@ -104,10 +107,12 @@ async function saveEntry() {
 async function deleteRecord(row) {
   try {
     await ElMessageBox.confirm('确定删除这条报工记录？', '提示', { type: 'warning' })
-    await api.deleteActual(row.id || row.record_id)
+    await api.deleteActual(row.id)
     ElMessage.success('删除成功')
     await loadRecords()
-  } catch { /* cancel */ }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('删除失败: ' + (e.response?.data?.error || e.message))
+  }
 }
 
 const summaryRows = computed(() => {
@@ -137,7 +142,7 @@ onMounted(async () => {
     <div class="detail-header">
       <div class="header-left">
         <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
-        <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700">{{ config.icon }} {{ config.label }}</h2>
+        <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700">{{ config.icon }} {{ config.title }}</h2>
       </div>
       <div class="header-actions">
         <el-button type="primary" size="large" @click="openAdd()">+ 录入报工</el-button>
@@ -193,7 +198,7 @@ onMounted(async () => {
     </div>
 
     <div v-else style="text-align:center;padding:60px;color:var(--text-tertiary)">
-      暂无{{ config.label.replace('报工','') }}报工记录，点击"录入报工"开始
+      暂无{{ config.name }}报工记录，点击"录入报工"开始
     </div>
 
     <!-- 回到顶部 -->
@@ -201,7 +206,7 @@ onMounted(async () => {
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4L4 12h12L10 4z" fill="#fff"/></svg>
     </div>
 
-    <el-dialog v-model="showEntry" :title="config.label" width="520px">
+    <el-dialog v-model="showEntry" :title="config.title" width="520px">
       <el-form :model="form" label-width="90px" size="default">
         <el-form-item label="款号" required>
           <el-select v-model="form.style_no" filterable placeholder="选择款号" style="width:100%"

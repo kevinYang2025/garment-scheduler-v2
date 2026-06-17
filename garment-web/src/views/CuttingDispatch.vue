@@ -4,6 +4,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { todayLocal } from '../utils/date'
 
 const emit = defineEmits(['back'])
 
@@ -20,7 +21,7 @@ function getDefaultForm() {
   return {
     schedule_type: 'cutting',
     style_no: '', color: '', size_spec: '',
-    production_date: new Date().toISOString().slice(0, 10),
+    production_date: todayLocal(),  // [F-01 fix] 本地日期,不用 toISOString
     completed_qty: 0,
     defect_qty: 0,
     remark: '',
@@ -77,6 +78,7 @@ async function loadRecords() {
     records.value = (data || []).sort((a, b) => (b.production_date || '').localeCompare(a.production_date || ''))
   } catch (e) {
     console.error('加载报工记录失败:', e)
+    ElMessage.error('加载报工记录失败')
   }
   loading.value = false
 }
@@ -109,10 +111,12 @@ async function saveEntry() {
 async function deleteRecord(row) {
   try {
     await ElMessageBox.confirm('确定删除这条报工记录？', '提示', { type: 'warning' })
-    await api.deleteActual(row.id || row.record_id)
+    await api.deleteActual(row.id)  // [F-06 fix] 后端只返回 id 字段
     ElMessage.success('删除成功')
     await loadRecords()
-  } catch { /* cancel */ }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('删除失败: ' + (e.response?.data?.error || e.message))
+  }
 }
 
 // 按款号+颜色+尺码汇总
