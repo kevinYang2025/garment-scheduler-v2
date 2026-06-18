@@ -54,6 +54,9 @@ import AuxiliaryList from '../views/AuxiliaryList.vue'
 // 用户管理(admin 专属)
 import UserManagement from '../views/UserManagement.vue'
 
+// 实际产量复核(supervisor 专属)
+import ActualReview from '../views/ActualReview.vue'
+
 const routes = [
   { path: '/login', name: 'login', component: Login, meta: { public: true, noAuth: true } },
 
@@ -106,6 +109,9 @@ const routes = [
 
   // 用户管理(admin)
   { path: '/users', name: 'users', component: UserManagement, meta: { roles: ['admin'] } },
+
+  // 实际产量复核(supervisor / admin)
+  { path: '/actual-review', name: 'actualReview', component: ActualReview, meta: { roles: ['admin', 'supervisor'] } },
 ]
 
 const router = createRouter({

@@ -41,7 +41,7 @@ const navGroups = [
   },
   {
     label: '计划管理',
-    match: ['planManagement', 'mainPlan', 'mainPlanGantt', 'cutting', 'secondary', 'secondary-detail', 'sewing', 'sewing-plan', 'sewing-visual'],
+    match: ['planManagement', 'mainPlan', 'mainPlanGantt', 'cutting', 'secondary', 'secondary-detail', 'sewing', 'sewing-plan', 'sewing-visual', 'actualReview'],
   },
   {
     label: '报工管理',
@@ -98,6 +98,8 @@ const navItems = {
   sewing: { label: '缝制排程', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
   'sewing-plan': { label: '缝制排程详情', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
   'sewing-visual': { label: '目视化排程', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
+  // 实际产量复核(supervisor / admin 复核)
+  actualReview: { label: '实际产量复核', icon: 'ruler', roles: ['admin', 'supervisor'] },
   // 报工(planning + dispatcher,supervisor 不报工)
   'cutting-dispatch': { label: '裁剪报工', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'cutting' },
   'printing-dispatch': { label: '印花报工', icon: 'printer', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'printing' },

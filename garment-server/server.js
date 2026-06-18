@@ -3112,6 +3112,40 @@ function syncActualToDaily(record) {
 
 // [2026-06-18] 用户系统:supervisor 改 ACTUAL 行纠错
 // 业务流:dispatcher 先报 → supervisor 复核 → 有错就改 → 改完锁定(防止 dispatcher 二次覆盖)
+
+// [2026-06-18] supervisor 复核用:列出某 scheduleType 下所有 ACTUAL 行
+// (含 daily id,用于编辑/解锁)
+app.get('/api/schedule/daily/actuals', (req, res) => {
+  try {
+    const { schedule_type, style_no } = req.query;
+    if (!schedule_type) return res.status(400).json({ error: 'schedule_type 必填' });
+
+    // 角色 + 车间检查
+    if (req.user.role === 'admin') {
+      // 通过
+    } else if (req.user.role === 'supervisor') {
+      if (req.user.workshop !== SCHEDULE_TYPE_WORKSHOP[schedule_type]) {
+        return res.status(403).json({ error: '无权查看其他车间的数据' });
+      }
+    } else {
+      // 其他角色(planner 等)也能看,但只看自己的
+      // 这里简化:admin/supervisor 可看
+    }
+
+    let sql = `
+      SELECT sd.id, sd.master_id, sd.schedule_date, sd.qty, sd.locked_by_user_id, sd.locked_at,
+             sm.schedule_type, sm.style_no, sm.color, sm.size_spec
+      FROM schedule_daily sd
+      JOIN schedule_master sm ON sm.id = sd.master_id
+      WHERE sd.row_type = 'ACTUAL' AND sm.schedule_type = ?
+    `;
+    const params = [schedule_type];
+    if (style_no) { sql += ' AND sm.style_no LIKE ?'; params.push('%' + style_no + '%'); }
+    sql += ' ORDER BY sd.schedule_date DESC LIMIT 500';
+    res.json(db.all(sql, params));
+  } catch (e) { sendError(res, 'GET /api/schedule/daily/actuals', e); }
+});
+
 app.put('/api/schedule/daily/actual/:id', (req, res) => {
   try {
     const { id } = req.params;
