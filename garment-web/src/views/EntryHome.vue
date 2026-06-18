@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useWebSocket } from '../composables/useWebSocket'
 import api from '../api'
-import { Setting, Calendar, Document, DataAnalysis } from '@element-plus/icons-vue'
+import { Setting, ArrowDown, Plus, Calendar, Upload, Document, DataAnalysis } from '@element-plus/icons-vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -183,7 +183,20 @@ onMounted(loadStats)
             <div class="wb-deposit-num">{{ activeStyles }}</div>
           </div>
         </div>
-
+        <div class="wb-actions">
+          <button class="btn btn-primary">
+            <el-icon><Plus /></el-icon>
+            新建款式
+          </button>
+          <button class="btn btn-secondary">
+            <el-icon><Calendar /></el-icon>
+            新建计划
+          </button>
+          <button class="btn btn-secondary">
+            <el-icon><Upload /></el-icon>
+            批量导入
+          </button>
+        </div>
       </div>
 
       <!-- 柱状图 -->
@@ -237,7 +250,10 @@ onMounted(loadStats)
             <div class="p-bar" :style="{ background: card.progColorB, width: card.progBW + '%' }"></div>
           </div>
         </div>
-
+        <!-- 底部 V 按钮 -->
+        <button class="mod-fab" :style="{ background: card.color }">
+          <el-icon><ArrowDown /></el-icon>
+        </button>
       </div>
     </div>
   </div>
