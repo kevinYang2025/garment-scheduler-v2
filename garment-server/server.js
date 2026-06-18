@@ -385,11 +385,13 @@ app.use((req, res, next) => {
 
 // Simple token auth [fix#2]
 // [2026-06-18] 与下方 requireAuth 保持一致: 排除 /auth/login 和 /socket.io/
-// 否则 session 登录前会被 Bearer 拦截,WebSocket 握手也会被拦
+// 有 session 直接放行(Bearer 只作为外部工具/CLI 的备选)
+// 否则 session 登录后所有 /api 请求被 Bearer 拦截 → 401
 if (AUTH_ENABLED) {
   app.use('/api', (req, res, next) => {
     if (req.path === '/auth/login') return next();
     if (req.path.startsWith('/socket.io')) return next();
+    if (req.session && req.session.user) return next();
     const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
     if (token !== API_TOKEN) {
       return res.status(401).json({ error: 'Unauthorized' });
