@@ -5,6 +5,11 @@ const path = require('path');
 const db = require('./db');
 const ExcelJS = require('exceljs');
 
+// [2026-06-18] 用户系统依赖
+const bcrypt = require('bcryptjs');
+const session = require('express-session');
+const SqliteStore = require('./session-store');
+
 const PORT = process.env.PORT || 3001;
 const AUTH_ENABLED = process.env.AUTH_ENABLED === 'true';
 const API_TOKEN = process.env.API_TOKEN || 'garment-dev-token';
@@ -70,6 +75,284 @@ app.use((req, res, next) => {
     }
   };
   next();
+});
+
+// ============================================================
+// [2026-06-18] 用户系统:session + 鉴权中间件
+// ============================================================
+const sessionStore = new SqliteStore(db.getDb());
+const SESSION_SECRET = process.env.SESSION_SECRET || 'garment-session-dev-secret';
+app.use(session({
+  store: sessionStore,
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,  // 每次请求刷新过期(保持 7 天活跃)
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000  // 7 天免登
+  }
+}));
+
+// 检查已登录
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+  return res.status(401).json({ error: '未登录' });
+}
+
+// 检查角色(admin 自动有所有角色权限,kevin 2026-06-18 决定)
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.session || !req.session.user) {
+      return res.status(401).json({ error: '未登录' });
+    }
+    const u = req.session.user;
+    if (u.role === 'admin') return next();  // admin bypass
+    if (roles.includes(u.role)) return next();
+    return res.status(403).json({ error: '权限不足' });
+  };
+}
+
+// supervisor 限定本车间(supervisor 调用时,workshop 必须与 scheduleType 对应)
+function requireWorkshopMatch(scheduleType) {
+  return (req, res, next) => {
+    const u = req.session && req.session.user;
+    if (!u) return res.status(401).json({ error: '未登录' });
+    if (u.role === 'admin') return next();  // admin bypass
+    if (u.role !== 'supervisor') {
+      return res.status(403).json({ error: '该操作仅限车间主任' });
+    }
+    const map = {
+      cutting: 'cutting',
+      printing: 'printing',
+      embroidery: 'embroidery',
+      template: 'template',
+      ironing: 'ironing',
+      sewing: 'sewing'
+    };
+    const need = map[scheduleType];
+    if (!need) return res.status(500).json({ error: '未知的 scheduleType' });
+    if (u.workshop !== need) {
+      return res.status(403).json({ error: '无权操作其他车间的数据' });
+    }
+    next();
+  };
+}
+
+// 启动时清一次过期 session
+const _cleanedCount = sessionStore.cleanup();
+if (_cleanedCount > 0) console.log(`✅ 清理 ${_cleanedCount} 个过期 session`);
+
+// ============================================================
+// [2026-06-18] 用户系统:auth 路由
+// ============================================================
+
+// POST /api/auth/login
+// 两种登录方式:
+//   1. 账号+密码:admin / planner / planning_manager / supervisor
+//   2. 工号+PIN:dispatcher
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { username, password, pin_no, pin } = req.body || {};
+
+    let user = null;
+    if (username && password) {
+      user = db.get('SELECT * FROM users WHERE username = ? AND active = 1', [username]);
+      if (!user) return res.status(401).json({ error: '账号或密码错误' });
+      if (!user.password_hash) return res.status(401).json({ error: '该账号未设置密码' });
+      if (!bcrypt.compareSync(password, user.password_hash)) {
+        return res.status(401).json({ error: '账号或密码错误' });
+      }
+    } else if (pin_no && pin) {
+      user = db.get('SELECT * FROM users WHERE username = ? AND active = 1', [pin_no]);
+      if (!user) return res.status(401).json({ error: '工号或 PIN 错误' });
+      if (user.role !== 'dispatcher') {
+        return res.status(401).json({ error: '该工号不可用 PIN 登录' });
+      }
+      if (!user.pin || user.pin !== pin) {
+        return res.status(401).json({ error: '工号或 PIN 错误' });
+      }
+    } else {
+      return res.status(400).json({ error: '请提供账号密码 或 工号+PIN' });
+    }
+
+    // 写 session(不存 password_hash / pin)
+    req.session.user = {
+      id: user.id,
+      username: user.username,
+      display_name: user.display_name,
+      role: user.role,
+      workshop: user.workshop
+    };
+    res.json({ ok: true, user: req.session.user });
+  } catch (e) { sendError(res, 'POST /api/auth/login', e); }
+});
+
+// POST /api/auth/logout
+app.post('/api/auth/logout', (req, res) => {
+  if (req.session) {
+    req.session.destroy(() => {
+      res.clearCookie('connect.sid');
+      res.json({ ok: true });
+    });
+  } else {
+    res.json({ ok: true });
+  }
+});
+
+// GET /api/auth/me
+app.get('/api/auth/me', (req, res) => {
+  if (req.session && req.session.user) {
+    res.json({ user: req.session.user });
+  } else {
+    res.status(401).json({ error: '未登录' });
+  }
+});
+
+// POST /api/auth/change-password
+app.post('/api/auth/change-password', requireAuth, (req, res) => {
+  try {
+    const { old_password, new_password } = req.body || {};
+    if (!old_password || !new_password) {
+      return res.status(400).json({ error: '请提供旧密码和新密码' });
+    }
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: '新密码至少 6 位' });
+    }
+    const user = db.get('SELECT * FROM users WHERE id = ?', [req.session.user.id]);
+    if (!user || !user.password_hash) {
+      return res.status(400).json({ error: '该账号未设置密码,无法自助改密' });
+    }
+    if (!bcrypt.compareSync(old_password, user.password_hash)) {
+      return res.status(401).json({ error: '旧密码错误' });
+    }
+    const newHash = bcrypt.hashSync(new_password, 10);
+    db.run('UPDATE users SET password_hash = ?, updated_at = datetime("now","localtime") WHERE id = ?',
+      [newHash, req.session.user.id]);
+    db.logOperation('users', 'change_password', req.session.user.id, user.username, '');
+    res.json({ ok: true });
+  } catch (e) { sendError(res, 'POST /api/auth/change-password', e); }
+});
+
+// ============================================================
+// [2026-06-18] 用户系统:users CRUD (admin only)
+// ============================================================
+
+app.get('/api/users', requireRole('admin'), (req, res) => {
+  try {
+    const { role, workshop } = req.query;
+    let sql = 'SELECT id, username, display_name, role, workshop, active, created_at FROM users WHERE 1=1';
+    const params = [];
+    if (role) { sql += ' AND role = ?'; params.push(role); }
+    if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
+    sql += ' ORDER BY id ASC';
+    res.json(db.all(sql, params));
+  } catch (e) { sendError(res, 'GET /api/users', e); }
+});
+
+app.post('/api/users', requireRole('admin'), (req, res) => {
+  try {
+    const { username, pin, password, display_name, role, workshop } = req.body || {};
+    if (!username || !display_name || !role) {
+      return res.status(400).json({ error: 'username/display_name/role 必填' });
+    }
+    if (!['admin','planning_manager','planner','dispatcher','supervisor'].includes(role)) {
+      return res.status(400).json({ error: 'role 不合法' });
+    }
+    if (['dispatcher','supervisor'].includes(role) && !workshop) {
+      return res.status(400).json({ error: 'dispatcher/supervisor 必须指定 workshop' });
+    }
+    if (workshop && !['cutting','printing','embroidery','template','ironing','sewing'].includes(workshop)) {
+      return res.status(400).json({ error: 'workshop 不合法' });
+    }
+    if (role === 'dispatcher' && (!pin || !/^\d{4}$/.test(pin))) {
+      return res.status(400).json({ error: 'dispatcher 必须设置 4 位数字 PIN' });
+    }
+    if (role !== 'dispatcher' && !password) {
+      return res.status(400).json({ error: '非 dispatcher 账号必须设置密码' });
+    }
+    if (password && password.length < 6) {
+      return res.status(400).json({ error: '密码至少 6 位' });
+    }
+    const existing = db.get('SELECT id FROM users WHERE username = ?', [username]);
+    if (existing) return res.status(400).json({ error: '账号已存在' });
+
+    const passwordHash = password ? bcrypt.hashSync(password, 10) : null;
+    const r = db.run(`INSERT INTO users (username, pin, password_hash, display_name, role, workshop, active)
+      VALUES (?, ?, ?, ?, ?, ?, 1)`,
+      [username, pin || null, passwordHash, display_name, role, workshop || null]);
+
+    db.logOperation('users', 'create', r.lastInsertRowid, username, `role=${role}`);
+    res.json({ ok: true, id: r.lastInsertRowid });
+  } catch (e) { sendError(res, 'POST /api/users', e); }
+});
+
+app.put('/api/users/:id', requireRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ error: '用户不存在' });
+
+    const { display_name, role, workshop, active, password, pin } = req.body || {};
+    const fields = [];
+    const params = [];
+    if (display_name !== undefined) { fields.push('display_name = ?'); params.push(display_name); }
+    if (role !== undefined) {
+      if (!['admin','planning_manager','planner','dispatcher','supervisor'].includes(role)) {
+        return res.status(400).json({ error: 'role 不合法' });
+      }
+      fields.push('role = ?'); params.push(role);
+    }
+    if (workshop !== undefined) { fields.push('workshop = ?'); params.push(workshop || null); }
+    if (active !== undefined) { fields.push('active = ?'); params.push(active ? 1 : 0); }
+    if (password) {
+      if (password.length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+      fields.push('password_hash = ?'); params.push(bcrypt.hashSync(password, 10));
+    }
+    if (pin) {
+      if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN 必须 4 位数字' });
+      fields.push('pin = ?'); params.push(pin);
+    }
+    fields.push('updated_at = datetime("now","localtime")');
+    params.push(id);
+    db.run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, params);
+    db.logOperation('users', 'update', id, existing.username, '');
+    res.json({ ok: true });
+  } catch (e) { sendError(res, 'PUT /api/users/:id', e); }
+});
+
+app.delete('/api/users/:id', requireRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ error: '用户不存在' });
+    if (existing.username === 'admin') {
+      return res.status(400).json({ error: 'admin 账号不能删除' });
+    }
+    db.run('UPDATE users SET active = 0, updated_at = datetime("now","localtime") WHERE id = ?', [id]);
+    db.logOperation('users', 'delete', id, existing.username, 'soft delete');
+    res.json({ ok: true });
+  } catch (e) { sendError(res, 'DELETE /api/users/:id', e); }
+});
+
+app.post('/api/users/:id/reset-pin', requireRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_pin } = req.body || {};
+    if (!new_pin || !/^\d{4}$/.test(new_pin)) {
+      return res.status(400).json({ error: 'new_pin 必须是 4 位数字' });
+    }
+    const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ error: '用户不存在' });
+    if (existing.role !== 'dispatcher') {
+      return res.status(400).json({ error: '该功能仅用于 dispatcher' });
+    }
+    db.run('UPDATE users SET pin = ?, updated_at = datetime("now","localtime") WHERE id = ?', [new_pin, id]);
+    db.logOperation('users', 'reset_pin', id, existing.username, '');
+    res.json({ ok: true });
+  } catch (e) { sendError(res, 'POST /api/users/:id/reset-pin', e); }
 });
 
 // CORS [fix#1]
