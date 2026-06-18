@@ -3203,7 +3203,7 @@ app.put('/api/schedule/daily/actual/:id', (req, res) => {
         [qty, req.user.id, id]);
     }
     logOp(req, 'schedule_daily', 'update_actual', id, '', `qty=${qty} by ${req.user.username}`);
-    res.json({ ok: true, locked_by_user_id: row.locked_by_user_id || req.user.id, locked_at: new Date().toISOString() });
+    res.json({ ok: true, locked_by_user_id: row.locked_by_user_id || req.user.id, locked_at: fmtLocal(new Date()) });
   } catch (e) { sendError(res, 'PUT /api/schedule/daily/actual/:id', e); }
 });
 
@@ -3504,7 +3504,7 @@ app.put('/api/asn/:id/status', (req, res) => {
           // 写入 inbound 记录
           db.run(`INSERT INTO warehouse_inbound (warehouse_type, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, unit, remark, order_no)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, asn.actual_date || new Date().toISOString().split('T')[0], asn.operator, d.pot_no, d.fabric_name, asn.supplier, d.unit, `ASN:${asn.asn_code}`, asn.asn_code]);
+            [asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, asn.actual_date || fmtLocal(new Date()), asn.operator, d.pot_no, d.fabric_name, asn.supplier, d.unit, `ASN:${asn.asn_code}`, asn.asn_code]);
         }
       }
       // 更新 ASN 汇总
@@ -3628,7 +3628,7 @@ app.put('/api/dn/:id/status', (req, res) => {
           updateInventory(dn.warehouse_type, d.style_no, d.color, d.size_spec, -qty);
           db.run(`INSERT INTO warehouse_outbound (warehouse_type, style_no, color, size_spec, qty, outbound_date, operator, remark, order_no)
             VALUES (?,?,?,?,?,?,?,?,?)`,
-            [dn.warehouse_type, d.style_no, d.color, d.size_spec, qty, new Date().toISOString().split('T')[0], dn.operator, `DN:${dn.dn_code}`, dn.dn_code]);
+            [dn.warehouse_type, d.style_no, d.color, d.size_spec, qty, fmtLocal(new Date()), dn.operator, `DN:${dn.dn_code}`, dn.dn_code]);
         }
       }
       const shippedTotal = details.reduce((s, d) => s + (d.shipped_qty || d.plan_qty || 0), 0);
