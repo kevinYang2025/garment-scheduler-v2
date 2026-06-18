@@ -149,6 +149,9 @@ const workshopNames = {
   sewing: '缝制车间',
 }
 
+// 侧边栏不显示的菜单项（路由存在但不在导航中渲染）
+const hiddenNavItems = new Set(['sewing-dispatch-detail'])
+
 const pageTitle = computed(() => navItems[route.name]?.label || 'EUC 排程系统')
 
 // ==================== 事件处理 ====================
@@ -234,7 +237,7 @@ function getIcon(name) {
             <div class="nav-section-label">{{ currentGroup.label }}</div>
             <template v-for="name in currentGroup.match" :key="name">
               <div
-                v-if="navItems[name] && isItemVisible(navItems[name])"
+                v-if="navItems[name] && isItemVisible(navItems[name]) && !hiddenNavItems.has(name)"
                 class="nav-item"
                 :class="{ active: route.name === name }"
                 :data-label="navItems[name].label"

@@ -10,6 +10,20 @@
     </div>
 
     <div class="toolbar">
+      <el-select
+        v-model="scheduleType"
+        placeholder="选择车间"
+        style="width: 160px"
+        :disabled="auth.role === 'supervisor'"
+        @change="load"
+      >
+        <el-option
+          v-for="(name, key) in workshopNames"
+          :key="key"
+          :label="name"
+          :value="key"
+        />
+      </el-select>
       <el-input v-model="filterStyle" placeholder="按款号过滤" clearable style="width: 240px" />
       <el-button @click="load" type="primary" :loading="loading">刷新</el-button>
     </div>
@@ -73,6 +87,7 @@ const auth = useAuthStore()
 const rows = ref([])
 const loading = ref(false)
 const filterStyle = ref('')
+const scheduleType = ref(auth.workshop || '')
 
 const workshopNames = {
   cutting: '裁剪车间', printing: '印花车间', embroidery: '刺绣车间',
@@ -96,10 +111,15 @@ function formatLockedAt(v) {
 }
 
 async function load() {
+  if (!scheduleType.value) {
+    ElMessage.warning('请先选择车间')
+    rows.value = []
+    return
+  }
   loading.value = true
   try {
     const r = await api.get('/schedule/daily/actuals', {
-      params: { schedule_type: auth.workshop }
+      params: { schedule_type: scheduleType.value }
     })
     rows.value = r.data
   } catch (e) {

@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../api'
 
-const emit = defineEmits(['enter', 'exit'])
+const router = useRouter()
 
 const warehouseTypes = [
   { key: 'raw_material', label: '面料库', icon: '🧵', unit: '米' },
@@ -43,7 +44,7 @@ async function loadSummaries() {
 }
 
 function enterWarehouse(key) {
-  emit('enter', key)
+  router.push({ name: 'warehouse-detail', params: { type: key } })
 }
 
 function formatTime(ts) {
@@ -57,7 +58,7 @@ onMounted(loadSummaries)
 <template>
   <div class="warehouse-home">
     <div class="page-header">
-      <button class="back-btn" @click="emit('exit')">
+      <button class="back-btn" @click="router.push('/')">
         <span class="back-arrow">←</span> 返回工作台
       </button>
     </div>
