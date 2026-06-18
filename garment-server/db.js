@@ -1214,10 +1214,11 @@ function addWorkdays(startDate, days) {
 // ============================================================
 // 操作日志
 // ============================================================
-function logOperation(module, action, targetId, targetName, detail) {
+// [2026-06-18] 加 userId 参数(末尾,可空),所有写操作的 user_id 都从这里来
+function logOperation(module, action, targetId, targetName, detail, userId) {
   try {
-    db.prepare('INSERT INTO operation_logs (module, action, target_id, target_name, detail) VALUES (?,?,?,?,?)')
-      .run(module, action, targetId || null, targetName || '', detail || '');
+    db.prepare('INSERT INTO operation_logs (module, action, target_id, target_name, detail, user_id) VALUES (?,?,?,?,?,?)')
+      .run(module, action, targetId || null, targetName || '', detail || '', userId || null);
   } catch (e) { console.error('logOperation error:', e.message); }
 }
 

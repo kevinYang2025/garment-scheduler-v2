@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { createServer } = require('http');
 const { Server: SocketIO } = require('socket.io');
 const path = require('path');
@@ -27,6 +27,13 @@ function sendError(res, endpoint, err) {
   if (!res.headersSent) {
     res.status(500).json({ error: '服务器内部错误' });
   }
+}
+
+// [2026-06-18] 日志 helper:从 req 自动取 user_id(替代直接调 db.logOperation)
+// 替换 server.js 中所有 `db.logOperation(` → `logOp(req, ` 即可
+function logOp(req, module, action, targetId, targetName, detail) {
+  const userId = (req && req.user && req.user.id) || null;
+  db.logOperation(module, action, targetId, targetName, detail, userId);
 }
 
 // ============================================================
@@ -235,7 +242,7 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
     const newHash = bcrypt.hashSync(new_password, 10);
     db.run('UPDATE users SET password_hash = ?, updated_at = datetime("now","localtime") WHERE id = ?',
       [newHash, req.session.user.id]);
-    db.logOperation('users', 'change_password', req.session.user.id, user.username, '');
+    logOp(req, 'users', 'change_password', req.session.user.id, user.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/auth/change-password', e); }
 });
@@ -288,7 +295,7 @@ app.post('/api/users', requireRole('admin'), (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, 1)`,
       [username, pin || null, passwordHash, display_name, role, workshop || null]);
 
-    db.logOperation('users', 'create', r.lastInsertRowid, username, `role=${role}`);
+    logOp(req, 'users', 'create', r.lastInsertRowid, username, `role=${role}`);
     res.json({ ok: true, id: r.lastInsertRowid });
   } catch (e) { sendError(res, 'POST /api/users', e); }
 });
@@ -322,7 +329,7 @@ app.put('/api/users/:id', requireRole('admin'), (req, res) => {
     fields.push('updated_at = datetime("now","localtime")');
     params.push(id);
     db.run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, params);
-    db.logOperation('users', 'update', id, existing.username, '');
+    logOp(req, 'users', 'update', id, existing.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'PUT /api/users/:id', e); }
 });
@@ -336,7 +343,7 @@ app.delete('/api/users/:id', requireRole('admin'), (req, res) => {
       return res.status(400).json({ error: 'admin 账号不能删除' });
     }
     db.run('UPDATE users SET active = 0, updated_at = datetime("now","localtime") WHERE id = ?', [id]);
-    db.logOperation('users', 'delete', id, existing.username, 'soft delete');
+    logOp(req, 'users', 'delete', id, existing.username, 'soft delete');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'DELETE /api/users/:id', e); }
 });
@@ -354,7 +361,7 @@ app.post('/api/users/:id/reset-pin', requireRole('admin'), (req, res) => {
       return res.status(400).json({ error: '该功能仅用于 dispatcher' });
     }
     db.run('UPDATE users SET pin = ?, updated_at = datetime("now","localtime") WHERE id = ?', [new_pin, id]);
-    db.logOperation('users', 'reset_pin', id, existing.username, '');
+    logOp(req, 'users', 'reset_pin', id, existing.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/users/:id/reset-pin', e); }
 });
@@ -632,7 +639,7 @@ app.post('/api/styles/import', async (req, res) => {
     });
     txn();
     broadcastSection('styles', db.all('SELECT * FROM styles ORDER BY id'));
-    db.logOperation('styles', 'import', null, `导入${imported}条`);
+    logOp(req, 'styles', 'import', null, `导入${imported}条`);
     res.json({ ok: true, imported, skipped });
   } catch (e) {
     sendError(res, 'POST /api/styles/import', e);
@@ -662,14 +669,14 @@ app.post('/api/styles', (req, res) => {
       db.run(`UPDATE styles SET style_no=?,product_name=?,style_category=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,remarks=? WHERE id=?`,
         [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'', s.id]);
       broadcastSection('styles', db.searchStyles(''));
-      db.logOperation('styles', 'update', s.id, s.style_no);
+      logOp(req, 'styles', 'update', s.id, s.style_no);
       return res.json({ ok: true, id: s.id });
     }
     const result = db.run(`INSERT INTO styles (style_no, product_name, style_category, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, remarks)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'']);
     broadcastSection('styles', db.searchStyles(''));
-    db.logOperation('styles', 'create', result.lastInsertRowid, s.style_no);
+    logOp(req, 'styles', 'create', result.lastInsertRowid, s.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/styles error:', e);
@@ -683,7 +690,7 @@ app.delete('/api/styles/:id', (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Not found' });
     db.run('DELETE FROM styles WHERE id = ?', [req.params.id]);
     broadcastSection('styles', db.searchStyles(''));
-    db.logOperation('styles', 'delete', req.params.id, '');
+    logOp(req, 'styles', 'delete', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/styles error:', e);
@@ -733,7 +740,7 @@ app.put('/api/production-lines/:id', (req, res) => {
       db.run('UPDATE production_lines SET status = ? WHERE id = ?', [status, req.params.id]);
       db.run('INSERT INTO production_line_events (line_id, event_type, old_status, new_status, remark) VALUES (?,?,?,?,?)',
         [req.params.id, 'status_change', oldStatus, status, req.body.remark || '']);
-      db.logOperation('production_lines', 'status_change', req.params.id, existing.line_name, `${oldStatus}→${status}`);
+      logOp(req, 'production_lines', 'status_change', req.params.id, existing.line_name, `${oldStatus}→${status}`);
     }
     broadcastSection('productionLines', db.all('SELECT * FROM production_lines ORDER BY sort_order'));
     res.json({ ok: true });
@@ -1112,14 +1119,14 @@ app.post('/api/main-plan', (req, res) => {
       db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,arrival_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=?,line_count=?,line_index=?,expired=? WHERE id=?`,
         [p.style_id, p.style_no, p.product_name, p.plan_qty, p.due_date, p.arrival_date||'', p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.printing_start||'', p.printing_end||'', p.embroidery_start||'', p.embroidery_end||'', p.template_start||'', p.template_end||'', p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.line_count || 1, p.line_index || 1, p.expired || 0, p.id]);
       broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-      db.logOperation('main_plan', 'update', p.id, p.style_no);
+      logOp(req, 'main_plan', 'update', p.id, p.style_no);
       return res.json({ ok: true, id: p.id });
     }
     const result = db.run(`INSERT INTO main_plan (style_id,style_no,product_name,plan_qty,due_date,arrival_date,cutting_start,cutting_end,secondary_start,secondary_end,printing_start,printing_end,embroidery_start,embroidery_end,template_start,template_end,sewing_remind_date,sewing_start,sewing_end,ironing_start,ironing_end,conflict_flag,pipeline_count,is_scheduled,workshop,line_team,line_count,line_index,expired)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [p.style_id, p.style_no, p.product_name, p.plan_qty || 0, p.due_date, p.arrival_date||'', p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.printing_start||'', p.printing_end||'', p.embroidery_start||'', p.embroidery_end||'', p.template_start||'', p.template_end||'', p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.line_count || 1, p.line_index || 1, p.expired || 0]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    db.logOperation('main_plan', 'create', result.lastInsertRowid, p.style_no);
+    logOp(req, 'main_plan', 'create', result.lastInsertRowid, p.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/main-plan error:', e);
@@ -1166,7 +1173,7 @@ app.put('/api/main-plan/:id', (req, res) => {
     db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,arrival_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=?,line_count=?,line_index=?,expired=? WHERE id=?`,
       [style_id, style_no, product_name, plan_qty, due_date, arrival_date, cutting_start, cutting_end, secondary_start, secondary_end, printing_start, printing_end, embroidery_start, embroidery_end, template_start, template_end, sewing_remind_date, sewing_start, sewing_end, ironing_start, ironing_end, conflict_flag, pipeline_count, is_scheduled, workshop, line_team, line_count, line_index, expired, id]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    db.logOperation('main_plan', 'update', id, style_no);
+    logOp(req, 'main_plan', 'update', id, style_no);
     res.json({ ok: true, id });
   } catch (e) {
     console.error('PUT /api/main-plan/:id error:', e);
@@ -1180,7 +1187,7 @@ app.delete('/api/main-plan/:id', (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Not found' });
     db.run('DELETE FROM main_plan WHERE id = ?', [req.params.id]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    db.logOperation('main_plan', 'delete', req.params.id, '');
+    logOp(req, 'main_plan', 'delete', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/main-plan error:', e);
@@ -1529,7 +1536,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
     writeTxn();
 
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    db.logOperation('main_plan', 'auto_schedule', 0, `生成${results.length}条计划`);
+    logOp(req, 'main_plan', 'auto_schedule', 0, `生成${results.length}条计划`);
     res.json({ ok: true, count: results.length, conflicts: conflictCount, expired: expiredCount, lines: totalLinesAssigned });
   } catch (e) {
     console.error('POST /api/main-plan/auto-schedule error:', e);
@@ -1659,7 +1666,7 @@ app.put('/api/main-plan/:id/cutting', (req, res) => {
       [cutting_start || '', cutting_end || '', id]
     );
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    db.logOperation('main_plan', 'update_cutting', id, '');
+    logOp(req, 'main_plan', 'update_cutting', id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('PUT /api/main-plan/:id/cutting error:', e);
@@ -2210,7 +2217,7 @@ app.post('/api/schedule/:scheduleType', (req, res) => {
     }
 
     broadcastSection(`schedule_${req.params.scheduleType}`, db.all('SELECT * FROM schedule_master WHERE schedule_type = ?', [req.params.scheduleType]));
-    db.logOperation(`schedule_${req.params.scheduleType}`, 'create', masterId, m.style_no);
+    logOp(req, `schedule_${req.params.scheduleType}`, 'create', masterId, m.style_no);
     res.json({ ok: true, id: masterId });
   } catch (e) {
     console.error('POST /api/schedule error:', e);
@@ -2229,7 +2236,7 @@ app.put('/api/schedule/:scheduleType/:id', (req, res) => {
       [m.plan_start || '', m.plan_end || '', m.workshop || '', m.line_team || '', m.secondary_type || '', m.cutting_plan_qty || 0, m.daily_target || 0, m.due_date || '', req.params.id]);
     console.log('UPDATE result:', info);
     broadcastSection(`schedule_${req.params.scheduleType}`, db.all('SELECT * FROM schedule_master WHERE schedule_type = ?', [req.params.scheduleType]));
-    db.logOperation(`schedule_${req.params.scheduleType}`, 'update', req.params.id, '');
+    logOp(req, `schedule_${req.params.scheduleType}`, 'update', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('PUT /api/schedule error:', e);
@@ -2244,7 +2251,7 @@ app.delete('/api/schedule/:scheduleType/:id', (req, res) => {
     db.run('DELETE FROM schedule_daily WHERE master_id = ?', [req.params.id]);
     db.run('DELETE FROM schedule_master WHERE id = ?', [req.params.id]);
     broadcastSection(`schedule_${req.params.scheduleType}`, db.all('SELECT * FROM schedule_master WHERE schedule_type = ?', [req.params.scheduleType]));
-    db.logOperation(`schedule_${req.params.scheduleType}`, 'delete', req.params.id, '');
+    logOp(req, `schedule_${req.params.scheduleType}`, 'delete', req.params.id, '');
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/schedule error:', e);
@@ -2960,7 +2967,7 @@ app.post('/api/estimations', (req, res) => {
     const e = req.body;
     const result = db.run('INSERT INTO delivery_estimations (style_id, style_no, product_name, plan_qty, estimated_days, estimated_start, estimated_end, remark) VALUES (?,?,?,?,?,?,?,?)',
       [e.style_id, e.style_no, e.product_name, e.plan_qty, e.estimated_days, e.estimated_start, e.estimated_end, e.remark || '']);
-    db.logOperation('estimations', 'create', result.lastInsertRowid, e.style_no, `预估${e.estimated_days}天`);
+    logOp(req, 'estimations', 'create', result.lastInsertRowid, e.style_no, `预估${e.estimated_days}天`);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/estimations error:', e);
@@ -2990,7 +2997,7 @@ app.post('/api/shipping-plans', (req, res) => {
     if (!p.plan_no) return res.status(400).json({ error: '计划编号不能为空' });
     const result = db.run('INSERT INTO shipping_plans (plan_no, customer, style_no, product_name, plan_qty, ship_date, remark) VALUES (?,?,?,?,?,?,?)',
       [p.plan_no, p.customer || '', p.style_no || '', p.product_name || '', p.plan_qty || 0, p.ship_date || '', p.remark || '']);
-    db.logOperation('shipping', 'create', result.lastInsertRowid, p.plan_no);
+    logOp(req, 'shipping', 'create', result.lastInsertRowid, p.plan_no);
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) { console.error('POST /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3024,7 +3031,7 @@ app.post('/api/shipping-plans/generate', (req, res) => {
       }
     });
     txn();
-    db.logOperation('shipping', 'generate', null, `自动生成${count}条出货计划`);
+    logOp(req, 'shipping', 'generate', null, `自动生成${count}条出货计划`);
     res.json({ ok: true, count });
   } catch (e) { console.error('POST /api/shipping-plans/generate error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3176,7 +3183,7 @@ app.put('/api/schedule/daily/actual/:id', (req, res) => {
 
     db.run(`UPDATE schedule_daily SET qty = ?, locked_by_user_id = ?, locked_at = datetime('now','localtime') WHERE id = ?`,
       [qty, req.user.id, id]);
-    db.logOperation('schedule_daily', 'update_actual', id, '', `qty=${qty} by ${req.user.username}`);
+    logOp(req, 'schedule_daily', 'update_actual', id, '', `qty=${qty} by ${req.user.username}`);
     res.json({ ok: true, locked_by_user_id: req.user.id, locked_at: new Date().toISOString() });
   } catch (e) { sendError(res, 'PUT /api/schedule/daily/actual/:id', e); }
 });
@@ -3193,7 +3200,7 @@ app.post('/api/schedule/daily/actual/:id/unlock', (req, res) => {
     }
 
     db.run('UPDATE schedule_daily SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?', [id]);
-    db.logOperation('schedule_daily', 'unlock_actual', id, '', `unlocked by ${req.user.username}`);
+    logOp(req, 'schedule_daily', 'unlock_actual', id, '', `unlocked by ${req.user.username}`);
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/schedule/daily/actual/:id/unlock', e); }
 });
@@ -3225,7 +3232,7 @@ app.post('/api/warehouse/:type/inbound', (req, res) => {
        r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', orderNo, r.loading_qty || 0]);
     updateInventory(req.params.type, r.style_no, r.color, r.size_spec, r.qty, r);
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
-    db.logOperation('warehouse', 'inbound', null, `${req.params.type} 入库${r.qty}件`);
+    logOp(req, 'warehouse', 'inbound', null, `${req.params.type} 入库${r.qty}件`);
     res.json({ ok: true, id: result.lastInsertRowid, order_no: orderNo });
   } catch (e) {
     console.error('POST /api/warehouse/inbound error:', e);
@@ -3269,7 +3276,7 @@ app.post('/api/warehouse/:type/outbound', (req, res) => {
     });
     const result = txn();
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
-    db.logOperation('warehouse', 'outbound', null, `${req.params.type} 出库${r.qty}件`);
+    logOp(req, 'warehouse', 'outbound', null, `${req.params.type} 出库${r.qty}件`);
     res.json({ ok: true, id: result.lastInsertRowid, order_no: orderNo });
   } catch (e) {
     console.error('POST /api/warehouse/outbound error:', e);
@@ -3440,7 +3447,7 @@ app.post('/api/asn', (req, res) => {
       }
     }
 
-    db.logOperation('asn', 'create', asnId, asn_code);
+    logOp(req, 'asn', 'create', asnId, asn_code);
     res.json({ ok: true, id: asnId, asn_code });
   } catch (e) { console.error('POST /api/asn error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3486,7 +3493,7 @@ app.put('/api/asn/:id/status', (req, res) => {
     }
 
     const statusLabels = { PENDING: '待收货', RECEIVED: '已收货', INSPECTING: '质检中', COMPLETED: '已完成', CANCELLED: '已取消' };
-    db.logOperation('asn', status.toLowerCase(), req.params.id, asn.asn_code, statusLabels[status] || status);
+    logOp(req, 'asn', status.toLowerCase(), req.params.id, asn.asn_code, statusLabels[status] || status);
     res.json({ ok: true });
   } catch (e) { console.error('PUT /api/asn/:id/status error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3564,7 +3571,7 @@ app.post('/api/dn', (req, res) => {
       }
     }
 
-    db.logOperation('dn', 'create', dnId, dn_code);
+    logOp(req, 'dn', 'create', dnId, dn_code);
     res.json({ ok: true, id: dnId, dn_code });
   } catch (e) { console.error('POST /api/dn error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3610,7 +3617,7 @@ app.put('/api/dn/:id/status', (req, res) => {
     }
 
     const statusLabels = { PENDING: '待拣货', PICKING: '拣货中', PICKED: '已拣货', SHIPPED: '已发货', DELIVERED: '已签收', CANCELLED: '已取消' };
-    db.logOperation('dn', status.toLowerCase(), req.params.id, dn.dn_code, statusLabels[status] || status);
+    logOp(req, 'dn', status.toLowerCase(), req.params.id, dn.dn_code, statusLabels[status] || status);
     res.json({ ok: true });
   } catch (e) { console.error('PUT /api/dn/:id/status error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3772,7 +3779,7 @@ app.post('/api/style-color-size/import', (req, res) => {
       }
     });
     tx();
-    db.logOperation('style_color_size', 'import', null, `导入 ${imported} 条分色分尺码`);
+    logOp(req, 'style_color_size', 'import', null, `导入 ${imported} 条分色分尺码`);
     res.json({ ok: true, imported });
   } catch (e) {
     console.error('POST /api/style-color-size/import error:', e);
@@ -3904,7 +3911,7 @@ app.post('/api/fabric-loading/batch-inbound', (req, res) => {
     txn();
 
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', ['raw_material']));
-    db.logOperation('warehouse', 'batch_inbound', null, `批量入库 ${imported} 条`);
+    logOp(req, 'warehouse', 'batch_inbound', null, `批量入库 ${imported} 条`);
 
     res.json({ ok: true, imported, errors });
   } catch (e) {
