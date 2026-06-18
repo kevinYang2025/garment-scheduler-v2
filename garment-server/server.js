@@ -381,6 +381,14 @@ if (AUTH_ENABLED) {
   });
 }
 
+// [2026-06-18] 用户系统:全局 session 鉴权
+// 拦截所有 /api/* 请求,要求已登录(session.user 存在)
+// 排除 /api/auth/login(让未登录用户能登录)
+app.use('/api', (req, res, next) => {
+  if (req.path === '/api/auth/login') return next();
+  return requireAuth(req, res, next);
+});
+
 // Request logging [fix#14]
 app.use((req, res, next) => {
   if (req.method !== 'OPTIONS') {
