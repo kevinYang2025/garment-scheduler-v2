@@ -24,7 +24,7 @@ export const useAuthStore = defineStore('auth', {
     // 拉取当前用户(session 启动时调一次)
     async fetchMe() {
       try {
-        const res = await api.get('/api/auth/me')
+        const res = await api.get('/auth/me')
         this.user = res.data.user
       } catch {
         this.user = null
@@ -40,7 +40,7 @@ export const useAuthStore = defineStore('auth', {
         const body = username
           ? { username, password }
           : { pin_no, pin }
-        const res = await api.post('/api/auth/login', body)
+        const res = await api.post('/auth/login', body)
         this.user = res.data.user
         return { ok: true }
       } catch (e) {
@@ -53,7 +53,7 @@ export const useAuthStore = defineStore('auth', {
     // 登出
     async logout() {
       try {
-        await api.post('/api/auth/logout', {})
+        await api.post('/auth/logout', {})
       } catch { /* ignore */ }
       this.user = null
     },
@@ -61,7 +61,7 @@ export const useAuthStore = defineStore('auth', {
     // 改密
     async changePassword(old_password, new_password) {
       try {
-        await api.post('/api/auth/change-password', { old_password, new_password })
+        await api.post('/auth/change-password', { old_password, new_password })
         return { ok: true }
       } catch (e) {
         return { ok: false, error: e.response?.data?.error || '改密失败' }
