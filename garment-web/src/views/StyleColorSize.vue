@@ -394,7 +394,7 @@ onUnmounted(() => {
     </div>
 
     <div class="excel-wrap">
-      <div class="excel-body" ref="vs.container" @scroll="vs.onScroll" @mousedown="onDragStart">
+      <div class="excel-body" :ref="el => vs.container.value = el" @scroll="vs.onScroll" @mousedown="onDragStart">
         <table class="excel-table">
           <thead>
             <tr>

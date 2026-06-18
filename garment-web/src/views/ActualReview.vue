@@ -36,6 +36,14 @@
           <el-tag v-else type="warning" effect="dark">他人锁定</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="修改记录" min-width="200">
+        <template #default="{ row }">
+          <div v-if="row.locked_by_name" class="mod-info">
+            <div class="mod-by">{{ row.locked_by_name }} 修改于 {{ formatLockedAt(row.locked_at) }}</div>
+          </div>
+          <span v-else class="mod-empty">—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button @click="save(row)" type="primary" size="small" :disabled="isLockedByOther(row)">保存</el-button>
@@ -79,6 +87,12 @@ const filteredRows = computed(() => {
 
 function isLockedByOther(row) {
   return row.locked_by_user_id && row.locked_by_user_id !== auth.user?.id
+}
+
+function formatLockedAt(v) {
+  if (!v) return ''
+  // SQLite 格式 'YYYY-MM-DD HH:MM:SS'(localtime)
+  return v.replace('T', ' ').slice(0, 16)
 }
 
 async function load() {
@@ -130,5 +144,17 @@ onMounted(load)
   display: flex;
   gap: 8px;
   align-items: center;
+}
+.mod-info {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mod-by {
+  color: var(--text);
+  font-weight: 500;
+}
+.mod-empty {
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 </style>

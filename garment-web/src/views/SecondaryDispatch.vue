@@ -2,6 +2,7 @@
 // 通用二次加工报工（印花/刺绣/模板/烫标）
 // 录入后存入 actual_production，关联回排程页面
 import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import { todayLocal } from '../utils/date'
@@ -10,7 +11,7 @@ import { getSecondaryTypeConfig } from '../constants/secondaryTypes'
 const props = defineProps({
   reportType: { type: String, required: true },  // printing/embroidery/template/ironing
 })
-const emit = defineEmits(['back'])
+const router = useRouter()
 
 const config = computed(() => getSecondaryTypeConfig(props.reportType))
 
@@ -141,7 +142,7 @@ onMounted(async () => {
   <div class="dispatch-page">
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
+        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> 返回</el-button>
         <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700">{{ config.icon }} {{ config.title }}</h2>
       </div>
       <div class="header-actions">

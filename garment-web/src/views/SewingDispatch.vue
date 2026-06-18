@@ -2,6 +2,7 @@
 // 缝制报工：数据来源 = 缝制排程/班组缝制计划（schedule_master, schedule_type='sewing'）
 // 先选班组→再选款式，或直接选款式带出班组
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import { todayLocal } from '../utils/date'
@@ -9,7 +10,7 @@ import { todayLocal } from '../utils/date'
 const props = defineProps({
   workshop: { type: String, default: '' },
 })
-const emit = defineEmits(['back'])
+const router = useRouter()
 
 const records = ref([])
 const sewingMasters = ref([])   // 缝制排程主数据（含 workshop/line_team）
@@ -145,7 +146,7 @@ onMounted(async () => {
   <div class="dispatch-page">
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
+        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> 返回</el-button>
         <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700">✂️ 缝制报工 · {{ props.workshop || '全部' }}</h2>
       </div>
       <div class="header-actions">

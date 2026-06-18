@@ -1,6 +1,7 @@
 <script setup>
 // template 排程详情(使用共享 composable,详见 useSecPlanDetail.js)
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import TextFilter from '../components/TextFilter.vue'
@@ -8,7 +9,7 @@ import NumberFilter from '../components/NumberFilter.vue'
 import { useSecPlanDetail } from '../composables/useSecPlanDetail'
 import { todayLocal } from '../utils/date'
 
-const emit = defineEmits(['back'])
+const router = useRouter()
 
 const {
   vs, planRows, today, visibleDates, dateRangeLabel, viewOffset,
@@ -79,7 +80,7 @@ async function customConfirmImport() {
   <div class="template-detail">
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
+        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> 返回</el-button>
       </div>
       <div class="header-nav">
         <span class="nav-arrows">
@@ -103,7 +104,7 @@ async function customConfirmImport() {
       </div>
     </div>
 
-    <div v-else ref="vs.container" class="excel-wrap" @scroll="vs.onScroll">
+    <div v-else :ref="el => vs.container.value = el" class="excel-wrap" @scroll="vs.onScroll">
       <table class="excel-table">
         <thead>
           <tr>

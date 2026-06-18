@@ -3154,9 +3154,11 @@ app.get('/api/schedule/daily/actuals', (req, res) => {
 
     let sql = `
       SELECT sd.id, sd.master_id, sd.schedule_date, sd.qty, sd.locked_by_user_id, sd.locked_at,
-             sm.schedule_type, sm.style_no, sm.color, sm.size_spec
+             sm.schedule_type, sm.style_no, sm.color, sm.size_spec,
+             u.display_name AS locked_by_name
       FROM schedule_daily sd
       JOIN schedule_master sm ON sm.id = sd.master_id
+      LEFT JOIN users u ON u.id = sd.locked_by_user_id
       WHERE sd.row_type = 'ACTUAL' AND sm.schedule_type = ?
     `;
     const params = [schedule_type];

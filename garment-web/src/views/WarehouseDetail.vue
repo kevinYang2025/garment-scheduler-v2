@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import ExcelTable from '../components/ExcelTable.vue'
@@ -8,7 +9,8 @@ const props = defineProps({
   warehouseType: { type: String, required: true },
 })
 
-const emit = defineEmits(['back', 'navigate'])
+const router = useRouter()
+const emit = defineEmits(['navigate'])
 
 // TODO: 权限判断接口，后续对接实际权限系统
 function hasPermission(perm) {
@@ -463,7 +465,7 @@ onMounted(loadAll)
     <!-- 顶部操作栏 -->
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="emit('back')">
+        <el-button text @click="router.back()">
           <span style="margin-right:4px">←</span> 返回
         </el-button>
         <h2>{{ meta.label }}</h2>

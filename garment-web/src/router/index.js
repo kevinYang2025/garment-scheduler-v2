@@ -23,12 +23,14 @@ import StyleColorSize from '../views/StyleColorSize.vue'
 import PlanManagementHome from '../views/PlanManagementHome.vue'
 import MainPlan from '../views/MainPlan.vue'
 import CuttingSchedule from '../views/CuttingSchedule.vue'
+import PrintingPlanDetail from '../views/PrintingPlanDetail.vue'
+import EmbroideryPlanDetail from '../views/EmbroideryPlanDetail.vue'
+import TemplatePlanDetail from '../views/TemplatePlanDetail.vue'
+import IroningPlanDetail from '../views/IroningPlanDetail.vue'
 import SecondaryHome from '../views/SecondaryHome.vue'
-import SecondaryDetail from '../views/SecondaryDetail.vue'
 import SewingHome from '../views/SewingHome.vue'
 import SewingPlanDetail from '../views/SewingPlanDetail.vue'
 import VisualSchedule from '../views/VisualSchedule.vue'
-import MainPlanGantt from '../views/MainPlanGantt.vue'
 
 // 报工管理
 import DispatchHome from '../views/DispatchHome.vue'
@@ -78,10 +80,12 @@ const routes = [
   // 计划管理
   { path: '/plan-management', name: 'planManagement', component: PlanManagementHome },
   { path: '/main-plan', name: 'mainPlan', component: MainPlan },
-  { path: '/main-plan-gantt', name: 'mainPlanGantt', component: MainPlanGantt },
   { path: '/cutting', name: 'cutting', component: CuttingSchedule },
   { path: '/secondary', name: 'secondary', component: SecondaryHome },
-  { path: '/secondary/:type', name: 'secondary-detail', component: SecondaryDetail, props: true },
+  { path: '/printing-plan', name: 'printing-plan', component: PrintingPlanDetail },
+  { path: '/embroidery-plan', name: 'embroidery-plan', component: EmbroideryPlanDetail },
+  { path: '/template-plan', name: 'template-plan', component: TemplatePlanDetail },
+  { path: '/ironing-plan', name: 'ironing-plan', component: IroningPlanDetail },
   { path: '/sewing', name: 'sewing', component: SewingHome },
   { path: '/sewing/plan', name: 'sewing-plan', component: SewingPlanDetail },
   { path: '/sewing/visual', name: 'sewing-visual', component: VisualSchedule },

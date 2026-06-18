@@ -1,14 +1,15 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../api'
 
-const emit = defineEmits(['enter', 'back'])
+const router = useRouter()
 
 const secondaryTypes = [
-  { key: 'printing', label: '印花排程', icon: '🎨' },
-  { key: 'embroidery', label: '刺绣排程', icon: '🧵' },
-  { key: 'template', label: '模板排程', icon: '📐' },
-  { key: 'ironing', label: '烫标排程', icon: '🔥' },
+  { key: 'printing', label: '印花排程', icon: '🎨', routeName: 'printing-plan' },
+  { key: 'embroidery', label: '刺绣排程', icon: '🧵', routeName: 'embroidery-plan' },
+  { key: 'template', label: '模板排程', icon: '📐', routeName: 'template-plan' },
+  { key: 'ironing', label: '烫标排程', icon: '🔥', routeName: 'ironing-plan' },
 ]
 
 const summaries = ref({})
@@ -34,7 +35,8 @@ async function loadSummaries() {
 }
 
 function enterDetail(key) {
-  emit('enter', key)
+  const t = secondaryTypes.find(x => x.key === key)
+  if (t) router.push({ name: t.routeName })
 }
 
 function formatTime(ts) {
@@ -48,7 +50,7 @@ onMounted(loadSummaries)
 <template>
   <div class="secondary-home">
     <div class="page-header">
-      <button class="back-btn" @click="emit('back')">
+      <button class="back-btn" @click="router.push('/')">
         <span class="back-arrow">←</span> 返回工作台
       </button>
     </div>

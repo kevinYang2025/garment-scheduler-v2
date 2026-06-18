@@ -33,7 +33,7 @@ watch(() => DB.value, async (db) => {
 const navGroups = [
   {
     label: '工作台',
-    match: ['home', 'dashboard', 'dispatch', 'dispatch-report'],
+    match: ['home', 'dashboard'],
   },
   {
     label: '基础数据',
@@ -42,11 +42,11 @@ const navGroups = [
   },
   {
     label: '计划管理',
-    match: ['planManagement', 'mainPlan', 'mainPlanGantt', 'cutting', 'secondary', 'secondary-detail', 'sewing', 'sewing-plan', 'sewing-visual', 'actualReview'],
+    match: ['planManagement', 'mainPlan', 'cutting', 'secondary', 'printing-plan', 'embroidery-plan', 'template-plan', 'ironing-plan', 'sewing', 'sewing-plan', 'sewing-visual', 'actualReview'],
   },
   {
     label: '报工管理',
-    match: ['cutting-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail', 'estimation', 'shipping'],
+    match: ['dispatch', 'dispatch-report', 'cutting-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail', 'estimation', 'shipping'],
   },
   {
     label: '仓库',
@@ -93,13 +93,9 @@ const navItems = {
   // 计划管理(planning 全看,supervisor 只看自己车间)
   planManagement: { label: '计划管理总览', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
   mainPlan: { label: '预排总计划', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
-  mainPlanGantt: { label: '预排甘特图', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
   cutting: { label: '裁剪排程', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'cutting' },
   secondary: { label: '二次加工', icon: 'palette', roles: ['admin', 'planning_manager', 'planner', 'supervisor'] },
-  'secondary-detail': { label: '二次加工详情', icon: 'palette', roles: ['admin', 'planning_manager', 'planner', 'supervisor'] },
   sewing: { label: '缝制排程', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
-  'sewing-plan': { label: '缝制排程详情', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
-  'sewing-visual': { label: '目视化排程', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
   // 实际产量复核(supervisor / admin 复核)
   actualReview: { label: '实际产量复核', icon: 'ruler', roles: ['admin', 'supervisor'] },
   // 报工(planning + dispatcher,supervisor 不报工)
@@ -130,8 +126,8 @@ function isItemVisible(item) {
   if (!role) return false
   // roles 限制
   if (item.roles && !item.roles.includes(role)) return false
-  // workshop 限制(supervisor / dispatcher 限定本车间)
-  if (item.workshop && item.workshop !== auth.workshop) return false
+  // workshop 限制(supervisor / dispatcher 限定本车间,admin / planning 类不受限)
+  if (item.workshop && role !== 'admin' && item.workshop !== auth.workshop) return false
   return true
 }
 

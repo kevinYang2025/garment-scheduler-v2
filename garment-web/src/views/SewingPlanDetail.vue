@@ -1,6 +1,7 @@
 <script setup>
 // Excel列映射严格按照用户提供的《缝制排程模板.xlsx》调整
 import { ref, shallowRef, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import { useVirtualScroll } from '../composables/useVirtualScroll'
@@ -9,7 +10,7 @@ import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
 import StylePicker from '../components/StylePicker.vue'
 
-const emit = defineEmits(['back'])
+const router = useRouter()
 
 const masters = shallowRef([])
 const dailyData = ref({})
@@ -497,7 +498,7 @@ onUnmounted(() => {
     <!-- 顶部操作栏 -->
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
+        <el-button text @click="router.push({ name: 'sewing' })"><span style="margin-right:4px">←</span> 返回</el-button>
       </div>
       <div class="header-nav">
         <span class="nav-arrows">
@@ -519,7 +520,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 虚拟滚动表格：保留表头 13 列 filter，tbody 只渲染可见行 -->
-    <div v-else ref="vs.container" class="vt-container" @scroll.passive="vs.onScroll">
+    <div v-else :ref="el => vs.container.value = el" class="vt-container" @scroll.passive="vs.onScroll">
       <table class="excel-table">
         <thead>
           <tr>

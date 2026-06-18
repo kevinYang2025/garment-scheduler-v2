@@ -470,7 +470,7 @@ async function doImport() {
     </div>
 
     <!-- 虚拟滚动表格 -->
-    <div v-else ref="vs.container" class="vt-container" @scroll.passive="vs.onScroll">
+    <div v-else :ref="el => vs.container.value = el" class="vt-container" @scroll.passive="vs.onScroll">
       <table class="excel-table">
         <colgroup>
           <col style="min-width:95px"><col style="min-width:120px"><col style="min-width:65px"><col style="min-width:60px">

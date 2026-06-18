@@ -1,10 +1,11 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 
 const props = defineProps({ db: Object })
-const emit = defineEmits(['back'])
+const router = useRouter()
 
 const workshops = ref([])
 const unscheduled = ref([])
@@ -277,7 +278,7 @@ onMounted(loadGantt)
   <div class="visual-schedule">
     <div class="toolbar">
       <div style="display:flex;align-items:center;gap:12px">
-        <button class="back-btn" @click="emit('back')">
+        <button class="back-btn" @click="router.back()">
           <span style="margin-right:4px">←</span> 返回
         </button>
         <select v-model="filterWorkshop" class="filter-select">

@@ -1,13 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 
-const emit = defineEmits(['enter', 'back'])
+const router = useRouter()
 
 const sewingCards = [
-  { key: 'visual', label: '目视化班组排程', icon: '📊', desc: '甘特图拖拽排班' },
-  { key: 'plan', label: '班组缝制计划', icon: '📋', desc: '缝制工序计划与排程管理' },
+  { key: 'visual', label: '目视化班组排程', icon: '📊', desc: '甘特图拖拽排班', routeName: 'sewing-visual' },
+  { key: 'plan', label: '班组缝制计划', icon: '📋', desc: '缝制工序计划与排程管理', routeName: 'sewing-plan' },
 ]
 
 const summaries = ref({})
@@ -34,7 +35,8 @@ async function loadSummaries() {
 }
 
 function enterDetail(key) {
-  emit('enter', key)
+  const c = sewingCards.find(x => x.key === key)
+  if (c) router.push({ name: c.routeName })
 }
 
 function formatTime(ts) {

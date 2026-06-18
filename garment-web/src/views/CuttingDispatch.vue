@@ -2,11 +2,12 @@
 // 裁剪报工：录入报工 + 查看已录入记录
 // 基础数据引用裁剪排程（款式/颜色/尺码），录入后存入 actual_production
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import { todayLocal } from '../utils/date'
 
-const emit = defineEmits(['back'])
+const router = useRouter()
 
 const records = ref([])          // 已录入的报工记录
 const cuttingStyles = ref([])    // 裁剪排程的款式/颜色/尺码选项
@@ -152,7 +153,7 @@ onMounted(async () => {
   <div class="cutting-dispatch">
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="emit('back')"><span style="margin-right:4px">←</span> 返回</el-button>
+        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> 返回</el-button>
         <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700">裁剪报工</h2>
       </div>
       <div class="header-actions">
