@@ -57,56 +57,78 @@ const navGroups = [
   },
 ]
 
-// 当前 route 所属的 group
+// 当前 group:
+// - planning 类(planner/planning_manager/admin)按 route 算(切到哪 group 就显示哪)
+// - supervisor / dispatcher 固定 1 个 group(他们只关心自己的车间)
 const currentGroup = computed(() => {
-  const name = route.name
-  if (!name) return null
-  return navGroups.find(g => g.match.includes(name)) || null
+  const role = auth.role
+  if (!role) return null
+  if (role === 'dispatcher') return navGroups.find(g => g.label === '报工管理')
+  if (role === 'supervisor') return navGroups.find(g => g.label === '计划管理')
+  return navGroups.find(g => g.match.includes(route.name)) || navGroups[0]
 })
 
 // 当前 group 内的菜单项(简化版:label 从 navItems 找)
+// 权限规则:
+//   - 不标 roles = 全员可见
+//   - 标 roles: [...]: 只这些角色可见
+//   - 标 workshop: 仅当 user.workshop === workshop 时可见(supervisor / dispatcher 限定)
 const navItems = {
-  // 工作台
+  // 工作台(全员)
   home: { label: '工作台', icon: 'home' },
-  dashboard: { label: '数据看板', icon: 'grid' },
+  // 数据看板(只 planning 类)
+  dashboard: { label: '数据看板', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
+  // 报工总览(全员 — dispatcher 是主用户)
   dispatch: { label: '报工总览', icon: 'data-analysis' },
-  // 基础数据
-  basicData: { label: '基础数据总览', icon: 'grid' },
-  styles: { label: '款式管理', icon: 'tag' },
-  fabricList: { label: '面料装柜清单', icon: 'list' },
-  auxiliaryList: { label: '辅料清单', icon: 'package' },
-  sewingWorkshop: { label: '缝制车间管理', icon: 'factory' },
-  preWorkshopOutput: { label: '前置车间产量', icon: 'data-analysis' },
-  styleColorSize: { label: '分色分尺码', icon: 'ruler' },
-  // 计划管理
-  planManagement: { label: '计划管理总览', icon: 'grid' },
-  mainPlan: { label: '预排总计划', icon: 'calendar' },
-  mainPlanGantt: { label: '预排甘特图', icon: 'calendar' },
-  cutting: { label: '裁剪排程', icon: 'cut' },
-  secondary: { label: '二次加工', icon: 'palette' },
-  'secondary-detail': { label: '二次加工详情', icon: 'palette' },
-  sewing: { label: '缝制排程', icon: 'scissors' },
-  'sewing-plan': { label: '缝制排程详情', icon: 'scissors' },
-  'sewing-visual': { label: '目视化排程', icon: 'scissors' },
-  // 报工
-  'cutting-dispatch': { label: '裁剪报工', icon: 'cut' },
-  'printing-dispatch': { label: '印花报工', icon: 'printer' },
-  'embroidery-dispatch': { label: '刺绣报工', icon: 'star' },
-  'template-dispatch': { label: '模板报工', icon: 'copy' },
-  'ironing-dispatch': { label: '烫标报工', icon: 'flame' },
-  'sewing-dispatch': { label: '缝制报工', icon: 'scissors' },
-  'sewing-dispatch-detail': { label: '缝制报工', icon: 'scissors' },
-  estimation: { label: '交期预估', icon: 'timer' },
-  shipping: { label: '出货计划', icon: 'van' },
-  // 仓库
-  warehouse: { label: '仓库管理', icon: 'package' },
-  'warehouse-detail': { label: '仓库详情', icon: 'package' },
-  // 设置
-  config: { label: '系统设置', icon: 'settings' },
-  'work-calendar': { label: '工作日历', icon: 'calendar' },
-  strategy: { label: '排产策略', icon: 'magic-stick' },
-  logs: { label: '操作日志', icon: 'list' },
-  users: { label: '用户管理', icon: 'user' },
+  // 基础数据(只 planning)
+  basicData: { label: '基础数据总览', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
+  styles: { label: '款式管理', icon: 'tag', roles: ['admin', 'planning_manager', 'planner'] },
+  fabricList: { label: '面料装柜清单', icon: 'list', roles: ['admin', 'planning_manager', 'planner'] },
+  auxiliaryList: { label: '辅料清单', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  sewingWorkshop: { label: '缝制车间管理', icon: 'factory', roles: ['admin', 'planning_manager', 'planner'] },
+  preWorkshopOutput: { label: '前置车间产量', icon: 'data-analysis', roles: ['admin', 'planning_manager', 'planner'] },
+  styleColorSize: { label: '分色分尺码', icon: 'ruler', roles: ['admin', 'planning_manager', 'planner'] },
+  // 计划管理(planning 全看,supervisor 只看自己车间)
+  planManagement: { label: '计划管理总览', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
+  mainPlan: { label: '预排总计划', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
+  mainPlanGantt: { label: '预排甘特图', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
+  cutting: { label: '裁剪排程', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'cutting' },
+  secondary: { label: '二次加工', icon: 'palette', roles: ['admin', 'planning_manager', 'planner', 'supervisor'] },
+  'secondary-detail': { label: '二次加工详情', icon: 'palette', roles: ['admin', 'planning_manager', 'planner', 'supervisor'] },
+  sewing: { label: '缝制排程', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
+  'sewing-plan': { label: '缝制排程详情', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
+  'sewing-visual': { label: '目视化排程', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
+  // 报工(planning + dispatcher,supervisor 不报工)
+  'cutting-dispatch': { label: '裁剪报工', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'cutting' },
+  'printing-dispatch': { label: '印花报工', icon: 'printer', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'printing' },
+  'embroidery-dispatch': { label: '刺绣报工', icon: 'star', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'embroidery' },
+  'template-dispatch': { label: '模板报工', icon: 'copy', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'template' },
+  'ironing-dispatch': { label: '烫标报工', icon: 'flame', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'ironing' },
+  'sewing-dispatch': { label: '缝制报工', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
+  'sewing-dispatch-detail': { label: '缝制报工', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
+  estimation: { label: '交期预估', icon: 'timer', roles: ['admin', 'planning_manager', 'planner'] },
+  shipping: { label: '出货计划', icon: 'van', roles: ['admin', 'planning_manager', 'planner'] },
+  // 仓库(planning only — 仓库 freeze 中,暂不开新用户)
+  warehouse: { label: '仓库管理', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  'warehouse-detail': { label: '仓库详情', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  // 设置(planning only)
+  config: { label: '系统设置', icon: 'settings', roles: ['admin', 'planning_manager', 'planner'] },
+  'work-calendar': { label: '工作日历', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
+  strategy: { label: '排产策略', icon: 'magic-stick', roles: ['admin', 'planning_manager', 'planner'] },
+  logs: { label: '操作日志', icon: 'list', roles: ['admin', 'planning_manager', 'planner'] },
+  users: { label: '用户管理', icon: 'user', roles: ['admin'] },
+}
+
+// 菜单项是否对当前用户可见
+function isItemVisible(item) {
+  if (!item) return false
+  const role = auth.role
+  if (!role) return false
+  // roles 限制
+  if (item.roles && !item.roles.includes(role)) return false
+  // workshop 限制(supervisor / dispatcher 限定本车间)
+  if (item.workshop && item.workshop !== auth.workshop) return false
+  return true
 }
 
 // role 标签
@@ -212,7 +234,7 @@ function getIcon(name) {
             <div class="nav-section-label">{{ currentGroup.label }}</div>
             <template v-for="name in currentGroup.match" :key="name">
               <div
-                v-if="navItems[name]"
+                v-if="navItems[name] && isItemVisible(navItems[name])"
                 class="nav-item"
                 :class="{ active: route.name === name }"
                 :data-label="navItems[name].label"
