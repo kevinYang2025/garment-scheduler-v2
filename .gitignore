@@ -15,3 +15,15 @@ garment-server/public/assets/
 .DS_Store
 Thumbs.db
 .claude/worktrees/
+
+# 工具/构建残留(2026-06-18 加入)
+.context/
+.deveco/
+.harness/
+.mimocode/
+.vite/
+
+# 临时调试(2026-06-18 加入)
+.scratch/
+pw*.json
+playwright-test*.json
