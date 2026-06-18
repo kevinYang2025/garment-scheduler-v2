@@ -49,7 +49,8 @@ import CapacityConfig from '../views/CapacityConfig.vue'
 import OperationLogs from '../views/OperationLogs.vue'
 import WorkCalendar from '../views/WorkCalendar.vue'
 import SchedulingStrategy from '../views/SchedulingStrategy.vue'
-import AuxiliaryList from '../views/AuxiliaryList.vue'
+// [2026-06-18] 辅料清单暂不开放,注释路由
+// import AuxiliaryList from '../views/AuxiliaryList.vue'
 
 // 用户管理(admin 专属)
 import UserManagement from '../views/UserManagement.vue'
@@ -68,7 +69,8 @@ const routes = [
   { path: '/basic-data', name: 'basicData', component: BasicDataHome },
   { path: '/styles', name: 'styles', component: Styles },
   { path: '/fabric-list', name: 'fabricList', component: FabricLoadingList },
-  { path: '/auxiliary-list', name: 'auxiliaryList', component: AuxiliaryList },
+  // [2026-06-18] 辅料清单暂不开放
+  // { path: '/auxiliary-list', name: 'auxiliaryList', component: AuxiliaryList },
   { path: '/sewing-workshop', name: 'sewingWorkshop', component: SewingWorkshopManage },
   { path: '/pre-workshop-output', name: 'preWorkshopOutput', component: PreWorkshopOutput },
   { path: '/style-color-size', name: 'styleColorSize', component: StyleColorSize },

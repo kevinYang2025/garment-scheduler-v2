@@ -37,7 +37,8 @@ const navGroups = [
   },
   {
     label: '基础数据',
-    match: ['basicData', 'styles', 'fabricList', 'auxiliaryList', 'sewingWorkshop', 'preWorkshopOutput', 'styleColorSize'],
+    // [2026-06-18] 辅料清单暂不开放
+    match: ['basicData', 'styles', 'fabricList', 'sewingWorkshop', 'preWorkshopOutput', 'styleColorSize'],
   },
   {
     label: '计划管理',
@@ -84,7 +85,8 @@ const navItems = {
   basicData: { label: '基础数据总览', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
   styles: { label: '款式管理', icon: 'tag', roles: ['admin', 'planning_manager', 'planner'] },
   fabricList: { label: '面料装柜清单', icon: 'list', roles: ['admin', 'planning_manager', 'planner'] },
-  auxiliaryList: { label: '辅料清单', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  // [2026-06-18] 辅料清单暂不开放
+  // auxiliaryList: { label: '辅料清单', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
   sewingWorkshop: { label: '缝制车间管理', icon: 'factory', roles: ['admin', 'planning_manager', 'planner'] },
   preWorkshopOutput: { label: '前置车间产量', icon: 'data-analysis', roles: ['admin', 'planning_manager', 'planner'] },
   styleColorSize: { label: '分色分尺码', icon: 'ruler', roles: ['admin', 'planning_manager', 'planner'] },
