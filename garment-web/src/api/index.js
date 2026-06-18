@@ -1,6 +1,10 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+// [2026-06-18] 用户系统:加 withCredentials 让 session cookie 跨请求保持
+const api = axios.create({
+  baseURL: '/api',
+  withCredentials: true,
+})
 
 export default {
   // 通用 HTTP 方法（供直接调用）
@@ -8,6 +12,12 @@ export default {
   post: (url, data, config) => api.post(url, data, config),
   put: (url, data, config) => api.put(url, data, config),
   delete: (url, config) => api.delete(url, config),
+
+  // [2026-06-18] 用户系统:auth 方法
+  login: (body) => api.post('/auth/login', body),
+  logout: () => api.post('/auth/logout'),
+  me: () => api.get('/auth/me'),
+  changePassword: (old_password, new_password) => api.post('/auth/change-password', { old_password, new_password }),
 
   // 款式
   getStyles: (keyword) => api.get('/styles', { params: { keyword } }),
