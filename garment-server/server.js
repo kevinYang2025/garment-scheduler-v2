@@ -394,9 +394,11 @@ if (AUTH_ENABLED) {
 
 // [2026-06-18] 用户系统:全局 session 鉴权
 // 拦截所有 /api/* 请求,要求已登录(session.user 存在)
-// 排除 /api/auth/login(让未登录用户能登录)
+// 排除 /api/auth/login 和 /api/socket.io/(WebSocket 升级不能拦截)
+// 注意:app.use('/api') 之后,req.path 是去掉 /api 前缀的相对路径
 app.use('/api', (req, res, next) => {
-  if (req.path === '/api/auth/login') return next();
+  if (req.path === '/auth/login') return next();
+  if (req.path.startsWith('/socket.io')) return next();
   return requireAuth(req, res, next);
 });
 
