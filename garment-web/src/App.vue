@@ -33,7 +33,7 @@ watch(() => DB.value, async (db) => {
 const navGroups = [
   {
     label: '工作台',
-    match: ['home', 'dashboard'],
+    match: ['dashboard'],
   },
   {
     label: '基础数据',
@@ -46,7 +46,7 @@ const navGroups = [
   },
   {
     label: '报工管理',
-    match: ['dispatch', 'dispatch-report', 'cutting-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail', 'estimation', 'shipping'],
+    match: ['dispatch', 'dispatch-report', 'cutting-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail', 'shipping'],
   },
   {
     label: '仓库',
@@ -106,7 +106,6 @@ const navItems = {
   'ironing-dispatch': { label: '烫标报工', icon: 'flame', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'ironing' },
   'sewing-dispatch': { label: '缝制报工', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
   'sewing-dispatch-detail': { label: '缝制报工', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
-  estimation: { label: '交期预估', icon: 'timer', roles: ['admin', 'planning_manager', 'planner'] },
   shipping: { label: '出货计划', icon: 'van', roles: ['admin', 'planning_manager', 'planner'] },
   // 仓库(planning only — 仓库 freeze 中,暂不开新用户)
   warehouse: { label: '仓库管理', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },

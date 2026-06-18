@@ -190,12 +190,6 @@ export default {
   getDispatchByWorkshop: (params) => api.get('/dispatch-by-workshop', { params }),
   getDispatchByWorker: (params) => api.get('/dispatch-by-worker', { params }),
 
-  // 交期预估
-  getEstimations: () => api.get('/estimations'),
-  simulateEstimation: (data) => api.post('/estimations/simulate', data),
-  saveEstimation: (data) => api.post('/estimations', data),
-  confirmEstimation: (id) => api.put(`/estimations/${id}/confirm`),
-
   // 出货计划
   getShippingPlans: () => api.get('/shipping-plans'),
   createShippingPlan: (data) => api.post('/shipping-plans', data),

@@ -39,7 +39,6 @@ import CuttingDispatch from '../views/CuttingDispatch.vue'
 import SecondaryDispatch from '../views/SecondaryDispatch.vue'
 import SewingDispatchSelect from '../views/SewingDispatchSelect.vue'
 import SewingDispatch from '../views/SewingDispatch.vue'
-import DeliveryEstimation from '../views/DeliveryEstimation.vue'
 import ShippingPlan from '../views/ShippingPlan.vue'
 
 // 仓库
@@ -100,7 +99,6 @@ const routes = [
   { path: '/ironing-dispatch', name: 'ironing-dispatch', component: SecondaryDispatch, props: { reportType: 'ironing' } },
   { path: '/sewing-dispatch', name: 'sewing-dispatch', component: SewingDispatchSelect },
   { path: '/sewing-dispatch/detail', name: 'sewing-dispatch-detail', component: SewingDispatch, props: (route) => ({ workshop: route.query.workshop }) },
-  { path: '/estimation', name: 'estimation', component: DeliveryEstimation },
   { path: '/shipping', name: 'shipping', component: ShippingPlan },
 
   // 仓库

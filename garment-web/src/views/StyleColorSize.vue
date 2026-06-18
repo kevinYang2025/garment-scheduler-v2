@@ -360,8 +360,7 @@ function onDragEnd() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.excel-body')
-  if (el) el.scrollTop = 0
+  if (vs.container.value) vs.container.value.scrollTop = 0
 }
 const totalColumns = computed(() => columns.length + 2) // checkbox + 操作列
 

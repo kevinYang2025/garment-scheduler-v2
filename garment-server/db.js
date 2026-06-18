@@ -436,21 +436,6 @@ function createTables() {
       sort_order INTEGER DEFAULT 0
     );
 
-    -- 交期预估
-    CREATE TABLE IF NOT EXISTS delivery_estimations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      style_id INTEGER,
-      style_no TEXT DEFAULT '',
-      product_name TEXT DEFAULT '',
-      plan_qty INTEGER DEFAULT 0,
-      estimated_days INTEGER DEFAULT 0,
-      estimated_start TEXT,
-      estimated_end TEXT,
-      status TEXT DEFAULT 'ESTIMATED',
-      remark TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-
     -- 出货计划
     CREATE TABLE IF NOT EXISTS shipping_plans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
