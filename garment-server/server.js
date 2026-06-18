@@ -98,7 +98,10 @@ app.use(session({
 
 // 检查已登录
 function requireAuth(req, res, next) {
-  if (req.session && req.session.user) return next();
+  if (req.session && req.session.user) {
+    req.user = req.session.user;  // 复制到 req.user 方便后续中间件使用
+    return next();
+  }
   return res.status(401).json({ error: '未登录' });
 }
 
@@ -116,6 +119,15 @@ function requireRole(...roles) {
 }
 
 // supervisor 限定本车间(supervisor 调用时,workshop 必须与 scheduleType 对应)
+const SCHEDULE_TYPE_WORKSHOP = {
+  cutting: 'cutting',
+  printing: 'printing',
+  embroidery: 'embroidery',
+  template: 'template',
+  ironing: 'ironing',
+  sewing: 'sewing',
+};
+
 function requireWorkshopMatch(scheduleType) {
   return (req, res, next) => {
     const u = req.session && req.session.user;
@@ -124,15 +136,7 @@ function requireWorkshopMatch(scheduleType) {
     if (u.role !== 'supervisor') {
       return res.status(403).json({ error: '该操作仅限车间主任' });
     }
-    const map = {
-      cutting: 'cutting',
-      printing: 'printing',
-      embroidery: 'embroidery',
-      template: 'template',
-      ironing: 'ironing',
-      sewing: 'sewing'
-    };
-    const need = map[scheduleType];
+    const need = SCHEDULE_TYPE_WORKSHOP[scheduleType];
     if (!need) return res.status(500).json({ error: '未知的 scheduleType' });
     if (u.workshop !== need) {
       return res.status(403).json({ error: '无权操作其他车间的数据' });
@@ -3093,9 +3097,11 @@ function syncActualToDaily(record) {
     params
   );
   for (const m of masters) {
-    const existing = db.get('SELECT id FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = ?',
+    const existing = db.get('SELECT id, locked_by_user_id FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = ?',
       [m.id, record.production_date, 'ACTUAL']);
     if (existing) {
+      // [2026-06-18] 锁检查:supervisor 锁定的行 dispatcher 不能再覆盖
+      if (existing.locked_by_user_id) continue;
       db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [record.completed_qty || 0, existing.id]);
     } else {
       db.run('INSERT INTO schedule_daily (master_id, schedule_date, row_type, qty) VALUES (?, ?, ?, ?)',
@@ -3103,6 +3109,60 @@ function syncActualToDaily(record) {
     }
   }
 }
+
+// [2026-06-18] 用户系统:supervisor 改 ACTUAL 行纠错
+// 业务流:dispatcher 先报 → supervisor 复核 → 有错就改 → 改完锁定(防止 dispatcher 二次覆盖)
+app.put('/api/schedule/daily/actual/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { qty } = req.body || {};
+    if (qty == null || isNaN(qty) || qty < 0) {
+      return res.status(400).json({ error: 'qty 必须是非负数' });
+    }
+    const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
+    if (!row) return res.status(404).json({ error: '记录不存在' });
+
+    // 角色 + 车间检查:admin 全权,supervisor 限本车间,其他角色拒绝
+    const master = db.get('SELECT schedule_type FROM schedule_master WHERE id = ?', [row.master_id]);
+    if (!master) return res.status(404).json({ error: 'master 不存在' });
+    if (req.user.role === 'admin') {
+      // 通过
+    } else if (req.user.role === 'supervisor') {
+      if (req.user.workshop !== SCHEDULE_TYPE_WORKSHOP[master.schedule_type]) {
+        return res.status(403).json({ error: '无权操作其他车间的数据' });
+      }
+    } else {
+      return res.status(403).json({ error: '该操作仅限车间主任或管理员' });
+    }
+
+    // 锁检查:已被其他主任锁定?
+    if (row.locked_by_user_id && row.locked_by_user_id !== req.user.id) {
+      return res.status(409).json({ error: '该日已被其他主任修改锁定' });
+    }
+
+    db.run(`UPDATE schedule_daily SET qty = ?, locked_by_user_id = ?, locked_at = datetime('now','localtime') WHERE id = ?`,
+      [qty, req.user.id, id]);
+    db.logOperation('schedule_daily', 'update_actual', id, '', `qty=${qty} by ${req.user.username}`);
+    res.json({ ok: true, locked_by_user_id: req.user.id, locked_at: new Date().toISOString() });
+  } catch (e) { sendError(res, 'PUT /api/schedule/daily/actual/:id', e); }
+});
+
+// [2026-06-18] 用户系统:supervisor 解锁(让 dispatcher 重新报工)
+app.post('/api/schedule/daily/actual/:id/unlock', (req, res) => {
+  try {
+    const { id } = req.params;
+    const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
+    if (!row) return res.status(404).json({ error: '记录不存在' });
+
+    if (req.user.role !== 'admin' && row.locked_by_user_id !== req.user.id) {
+      return res.status(403).json({ error: '只能解锁自己锁定的记录' });
+    }
+
+    db.run('UPDATE schedule_daily SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?', [id]);
+    db.logOperation('schedule_daily', 'unlock_actual', id, '', `unlocked by ${req.user.username}`);
+    res.json({ ok: true });
+  } catch (e) { sendError(res, 'POST /api/schedule/daily/actual/:id/unlock', e); }
+});
 
 // ---------- 仓库管理 ----------
 app.get('/api/warehouse/:type/inbound', (req, res) => {
