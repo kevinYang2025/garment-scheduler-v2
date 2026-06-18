@@ -263,7 +263,7 @@ function getIcon(name) {
       <main class="main-content">
         <router-view v-slot="{ Component }">
           <KeepAlive :max="8">
-            <component :is="Component" :key="route.fullPath" />
+            <component :is="Component" :key="route.fullPath" :db="DB" :initial-data="prefetchedStyles" />
           </KeepAlive>
         </router-view>
       </main>
