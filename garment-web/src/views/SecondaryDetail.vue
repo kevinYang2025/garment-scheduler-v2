@@ -269,7 +269,7 @@ watch(() => props.secondaryType, () => {
   load()
 })
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.vt-container')
   if (el) el.scrollTop = 0
 }
 

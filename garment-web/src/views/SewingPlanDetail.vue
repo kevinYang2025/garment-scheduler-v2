@@ -1,6 +1,6 @@
 <script setup>
 // Excel列映射严格按照用户提供的《缝制排程模板.xlsx》调整
-import { ref, shallowRef, onMounted, computed, watch } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import { useVirtualScroll } from '../composables/useVirtualScroll'
@@ -444,7 +444,7 @@ async function confirmImport() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.vt-container')
   if (el) el.scrollTop = 0
 }
 

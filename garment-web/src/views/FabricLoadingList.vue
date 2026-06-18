@@ -396,7 +396,7 @@ async function confirmImport() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.excel-body')
   if (el) el.scrollTop = 0
 }
 

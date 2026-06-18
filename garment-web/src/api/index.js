@@ -6,6 +6,18 @@ const api = axios.create({
   withCredentials: true,
 })
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
 export default {
   // 通用 HTTP 方法（供直接调用）
   get: (url, config) => api.get(url, config),

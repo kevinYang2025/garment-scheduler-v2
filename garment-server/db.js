@@ -1198,12 +1198,16 @@ function isWorkday(dateStr) {
 function addWorkdays(startDate, days) {
   let current = new Date(startDate + 'T00:00:00');
   let remaining = days;
-  while (remaining > 0) {
+  let guard = days * 3 + 365;
+  while (remaining > 0 && guard-- > 0) {
     current.setDate(current.getDate() + 1);
     const y = current.getFullYear();
     const m = String(current.getMonth() + 1).padStart(2, '0');
     const d = String(current.getDate()).padStart(2, '0');
     if (isWorkday(`${y}-${m}-${d}`)) remaining--;
+  }
+  if (remaining > 0) {
+    console.error(`addWorkdays: exceeded max iterations for ${startDate}+${days}d, check calendar config`);
   }
   const y = current.getFullYear();
   const m = String(current.getMonth() + 1).padStart(2, '0');

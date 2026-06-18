@@ -132,7 +132,7 @@ async function deleteRecord(row) {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.excel-wrap')
   if (el) el.scrollTop = 0
 }
 

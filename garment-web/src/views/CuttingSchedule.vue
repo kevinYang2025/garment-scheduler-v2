@@ -223,7 +223,7 @@ const vtVisibleCount = computed(() => Math.ceil(vs.containerHeight.value / vs.ro
 const vtVisibleRows = computed(() => tableRows.value.slice(vtStartIndex.value, vtStartIndex.value + vtVisibleCount.value))
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.vt-container')
   if (el) el.scrollTop = 0
 }
 

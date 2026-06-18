@@ -209,6 +209,15 @@ export function useSecPlanDetail(secType, options = {}) {
 
   // 保存计划编辑
   async function savePlanEdit(row) {
+    const prevOrderQty = row.order_qty
+    const prevTotalPlan = row.totalPlan
+    const prevTotalDiff = row.totalDiff
+    const prevDatePlans = {}
+    for (const d of visibleDates.value) {
+      const dd = row.dateMap[d]
+      if (dd) { prevDatePlans[d] = { plan: dd.plan, diff: dd.diff } }
+    }
+
     row.order_qty = editForm.value.order_qty
     let newTotal = 0
     for (const d of visibleDates.value) {
@@ -233,6 +242,14 @@ export function useSecPlanDetail(secType, options = {}) {
       })
       ElMessage.success('保存成功')
     } catch (e) {
+      row.order_qty = prevOrderQty
+      row.totalPlan = prevTotalPlan
+      row.totalDiff = prevTotalDiff
+      for (const d of visibleDates.value) {
+        const dd = row.dateMap[d]
+        const prev = prevDatePlans[d]
+        if (dd && prev) { dd.plan = prev.plan; dd.diff = prev.diff }
+      }
       console.error('保存计划失败:', e)
       ElMessage.error('保存失败')
     }
@@ -244,6 +261,13 @@ export function useSecPlanDetail(secType, options = {}) {
   async function saveActual(row, date) {
     const dd = row.dateMap?.[date]
     if (!dd) return
+    const prevActual = dd.actual
+    const prevDiff = dd.diff
+    const prevTotalActual = row.totalActual
+    const prevTotalDiff = row.totalDiff
+    dd.diff = dd.actual - dd.plan
+    row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
+    row.totalDiff = row.totalActual - row.totalPlan
     try {
       await api.post('/schedule/sewing-daily-plan/actual', {
         style_no: row.style_no,
@@ -255,10 +279,11 @@ export function useSecPlanDetail(secType, options = {}) {
         schedule_type: 'secondary',
         secondary_type: cfg.name,
       })
-      dd.diff = dd.actual - dd.plan
-      row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
-      row.totalDiff = row.totalActual - row.totalPlan
     } catch (e) {
+      dd.actual = prevActual
+      dd.diff = prevDiff
+      row.totalActual = prevTotalActual
+      row.totalDiff = prevTotalDiff
       console.error('保存实际产量失败:', e)
       ElMessage.error('保存实际产量失败')
     }

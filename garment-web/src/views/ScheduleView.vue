@@ -150,8 +150,10 @@ async function loadCuttingDailyPlan() {
   } catch { /* ignore */ }
 }
 
-const _d = new Date()
-const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
+const today = computed(() => {
+  const _d = new Date()
+  return `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
+})
 
 // 日期窗口导航
 const viewOffset = ref(0)
@@ -210,6 +212,13 @@ const groupedCuttingRows = computed(() => {
 async function saveSewingActual(row, date) {
   const dd = row.dateData.find(d => d.date === date)
   if (!dd) return
+  const prevActual = dd.actual
+  const prevDiff = dd.diff
+  const prevTotalActual = row.totalActual
+  const prevTotalDiff = row.totalDiff
+  dd.diff = dd.actual - dd.plan
+  row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
+  row.totalDiff = row.totalActual - row.totalPlan
   try {
     await api.post('/schedule/sewing-daily-plan/actual', {
       style_no: row.style_no,
@@ -218,17 +227,26 @@ async function saveSewingActual(row, date) {
       production_date: date,
       completed_qty: dd.actual,
     })
-    dd.diff = dd.actual - dd.plan
-    row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
-    row.totalDiff = row.totalActual - row.totalPlan
   } catch (e) {
+    dd.actual = prevActual
+    dd.diff = prevDiff
+    row.totalActual = prevTotalActual
+    row.totalDiff = prevTotalDiff
     console.error('保存实际产量失败:', e)
+    ElMessage.error('保存实际产量失败')
   }
 }
 
 async function saveCuttingActual(row, date) {
   const dd = row.dateData.find(d => d.date === date)
   if (!dd) return
+  const prevActual = dd.actual
+  const prevDiff = dd.diff
+  const prevTotalActual = row.totalActual
+  const prevTotalDiff = row.totalDiff
+  dd.diff = dd.actual - dd.plan
+  row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
+  row.totalDiff = row.totalActual - row.totalPlan
   try {
     await api.post('/schedule/cutting-daily-plan/actual', {
       style_no: row.style_no,
@@ -237,11 +255,13 @@ async function saveCuttingActual(row, date) {
       production_date: date,
       completed_qty: dd.actual,
     })
-    dd.diff = dd.actual - dd.plan
-    row.totalActual = row.dateData.reduce((s, d) => s + d.actual, 0)
-    row.totalDiff = row.totalActual - row.totalPlan
   } catch (e) {
+    dd.actual = prevActual
+    dd.diff = prevDiff
+    row.totalActual = prevTotalActual
+    row.totalDiff = prevTotalDiff
     console.error('保存裁剪实际产量失败:', e)
+    ElMessage.error('保存裁剪实际产量失败')
   }
 }
 
@@ -269,7 +289,7 @@ function sOnDragEnd() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.excel-wrap')
   if (el) el.scrollTop = 0
 }
 

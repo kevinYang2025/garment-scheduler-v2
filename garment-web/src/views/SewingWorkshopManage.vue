@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, shallowRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import TextFilter from '../components/TextFilter.vue'
+import NumberFilter from '../components/NumberFilter.vue'
 
 const treeData = ref([])
 const loading = ref(false)
@@ -437,7 +438,7 @@ async function doImport() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.excel-body')
   if (el) el.scrollTop = 0
 }
 

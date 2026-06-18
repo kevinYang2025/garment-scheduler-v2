@@ -549,7 +549,7 @@ onUnmounted(() => {
     <div v-if="selectedCount > 0" class="batch-bar">
       <span class="batch-count">已选 {{ selectedCount }} 项</span>
       <el-button size="small" type="danger" @click="batchDelete">批量删除</el-button>
-      <el-button size="small" text @click="selectedIds = new Set()">取消选择</el-button>
+      <el-button size="small" text @click="selectedIds.value = new Set()">取消选择</el-button>
     </div>
 
     <!-- 甘特图视图 -->
