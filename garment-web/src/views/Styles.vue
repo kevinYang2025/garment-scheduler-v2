@@ -278,7 +278,7 @@ async function saveNew() {
 }
 
 function scrollToTop() {
-  if (bodyRef.value) bodyRef.value.scrollTop = 0
+  if (vs.container.value) vs.container.value.scrollTop = 0
 }
 
 function fmtDate(v) {
@@ -351,7 +351,7 @@ onMounted(() => {
   } else {
     loadStyles()
   }
-  const body = bodyRef.value
+  const body = vs.container.value
   if (body) {
     body.addEventListener('mousedown', onDragStart)
     document.addEventListener('mousemove', onDragMove)
