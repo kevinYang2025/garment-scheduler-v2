@@ -190,14 +190,16 @@ app.post('/api/auth/login', (req, res) => {
     }
 
     // 写 session(不存 password_hash / pin)
-    req.session.user = {
-      id: user.id,
-      username: user.username,
-      display_name: user.display_name,
-      role: user.role,
-      workshop: user.workshop
-    };
-    res.json({ ok: true, user: req.session.user });
+    req.session.regenerate(() => {
+      req.session.user = {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        role: user.role,
+        workshop: user.workshop
+      };
+      res.json({ ok: true, user: req.session.user });
+    });
   } catch (e) { sendError(res, 'POST /api/auth/login', e); }
 });
 
@@ -2246,7 +2248,7 @@ app.put('/api/schedule/:scheduleType/:id', (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('PUT /api/schedule error:', e);
-    res.status(500).json({ error: 'Internal server error', detail: e.message });
+    sendError(res, 'PUT /api/schedule', e);
   }
 });
 
@@ -3110,7 +3112,7 @@ function syncActualToDaily(record) {
     `SELECT id FROM schedule_master WHERE ${conditions.join(' AND ')}`,
     params
   );
-  const txn = getDb().transaction(() => {
+  const txn = db.getDb().transaction(() => {
     for (const m of masters) {
       const existing = db.get('SELECT id, locked_by_user_id FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = ?',
         [m.id, record.production_date, 'ACTUAL']);
@@ -4215,14 +4217,31 @@ const io = new SocketIO(httpServer, {
   pingTimeout: 10000,
 });
 
-// Socket.IO auth middleware
+// [2026-06-18] Socket.IO 鉴权: 共享 express-session 中间件,从 cookie 读 session
+// 之前用 Bearer token 校验,前端 useWebSocket 没传 token → 一直断
+// 现在跟 axios 一样靠 session cookie,免去前端额外配置
+io.engine.use(session({
+  store: sessionStore,
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  },
+}));
+
 if (AUTH_ENABLED) {
   io.use((socket, next) => {
+    const session = socket.request.session;
+    if (session && session.user) return next();
+    // 也接受 Bearer token(供外部工具/CLI 调用)
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-    if (token !== API_TOKEN) {
-      return next(new Error('Unauthorized'));
-    }
-    next();
+    if (token === API_TOKEN) return next();
+    return next(new Error('Unauthorized'));
   });
 }
 
