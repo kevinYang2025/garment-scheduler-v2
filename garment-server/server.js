@@ -382,8 +382,12 @@ app.use((req, res, next) => {
 });
 
 // Simple token auth [fix#2]
+// [2026-06-18] 与下方 requireAuth 保持一致: 排除 /auth/login 和 /socket.io/
+// 否则 session 登录前会被 Bearer 拦截,WebSocket 握手也会被拦
 if (AUTH_ENABLED) {
   app.use('/api', (req, res, next) => {
+    if (req.path === '/auth/login') return next();
+    if (req.path.startsWith('/socket.io')) return next();
     const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
     if (token !== API_TOKEN) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -3071,7 +3075,7 @@ app.delete('/api/strategies/:id', (req, res) => {
 app.post('/api/auto-schedule', (req, res) => {
   try {
     const { strategy_id } = req.body;
-    const result = db.autoSchedule(strategy_id);
+    const result = db.autoSchedule(strategy_id, req.user?.id);
     res.json(result);
   } catch (e) { console.error('POST /api/auto-schedule error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3086,6 +3090,7 @@ app.get('/api/capacity-precheck', (req, res) => {
 
 // [B-02 fix] Override instead of accumulate
 // 增加 (color, size_spec, secondary_type) 维度精确匹配,避免一次报工污染所有 master
+// [2026-06-18] 多 master 写入用事务,确保原子性(中途失败回滚全部)
 function syncActualToDaily(record) {
   const conditions = ['style_no = ?', 'schedule_type = ?'];
   const params = [record.style_no, record.schedule_type];
@@ -3105,18 +3110,21 @@ function syncActualToDaily(record) {
     `SELECT id FROM schedule_master WHERE ${conditions.join(' AND ')}`,
     params
   );
-  for (const m of masters) {
-    const existing = db.get('SELECT id, locked_by_user_id FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = ?',
-      [m.id, record.production_date, 'ACTUAL']);
-    if (existing) {
-      // [2026-06-18] 锁检查:supervisor 锁定的行 dispatcher 不能再覆盖
-      if (existing.locked_by_user_id) continue;
-      db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [record.completed_qty || 0, existing.id]);
-    } else {
-      db.run('INSERT INTO schedule_daily (master_id, schedule_date, row_type, qty) VALUES (?, ?, ?, ?)',
-        [m.id, record.production_date, 'ACTUAL', record.completed_qty || 0]);
+  const txn = getDb().transaction(() => {
+    for (const m of masters) {
+      const existing = db.get('SELECT id, locked_by_user_id FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = ?',
+        [m.id, record.production_date, 'ACTUAL']);
+      if (existing) {
+        // [2026-06-18] 锁检查:supervisor 锁定的行 dispatcher 不能再覆盖
+        if (existing.locked_by_user_id) continue;
+        db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [record.completed_qty || 0, existing.id]);
+      } else {
+        db.run('INSERT INTO schedule_daily (master_id, schedule_date, row_type, qty) VALUES (?, ?, ?, ?)',
+          [m.id, record.production_date, 'ACTUAL', record.completed_qty || 0]);
+      }
     }
-  }
+  });
+  txn();
 }
 
 // [2026-06-18] 用户系统:supervisor 改 ACTUAL 行纠错
@@ -3129,7 +3137,7 @@ app.get('/api/schedule/daily/actuals', (req, res) => {
     const { schedule_type, style_no } = req.query;
     if (!schedule_type) return res.status(400).json({ error: 'schedule_type 必填' });
 
-    // 角色 + 车间检查
+    // 角色 + 车间检查:仅 admin/supervisor 可访问
     if (req.user.role === 'admin') {
       // 通过
     } else if (req.user.role === 'supervisor') {
@@ -3137,8 +3145,7 @@ app.get('/api/schedule/daily/actuals', (req, res) => {
         return res.status(403).json({ error: '无权查看其他车间的数据' });
       }
     } else {
-      // 其他角色(planner 等)也能看,但只看自己的
-      // 这里简化:admin/supervisor 可看
+      return res.status(403).json({ error: '该端点仅限车间主任或管理员' });
     }
 
     let sql = `
@@ -3203,6 +3210,10 @@ app.post('/api/schedule/daily/actual/:id/unlock', (req, res) => {
     const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
     if (!row) return res.status(404).json({ error: '记录不存在' });
 
+    // [2026-06-18] 仅 admin/supervisor 可解锁;且只能解自己锁的(管理员除外)
+    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: '该操作仅限车间主任或管理员' });
+    }
     if (req.user.role !== 'admin' && row.locked_by_user_id !== req.user.id) {
       return res.status(403).json({ error: '只能解锁自己锁定的记录' });
     }
@@ -4174,6 +4185,11 @@ app.get('/api/logs', (req, res) => {
     const { module: mod, action, operator, page = 1, pageSize = 50 } = req.query;
     let sql = 'SELECT * FROM operation_logs WHERE 1=1';
     const params = [];
+    // [2026-06-18] 非管理员只看自己的日志;admin 看全部
+    if (req.user.role !== 'admin') {
+      sql += ' AND user_id = ?';
+      params.push(req.user.id);
+    }
     if (mod) { sql += ' AND module = ?'; params.push(mod); }
     if (action) { sql += ' AND action = ?'; params.push(action); }
     if (operator) { sql += ' AND operator = ?'; params.push(operator); }

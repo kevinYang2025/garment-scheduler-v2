@@ -1051,7 +1051,7 @@ function recalcTaskStatus(masterId) {
 // ============================================================
 // 自动排产算法（贪心）
 // ============================================================
-function autoSchedule(strategyId) {
+function autoSchedule(strategyId, userId) {
   try {
     const strategy = strategyId
       ? db.prepare('SELECT * FROM scheduling_strategies WHERE id = ?').get(strategyId)
@@ -1136,7 +1136,7 @@ function autoSchedule(strategyId) {
 
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     broadcastSection('schedule_sewing', db.all("SELECT * FROM schedule_master WHERE schedule_type = 'sewing'"));
-    logOperation('scheduling', 'auto_schedule', strategyId, strategy.name, `自动排产${scheduled}条`);
+    logOperation('scheduling', 'auto_schedule', strategyId, strategy.name, `自动排产${scheduled}条`, userId);
 
     return { ok: true, scheduled, strategy: strategy.name };
   } catch (e) {
