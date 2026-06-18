@@ -953,7 +953,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       if (!d) return '';
       const dt = new Date(d + 'T00:00:00');
       dt.setDate(dt.getDate() + days);
-      return dt.toISOString().slice(0, 10);
+      return fmtLocal(dt);
     }
 
     // ========== Step 1: 裁剪 ==========
@@ -1052,7 +1052,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
     }
 
     // ========== Step 3: 缝制 + 烫标（单线倒推） ==========
-    const today = new Date().toISOString().slice(0, 10);
+    const today = fmtLocal(new Date());
     const baseResults = [];
     for (const sn of styleNos) {
       const st = styleMap[sn];
@@ -2723,7 +2723,7 @@ app.post('/api/shipping-plans/generate', (req, res) => {
       for (const p of plans) {
         const existing = db.get('SELECT id FROM shipping_plans WHERE style_no = ? AND ship_date = ?', [p.style_no, p.due_date]);
         if (existing) continue;
-        const planNo = `SP-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(++count).padStart(3,'0')}`;
+        const planNo = `SP-${fmtLocal(new Date()).replace(/-/g,'')}-${String(++count).padStart(3,'0')}`;
         db.run('INSERT INTO shipping_plans (plan_no, customer, style_no, product_name, plan_qty, ship_date) VALUES (?,?,?,?,?,?)',
           [planNo, '', p.style_no, p.product_name, p.plan_qty, p.due_date]);
       }
