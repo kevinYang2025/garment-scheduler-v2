@@ -3176,15 +3176,21 @@ app.put('/api/schedule/daily/actual/:id', (req, res) => {
       return res.status(403).json({ error: '该操作仅限车间主任或管理员' });
     }
 
-    // 锁检查:已被其他主任锁定?
-    if (row.locked_by_user_id && row.locked_by_user_id !== req.user.id) {
+    // 锁检查:已被其他主任锁定?admin 可覆盖任何锁
+    if (row.locked_by_user_id && row.locked_by_user_id !== req.user.id && req.user.role !== 'admin') {
       return res.status(409).json({ error: '该日已被其他主任修改锁定' });
     }
 
-    db.run(`UPDATE schedule_daily SET qty = ?, locked_by_user_id = ?, locked_at = datetime('now','localtime') WHERE id = ?`,
-      [qty, req.user.id, id]);
+    // [2026-06-18] admin 改不抢锁(保持原锁);supervisor 改才写自己的锁
+    // 这样 admin 改后原 supervisor 仍能 unlock
+    if (req.user.role === 'admin') {
+      db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [qty, id]);
+    } else {
+      db.run(`UPDATE schedule_daily SET qty = ?, locked_by_user_id = ?, locked_at = datetime('now','localtime') WHERE id = ?`,
+        [qty, req.user.id, id]);
+    }
     logOp(req, 'schedule_daily', 'update_actual', id, '', `qty=${qty} by ${req.user.username}`);
-    res.json({ ok: true, locked_by_user_id: req.user.id, locked_at: new Date().toISOString() });
+    res.json({ ok: true, locked_by_user_id: row.locked_by_user_id || req.user.id, locked_at: new Date().toISOString() });
   } catch (e) { sendError(res, 'PUT /api/schedule/daily/actual/:id', e); }
 });
 
