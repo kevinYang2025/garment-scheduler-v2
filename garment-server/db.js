@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const bcrypt = require('bcryptjs');  // [2026-06-18] 用户系统:密码哈希
 
 const DB_PATH = path.join(__dirname, 'data.sqlite');
 
@@ -20,6 +21,7 @@ function init() {
   migrateStyles();
   migrateUserColumns();
   seedDefaultData();
+  seedUsers();
   seedMainPlan();
   return db;
 }
@@ -848,6 +850,53 @@ function seedDefaultData() {
     insStrat.run('均衡排产', 'balanced', '综合考虑交期、产能、换线，均衡分配', '{"sortField":"priority","sortDir":"asc","balanceLoad":true}', 0);
     console.log('✅ 排产策略种子数据已生成');
   }
+}
+
+// [2026-06-18] 用户系统:种子用户(首次启动插入 19 个账号)
+// 守护:已存在则跳过,避免重启重复插
+// - admin / admin123(首登后建议改密)
+// - 其他账号默认密码 123456 / PIN 1234(部署后由 admin 通过 /api/users 修改)
+function seedUsers() {
+  const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  if (count > 0) return;
+
+  const adminHash = bcrypt.hashSync('admin123', 10);
+  const defaultHash = bcrypt.hashSync('123456', 10);
+
+  const ins = db.prepare(`INSERT INTO users (username, pin, password_hash, display_name, role, workshop, active)
+    VALUES (?, ?, ?, ?, ?, ?, 1)`);
+
+  const txn = db.transaction(() => {
+    // 1 个 admin
+    ins.run('admin', null, adminHash, '系统管理员', 'admin', null);
+
+    // 1 planning_manager + 3 planner
+    ins.run('manager01', null, defaultHash, '计划主管', 'planning_manager', null);
+    ins.run('planner01', null, defaultHash, '计划员01', 'planner', null);
+    ins.run('planner02', null, defaultHash, '计划员02', 'planner', null);
+    ins.run('planner03', null, defaultHash, '计划员03', 'planner', null);
+
+    // 7 supervisor(缝制 × 2 + 裁/印/绣/模/烫各 × 1)
+    ins.run('sup_cutting', null, defaultHash, '裁剪主任', 'supervisor', 'cutting');
+    ins.run('sup_printing', null, defaultHash, '印花主任', 'supervisor', 'printing');
+    ins.run('sup_embroidery', null, defaultHash, '刺绣主任', 'supervisor', 'embroidery');
+    ins.run('sup_template', null, defaultHash, '模板主任', 'supervisor', 'template');
+    ins.run('sup_ironing', null, defaultHash, '烫标主任', 'supervisor', 'ironing');
+    ins.run('sup_sewing_01', null, defaultHash, '缝制主任01', 'supervisor', 'sewing');
+    ins.run('sup_sewing_02', null, defaultHash, '缝制主任02', 'supervisor', 'sewing');
+
+    // 7 dispatcher(裁/印/绣/模/烫 + 缝制 × 2)
+    ins.run('101', '1234', null, '裁剪报工员', 'dispatcher', 'cutting');
+    ins.run('102', '1234', null, '印花报工员', 'dispatcher', 'printing');
+    ins.run('103', '1234', null, '刺绣报工员', 'dispatcher', 'embroidery');
+    ins.run('104', '1234', null, '模板报工员', 'dispatcher', 'template');
+    ins.run('105', '1234', null, '烫标报工员(中国)', 'dispatcher', 'ironing');
+    ins.run('201', '1234', null, '缝制报工员01', 'dispatcher', 'sewing');
+    ins.run('202', '1234', null, '缝制报工员02', 'dispatcher', 'sewing');
+  });
+  txn();
+  console.log('✅ 种子用户: 1 admin + 4 planning + 7 supervisor + 7 dispatcher = 19 个');
+  console.log('   默认账号: admin/admin123, 其他 123456 / PIN 1234(请尽快修改)');
 }
 
 // [fix#11] Read from system_config instead of hardcoding
