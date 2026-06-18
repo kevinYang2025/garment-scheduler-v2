@@ -5,6 +5,7 @@ import api from '../api'
 import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
+import { useVirtualScroll } from '../composables/useVirtualScroll'
 
 const records = ref([])
 const loading = ref(true)
@@ -199,6 +200,18 @@ function onSearchInput() {
   searchTimer = setTimeout(() => loadRecords(), 300)
 }
 
+// [2026-06-18] 虚拟滚动:2531 行全量渲染卡,改 slice
+const vs = useVirtualScroll(36, 8)
+const totalRows = computed(() => filteredRecords.value.length)
+const visibleCount = computed(() => Math.ceil(vs.containerHeight.value / vs.rowHeight) + vs.bufferRows * 2)
+const startIndex = computed(() => {
+  const idx = Math.floor(vs.scrollTop.value / vs.rowHeight) - vs.bufferRows
+  return idx < 0 ? 0 : (idx > totalRows.value ? totalRows.value : idx)
+})
+const visibleRows = computed(() => filteredRecords.value.slice(startIndex.value, startIndex.value + visibleCount.value))
+const topPad = computed(() => startIndex.value * vs.rowHeight)
+const bottomPad = computed(() => Math.max(0, (totalRows.value - startIndex.value - visibleRows.value.length) * vs.rowHeight))
+
 async function loadRecords() {
   loading.value = true
   try {
@@ -347,9 +360,10 @@ function onDragEnd() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container, .excel-body, .excel-wrap')
+  const el = document.querySelector('.excel-body')
   if (el) el.scrollTop = 0
 }
+const totalColumns = computed(() => columns.length + 2) // checkbox + 操作列
 
 onMounted(() => {
   loadRecords()
@@ -380,7 +394,7 @@ onUnmounted(() => {
     </div>
 
     <div class="excel-wrap">
-      <div class="excel-body" @mousedown="onDragStart">
+      <div class="excel-body" ref="vs.container" @scroll="vs.onScroll" @mousedown="onDragStart">
         <table class="excel-table">
           <thead>
             <tr>
@@ -399,7 +413,8 @@ onUnmounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in filteredRecords" :key="row.id" :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id) }">
+            <tr v-if="topPad > 0" :style="{ height: topPad + 'px' }"><td :colspan="totalColumns" style="padding:0;border:0"></td></tr>
+            <tr v-for="row in visibleRows" :key="row.id" :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id) }">
               <td class="chk-cell" style="width:40px">
                 <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
               </td>
@@ -427,6 +442,7 @@ onUnmounted(() => {
                 </template>
               </td>
             </tr>
+            <tr v-if="bottomPad > 0" :style="{ height: bottomPad + 'px' }"><td :colspan="totalColumns" style="padding:0;border:0"></td></tr>
           </tbody>
         </table>
       </div>
