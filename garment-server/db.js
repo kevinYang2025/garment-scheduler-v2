@@ -18,6 +18,7 @@ function init() {
   db.pragma('foreign_keys = ON');
   createTables();
   migrateStyles();
+  migrateUserColumns();
   seedDefaultData();
   seedMainPlan();
   return db;
@@ -521,6 +522,24 @@ function createTables() {
       qty INTEGER DEFAULT 0,
       UNIQUE(secondary_type, style_no, color, size_spec, production_date)
     );
+
+    -- 用户表(2026-06-18 用户系统新增)
+    -- 5 角色:admin / planning_manager / planner / dispatcher / supervisor
+    -- workshop 必填规则:dispatcher / supervisor 必须填(admin / planning_manager / planner 为 NULL)
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE,           -- 账号(admin/planner/supervisor)
+      pin TEXT,                        -- 4 位 PIN(dispatcher 专用,NULL 表示不用)
+      password_hash TEXT,              -- bcrypt 哈希(NULL 表示不用)
+      display_name TEXT NOT NULL,      -- 中文姓名
+      role TEXT NOT NULL CHECK(role IN
+        ('admin','planning_manager','planner','dispatcher','supervisor')),
+      workshop TEXT CHECK(workshop IN
+        ('cutting','printing','embroidery','template','ironing','sewing')),
+      active INTEGER DEFAULT 1,        -- 软删除
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 
@@ -696,6 +715,33 @@ function migrateStyles() {
       console.log(`✅ 迁移 plan_override 数据: ${migrated} 条 → schedule_plan_overrides`);
     }
   } catch (e) { console.log('plan_override migration skip:', e.message); }
+}
+
+// [2026-06-18] 用户系统:为已有表加 user_id / 锁字段
+// - operation_logs: 加 user_id(写操作关联到具体人)
+// - schedule_daily: 加 locked_by_user_id + locked_at(supervisor 改 ACTUAL 锁)
+function migrateUserColumns() {
+  try {
+    // operation_logs 加 user_id(nullable,历史日志留空)
+    const opCols = db.prepare("PRAGMA table_info(operation_logs)").all().map(c => c.name);
+    if (!opCols.includes('user_id')) {
+      db.prepare("ALTER TABLE operation_logs ADD COLUMN user_id INTEGER REFERENCES users(id)").run();
+      console.log('✅ operation_logs 加 user_id 字段');
+    }
+  } catch (e) { console.log('operation_logs.user_id migration skip:', e.message); }
+
+  try {
+    // schedule_daily 加锁字段(nullable,历史数据默认未锁)
+    const sdCols = db.prepare("PRAGMA table_info(schedule_daily)").all().map(c => c.name);
+    if (!sdCols.includes('locked_by_user_id')) {
+      db.prepare("ALTER TABLE schedule_daily ADD COLUMN locked_by_user_id INTEGER REFERENCES users(id)").run();
+      console.log('✅ schedule_daily 加 locked_by_user_id 字段');
+    }
+    if (!sdCols.includes('locked_at')) {
+      db.prepare("ALTER TABLE schedule_daily ADD COLUMN locked_at TEXT").run();
+      console.log('✅ schedule_daily 加 locked_at 字段');
+    }
+  } catch (e) { console.log('schedule_daily lock migration skip:', e.message); }
 }
 
 function seedDefaultData() {
