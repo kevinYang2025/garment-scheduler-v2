@@ -27,10 +27,21 @@ const allFields = [
 ]
 
 const scheduleTypes = [
+  { key: 'mainPlan', label: '预排总计划' },
   { key: 'sewing', label: '缝制排程' },
-  { key: 'cutting', label: '裁剪排程' },
-  { key: 'secondary', label: '二次加工' },
 ]
+
+const defaultConfig = {
+  mainPlan: { barFields: ['styleNo', 'planQty'], tooltipFields: ['styleNo', 'productName', 'planQty', 'dueDate'], leftFields: ['styleNo'] },
+  sewing: { barFields: ['styleNo', 'planQty'], tooltipFields: ['styleNo', 'productName', 'planQty', 'sewingStart', 'sewingEnd'], leftFields: ['workshop', 'lineTeam'] },
+}
+
+function getConfig(key) {
+  if (!ganttConfig.value[key]) {
+    ganttConfig.value[key] = { ...defaultConfig[key] || { barFields: [], tooltipFields: [], leftFields: [] } }
+  }
+  return ganttConfig.value[key]
+}
 
 async function loadConfig() {
   loading.value = true
@@ -67,10 +78,10 @@ onMounted(loadConfig)
       <div v-for="st in scheduleTypes" :key="st.key" class="config-section">
         <h3 class="section-title">{{ st.label }} — 甘特图字段配置</h3>
 
-        <div v-if="ganttConfig[st.key]" class="config-group">
+        <div class="config-group">
           <div class="config-item">
             <label>任务条显示字段</label>
-            <el-select v-model="ganttConfig[st.key].barFields" multiple style="width:100%">
+            <el-select v-model="getConfig(st.key).barFields" multiple style="width:100%">
               <el-option v-for="f in allFields" :key="f.value" :label="f.label" :value="f.value" />
             </el-select>
             <p class="config-hint">选择在甘特图任务条上显示的字段</p>
@@ -78,7 +89,7 @@ onMounted(loadConfig)
 
           <div class="config-item">
             <label>鼠标悬停提示字段</label>
-            <el-select v-model="ganttConfig[st.key].tooltipFields" multiple style="width:100%">
+            <el-select v-model="getConfig(st.key).tooltipFields" multiple style="width:100%">
               <el-option v-for="f in allFields" :key="f.value" :label="f.label" :value="f.value" />
             </el-select>
             <p class="config-hint">选择鼠标悬停时显示的字段</p>
@@ -86,7 +97,7 @@ onMounted(loadConfig)
 
           <div class="config-item">
             <label>左侧列表显示字段</label>
-            <el-select v-model="ganttConfig[st.key].leftFields" multiple style="width:100%">
+            <el-select v-model="getConfig(st.key).leftFields" multiple style="width:100%">
               <el-option v-for="f in allFields" :key="f.value" :label="f.label" :value="f.value" />
             </el-select>
             <p class="config-hint">选择甘特图左侧显示的字段</p>

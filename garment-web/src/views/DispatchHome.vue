@@ -1,38 +1,38 @@
 <template>
   <div class="sewing-dispatch-home">
     <div class="sdh-header">
-      <h2 class="sdh-title">报工管理</h2>
-      <p class="sdh-desc">选择工序或车间进行报工</p>
+      <h2 class="sdh-title" style="white-space: pre-line">{{ t('dispatch.title') }}</h2>
+      <p class="sdh-desc" style="white-space: pre-line">{{ t('dispatch.note') }}</p>
     </div>
     <div class="sdh-grid">
       <div class="sdh-card" @click="$router.push({ name: 'cutting-dispatch' })">
         <div class="sdh-card-icon">✂️</div>
-        <div class="sdh-card-name">裁剪报工</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.cuttingDispatch') }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
       <div class="sdh-card" @click="$router.push({ name: 'printing-dispatch' })">
         <div class="sdh-card-icon">🖨️</div>
-        <div class="sdh-card-name">印花报工</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.printingDispatch') }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
       <div class="sdh-card" @click="$router.push({ name: 'embroidery-dispatch' })">
         <div class="sdh-card-icon">⭐</div>
-        <div class="sdh-card-name">刺绣报工</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.embroideryDispatch') }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
       <div class="sdh-card" @click="$router.push({ name: 'template-dispatch' })">
         <div class="sdh-card-icon">📋</div>
-        <div class="sdh-card-name">模板报工</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.templateDispatch') }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
       <div class="sdh-card" @click="$router.push({ name: 'ironing-dispatch' })">
         <div class="sdh-card-icon">🔥</div>
-        <div class="sdh-card-name">烫标报工</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.ironingDispatch') }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
       <div class="sdh-card" @click="$router.push({ name: 'sewing-dispatch' })">
         <div class="sdh-card-icon">🧵</div>
-        <div class="sdh-card-name">缝制报工</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.sewingDispatch') }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
     </div>
@@ -40,6 +40,8 @@
 </template>
 
 <script setup>
+import { useI18n } from '../composables/useI18n'
+const { t } = useI18n()
 // 报工总览卡片页
 </script>
 

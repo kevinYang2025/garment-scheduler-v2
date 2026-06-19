@@ -39,7 +39,6 @@ import CuttingDispatch from '../views/CuttingDispatch.vue'
 import SecondaryDispatch from '../views/SecondaryDispatch.vue'
 import SewingDispatchSelect from '../views/SewingDispatchSelect.vue'
 import SewingDispatch from '../views/SewingDispatch.vue'
-import ShippingPlan from '../views/ShippingPlan.vue'
 
 // 仓库
 import WarehouseHome from '../views/WarehouseHome.vue'
@@ -50,6 +49,7 @@ import CapacityConfig from '../views/CapacityConfig.vue'
 import OperationLogs from '../views/OperationLogs.vue'
 import WorkCalendar from '../views/WorkCalendar.vue'
 import SchedulingStrategy from '../views/SchedulingStrategy.vue'
+import SystemParams from '../views/SystemParams.vue'
 // [2026-06-18] 辅料清单暂不开放,注释路由
 // import AuxiliaryList from '../views/AuxiliaryList.vue'
 
@@ -58,6 +58,9 @@ import UserManagement from '../views/UserManagement.vue'
 
 // 实际产量复核(supervisor 专属)
 import ActualReview from '../views/ActualReview.vue'
+
+// 个人设置
+import UserSettings from '../views/UserSettings.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: Login, meta: { public: true, noAuth: true } },
@@ -99,7 +102,6 @@ const routes = [
   { path: '/ironing-dispatch', name: 'ironing-dispatch', component: SecondaryDispatch, props: { reportType: 'ironing' } },
   { path: '/sewing-dispatch', name: 'sewing-dispatch', component: SewingDispatchSelect },
   { path: '/sewing-dispatch/detail', name: 'sewing-dispatch-detail', component: SewingDispatch, props: (route) => ({ workshop: route.query.workshop }) },
-  { path: '/shipping', name: 'shipping', component: ShippingPlan },
 
   // 仓库
   { path: '/warehouse', name: 'warehouse', component: WarehouseHome },
@@ -109,6 +111,7 @@ const routes = [
   { path: '/config', name: 'config', component: CapacityConfig },
   { path: '/work-calendar', name: 'work-calendar', component: WorkCalendar },
   { path: '/strategy', name: 'strategy', component: SchedulingStrategy },
+  { path: '/system-params', name: 'system-params', component: SystemParams },
   { path: '/logs', name: 'logs', component: OperationLogs },
 
   // 用户管理(admin)
@@ -116,6 +119,9 @@ const routes = [
 
   // 实际产量复核(supervisor / admin)
   { path: '/actual-review', name: 'actualReview', component: ActualReview, meta: { roles: ['admin', 'supervisor'] } },
+
+  // 个人设置
+  { path: '/user-settings', name: 'userSettings', component: UserSettings },
 ]
 
 const router = createRouter({

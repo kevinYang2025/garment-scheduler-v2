@@ -4,6 +4,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useI18n } from '../composables/useI18n'
 import api from '../api'
 import { todayLocal } from '../utils/date'
 import { getSecondaryTypeConfig } from '../constants/secondaryTypes'
@@ -12,8 +13,19 @@ const props = defineProps({
   reportType: { type: String, required: true },  // printing/embroidery/template/ironing
 })
 const router = useRouter()
+const { t } = useI18n()
 
-const config = computed(() => getSecondaryTypeConfig(props.reportType))
+// reportType → nav key
+const titleKeyMap = {
+  printing: 'nav.printingDispatch',
+  embroidery: 'nav.embroideryDispatch',
+  template: 'nav.templateDispatch',
+  ironing: 'nav.ironingDispatch',
+}
+const config = computed(() => {
+  const c = getSecondaryTypeConfig(props.reportType)
+  return { ...c, title: t(titleKeyMap[props.reportType] || 'nav.secondary') }
+})
 
 const records = ref([])
 const scheduleStyles = ref([])

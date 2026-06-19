@@ -5,28 +5,28 @@
         <div class="logo">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
         </div>
-        <h1 class="title">EUC 排程系统</h1>
-        <p class="subtitle">柬埔寨制衣工厂生产计划平台</p>
+        <h1 class="title" style="white-space:pre-line">{{ t('login.title') }}</h1>
+        <p class="subtitle" style="white-space:pre-line">{{ t('login.subtitle') }}</p>
       </div>
 
       <el-tabs v-model="activeTab" class="login-tabs" stretch>
         <!-- Tab 1: 账号密码 -->
-        <el-tab-pane label="账号密码" name="account">
+        <el-tab-pane :label="t('login.mode.account')" name="account">
           <el-form @submit.prevent="onAccountLogin" label-position="top">
-            <el-form-item label="账号">
+            <el-form-item :label="t('login.username')">
               <el-input
                 v-model="form.username"
-                placeholder="请输入账号"
+                :placeholder="t('login.usernamePh')"
                 size="large"
                 autocomplete="username"
                 autofocus
               />
             </el-form-item>
-            <el-form-item label="密码">
+            <el-form-item :label="t('login.password')">
               <el-input
                 v-model="form.password"
                 type="password"
-                placeholder="请输入密码"
+                :placeholder="t('login.passwordPh')"
                 size="large"
                 show-password
                 autocomplete="current-password"
@@ -39,17 +39,17 @@
               :loading="auth.loading"
               @click="onAccountLogin"
               class="login-btn"
-            >登录</el-button>
+            ><span style="white-space:pre-line">{{ t('login.submit') }}</span></el-button>
           </el-form>
         </el-tab-pane>
 
         <!-- Tab 2: 工号 + PIN(报工员) -->
-        <el-tab-pane label="工号 + PIN" name="pin">
+        <el-tab-pane :label="t('login.mode.pin')" name="pin">
           <el-form @submit.prevent="onPinLogin" label-position="top">
-            <el-form-item label="工号">
+            <el-form-item :label="t('login.pin_no')">
               <el-input
                 v-model="form.pin_no"
-                placeholder="如 101 / 201"
+                :placeholder="t('login.pin_noPh')"
                 size="large"
                 inputmode="numeric"
                 pattern="[0-9]*"
@@ -57,7 +57,7 @@
                 autofocus
               />
             </el-form-item>
-            <el-form-item label="4 位 PIN">
+            <el-form-item :label="t('login.pin_label')">
               <el-input
                 v-model="form.pin"
                 type="password"
@@ -76,7 +76,7 @@
               :loading="auth.loading"
               @click="onPinLogin"
               class="login-btn"
-            >登录</el-button>
+            ><span style="white-space:pre-line">{{ t('login.submit') }}</span></el-button>
           </el-form>
         </el-tab-pane>
       </el-tabs>
@@ -84,8 +84,8 @@
       <div v-if="errorMsg" class="login-error">{{ errorMsg }}</div>
 
       <div class="login-tips">
-        <p>默认账号:<code>admin</code> / <code>admin123</code></p>
-        <p>报工员工号 + PIN 由系统管理员分配</p>
+        <p style="white-space:pre-line">{{ t('login.tips.admin') }}</p>
+        <p style="white-space:pre-line">{{ t('login.tips.pin') }}</p>
       </div>
     </div>
   </div>
@@ -95,9 +95,11 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useI18n } from '../composables/useI18n'
 
 const auth = useAuthStore()
 const router = useRouter()
+const { t } = useI18n()
 
 const activeTab = ref('account')
 const errorMsg = ref('')

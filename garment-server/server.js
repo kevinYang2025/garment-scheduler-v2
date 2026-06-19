@@ -84,6 +84,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// LIKE 通配符转义:用户输入 % _ \ 在 LIKE 中是通配符,直接拼会被当成通配匹配
+function escapeLike(s) {
+  return String(s || '').replace(/[\\%_]/g, '\\$&');
+}
+
+// dashboard 聚合接口的轻量内存缓存(60s)
+const achievementCache = new Map();
+
 // ============================================================
 // [2026-06-18] 用户系统:session + 鉴权中间件
 // ============================================================
@@ -156,15 +164,55 @@ function requireWorkshopMatch(scheduleType) {
 const _cleanedCount = sessionStore.cleanup();
 if (_cleanedCount > 0) console.log(`✅ 清理 ${_cleanedCount} 个过期 session`);
 
+// 每小时清一次过期 session,防内存增长
+setInterval(() => {
+  const n = sessionStore.cleanup();
+  if (n > 0) console.log(`🧹 定时清理 ${n} 个过期 session`);
+}, 3600 * 1000);
+
+// 每 5 分钟清理 loginAttempts 中超过 1 分钟窗口的空闲 IP,防内存无限增长
+setInterval(() => {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  let removed = 0;
+  for (const [ip, attempts] of loginAttempts) {
+    const recent = attempts.filter(t => now - t < windowMs);
+    if (recent.length === 0) { loginAttempts.delete(ip); removed++; }
+    else loginAttempts.set(ip, recent);
+  }
+  if (removed > 0) console.log(`🧹 清理 ${removed} 个空闲 IP 的登录计数`);
+}, 5 * 60 * 1000);
+
 // ============================================================
 // [2026-06-18] 用户系统:auth 路由
 // ============================================================
+
+// 登录速率限制(5 次/分钟/IP，防暴力破解)
+const loginAttempts = new Map();
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+  const windowMs = 60 * 1000; // 1 分钟窗口
+  const maxAttempts = 5;
+
+  if (!loginAttempts.has(ip)) {
+    loginAttempts.set(ip, []);
+  }
+  const attempts = loginAttempts.get(ip).filter(t => now - t < windowMs);
+  loginAttempts.set(ip, attempts);
+
+  if (attempts.length >= maxAttempts) {
+    return res.status(429).json({ error: '登录尝试过于频繁，请 1 分钟后再试' });
+  }
+  attempts.push(now);
+  next();
+}
 
 // POST /api/auth/login
 // 两种登录方式:
 //   1. 账号+密码:admin / planner / planning_manager / supervisor
 //   2. 工号+PIN:dispatcher
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', rateLimit, (req, res) => {
   try {
     const { username, password, pin_no, pin } = req.body || {};
 
@@ -182,7 +230,7 @@ app.post('/api/auth/login', (req, res) => {
       if (user.role !== 'dispatcher') {
         return res.status(401).json({ error: '该工号不可用 PIN 登录' });
       }
-      if (!user.pin || user.pin !== pin) {
+      if (!user.pin || !bcrypt.compareSync(pin, user.pin)) {
         return res.status(401).json({ error: '工号或 PIN 错误' });
       }
     } else {
@@ -194,9 +242,12 @@ app.post('/api/auth/login', (req, res) => {
       req.session.user = {
         id: user.id,
         username: user.username,
+        username_km: user.username_km || null,
         display_name: user.display_name,
+        display_name_km: user.display_name_km || null,
         role: user.role,
-        workshop: user.workshop
+        workshop: user.workshop,
+        avatar_url: user.avatar_url || ''
       };
       res.json({ ok: true, user: req.session.user });
     });
@@ -242,7 +293,7 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
       return res.status(401).json({ error: '旧密码错误' });
     }
     const newHash = bcrypt.hashSync(new_password, 10);
-    db.run('UPDATE users SET password_hash = ?, updated_at = datetime("now","localtime") WHERE id = ?',
+    db.run("UPDATE users SET password_hash = ?, updated_at = datetime('now','localtime') WHERE id = ?",
       [newHash, req.session.user.id]);
     logOp(req, 'users', 'change_password', req.session.user.id, user.username, '');
     res.json({ ok: true });
@@ -256,7 +307,7 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
 app.get('/api/users', requireRole('admin'), (req, res) => {
   try {
     const { role, workshop } = req.query;
-    let sql = 'SELECT id, username, display_name, role, workshop, active, created_at FROM users WHERE 1=1';
+    let sql = 'SELECT id, username, username_km, display_name, display_name_km, role, workshop, active, created_at FROM users WHERE 1=1';
     const params = [];
     if (role) { sql += ' AND role = ?'; params.push(role); }
     if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
@@ -267,7 +318,7 @@ app.get('/api/users', requireRole('admin'), (req, res) => {
 
 app.post('/api/users', requireRole('admin'), (req, res) => {
   try {
-    const { username, pin, password, display_name, role, workshop } = req.body || {};
+    const { username, username_km, pin, password, display_name, display_name_km, role, workshop } = req.body || {};
     if (!username || !display_name || !role) {
       return res.status(400).json({ error: 'username/display_name/role 必填' });
     }
@@ -293,31 +344,74 @@ app.post('/api/users', requireRole('admin'), (req, res) => {
     if (existing) return res.status(400).json({ error: '账号已存在' });
 
     const passwordHash = password ? bcrypt.hashSync(password, 10) : null;
-    const r = db.run(`INSERT INTO users (username, pin, password_hash, display_name, role, workshop, active)
-      VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      [username, pin || null, passwordHash, display_name, role, workshop || null]);
+    const pinHash = pin ? bcrypt.hashSync(pin, 10) : null;
+    const r = db.run(`INSERT INTO users (username, username_km, pin, password_hash, display_name, display_name_km, role, workshop, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [username, username_km || null, pinHash, passwordHash, display_name, display_name_km || null, role, workshop || null]);
 
     logOp(req, 'users', 'create', r.lastInsertRowid, username, `role=${role}`);
     res.json({ ok: true, id: r.lastInsertRowid });
   } catch (e) { sendError(res, 'POST /api/users', e); }
 });
 
-app.put('/api/users/:id', requireRole('admin'), (req, res) => {
+app.put('/api/users/:id', requireAuth, (req, res) => {
   try {
     const { id } = req.params;
+    const isSelf = req.session.user.id === Number(id);
+    const isAdmin = req.session.user.role === 'admin';
+
+    // 非 admin 只能改自己
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({ error: '权限不足' });
+    }
+
     const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
     if (!existing) return res.status(404).json({ error: '用户不存在' });
 
-    const { display_name, role, workshop, active, password, pin } = req.body || {};
+    const { display_name, display_name_km, username_km, role, workshop, active, password, pin, avatar_url } = req.body || {};
+
+    // 非 admin 只能改自己的姓名、头像、密码
+    if (!isAdmin) {
+      const hasRestrictedField = role !== undefined || workshop !== undefined || active !== undefined || pin !== undefined;
+      if (hasRestrictedField) {
+        return res.status(403).json({ error: '无权修改角色/车间/状态/PIN' });
+      }
+    }
+
+    // 确定最终角色(用新角色或已有角色)
+    const finalRole = role || existing.role;
+
+    // 角色合法性校验
+    if (role && !['admin','planning_manager','planner','dispatcher','supervisor'].includes(role)) {
+      return res.status(400).json({ error: 'role 不合法' });
+    }
+
+    // workshop 合法性校验
+    if (workshop !== undefined && workshop !== null && workshop !== '' &&
+        !['cutting','printing','embroidery','template','ironing','sewing'].includes(workshop)) {
+      return res.status(400).json({ error: 'workshop 不合法' });
+    }
+
+    // dispatcher/supervisor 必须有 workshop
+    const finalWorkshop = workshop !== undefined ? (workshop || null) : existing.workshop;
+    if (['dispatcher','supervisor'].includes(finalRole) && !finalWorkshop) {
+      return res.status(400).json({ error: 'dispatcher/supervisor 必须指定 workshop' });
+    }
+
+    // PIN 只能给 dispatcher
+    if (pin && finalRole !== 'dispatcher') {
+      return res.status(400).json({ error: '只有 dispatcher 角色可以设置 PIN' });
+    }
+
+    // dispatcher 必须有 PIN
+    if (finalRole === 'dispatcher' && !existing.pin && !pin) {
+      return res.status(400).json({ error: 'dispatcher 必须设置 PIN' });
+    }
+
     const fields = [];
     const params = [];
     if (display_name !== undefined) { fields.push('display_name = ?'); params.push(display_name); }
-    if (role !== undefined) {
-      if (!['admin','planning_manager','planner','dispatcher','supervisor'].includes(role)) {
-        return res.status(400).json({ error: 'role 不合法' });
-      }
-      fields.push('role = ?'); params.push(role);
-    }
+    if (role !== undefined) { fields.push('role = ?'); params.push(role); }
     if (workshop !== undefined) { fields.push('workshop = ?'); params.push(workshop || null); }
     if (active !== undefined) { fields.push('active = ?'); params.push(active ? 1 : 0); }
     if (password) {
@@ -326,9 +420,31 @@ app.put('/api/users/:id', requireRole('admin'), (req, res) => {
     }
     if (pin) {
       if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN 必须 4 位数字' });
-      fields.push('pin = ?'); params.push(pin);
+      fields.push('pin = ?'); params.push(bcrypt.hashSync(pin, 10));
     }
-    fields.push('updated_at = datetime("now","localtime")');
+    if (avatar_url !== undefined) {
+      // [fix M-09] avatar_url 限制: 仅允许 data:image/(png|jpg|jpeg|webp) 前缀,长度 ≤ 5KB,避免 SVG XSS / base64 DoS
+      const av = avatar_url || '';
+      if (av && !/^data:image\/(png|jpeg|jpg|webp);base64,/.test(av)) {
+        return res.status(400).json({ error: '头像格式仅支持 png/jpg/webp base64' });
+      }
+      if (av && av.length > 5120) {
+        return res.status(400).json({ error: '头像文件过大(>5KB)' });
+      }
+      fields.push('avatar_url = ?'); params.push(av);
+      // 更新 session 中的头像
+      if (req.session?.user && req.session.user.id === Number(id)) {
+        req.session.user.avatar_url = av;
+      }
+    }
+    if (username_km !== undefined) { fields.push('username_km = ?'); params.push(username_km || null); }
+    if (display_name_km !== undefined) { fields.push('display_name_km = ?'); params.push(display_name_km || null); }
+    // 同步到 session(若是改自己)
+    if (req.session?.user && req.session.user.id === Number(id)) {
+      if (username_km !== undefined) req.session.user.username_km = username_km || null;
+      if (display_name_km !== undefined) req.session.user.display_name_km = display_name_km || null;
+    }
+    fields.push("updated_at = datetime('now','localtime')");
     params.push(id);
     db.run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, params);
     logOp(req, 'users', 'update', id, existing.username, '');
@@ -344,7 +460,7 @@ app.delete('/api/users/:id', requireRole('admin'), (req, res) => {
     if (existing.username === 'admin') {
       return res.status(400).json({ error: 'admin 账号不能删除' });
     }
-    db.run('UPDATE users SET active = 0, updated_at = datetime("now","localtime") WHERE id = ?', [id]);
+    db.run("UPDATE users SET active = 0, updated_at = datetime('now','localtime') WHERE id = ?", [id]);
     logOp(req, 'users', 'delete', id, existing.username, 'soft delete');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'DELETE /api/users/:id', e); }
@@ -362,10 +478,27 @@ app.post('/api/users/:id/reset-pin', requireRole('admin'), (req, res) => {
     if (existing.role !== 'dispatcher') {
       return res.status(400).json({ error: '该功能仅用于 dispatcher' });
     }
-    db.run('UPDATE users SET pin = ?, updated_at = datetime("now","localtime") WHERE id = ?', [new_pin, id]);
+    db.run("UPDATE users SET pin = ?, updated_at = datetime('now','localtime') WHERE id = ?", [bcrypt.hashSync(new_pin, 10), id]);
     logOp(req, 'users', 'reset_pin', id, existing.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/users/:id/reset-pin', e); }
+});
+
+// [M3] 管理员重置任意用户密码
+app.post('/api/users/:id/reset-password', requireRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_password } = req.body || {};
+    if (!new_password || new_password.length < 6) {
+      return res.status(400).json({ error: '新密码至少 6 位' });
+    }
+    const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ error: '用户不存在' });
+    db.run("UPDATE users SET password_hash = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+      [bcrypt.hashSync(new_password, 10), id]);
+    logOp(req, 'users', 'reset_password', id, existing.username, '');
+    res.json({ ok: true });
+  } catch (e) { sendError(res, 'POST /api/users/:id/reset-password', e); }
 });
 
 // CORS [fix#1]
@@ -667,7 +800,7 @@ app.get('/api/styles/:id', (req, res) => {
   }
 });
 
-app.post('/api/styles', (req, res) => {
+app.post('/api/styles', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const s = req.body;
     const errors = validateStyle(s);
@@ -694,7 +827,7 @@ app.post('/api/styles', (req, res) => {
   }
 });
 
-app.delete('/api/styles/:id', (req, res) => {
+app.delete('/api/styles/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const existing = db.get('SELECT id FROM styles WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -1117,7 +1250,7 @@ app.get('/api/main-plan/gantt', (req, res) => {
   }
 });
 
-app.post('/api/main-plan', (req, res) => {
+app.post('/api/main-plan', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const p = req.body;
     const errors = validateMainPlan(p);
@@ -1144,7 +1277,7 @@ app.post('/api/main-plan', (req, res) => {
   }
 });
 
-app.put('/api/main-plan/:id', (req, res) => {
+app.put('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const p = req.body;
     const id = req.params.id;
@@ -1191,7 +1324,7 @@ app.put('/api/main-plan/:id', (req, res) => {
   }
 });
 
-app.delete('/api/main-plan/:id', (req, res) => {
+app.delete('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -1205,9 +1338,46 @@ app.delete('/api/main-plan/:id', (req, res) => {
   }
 });
 
-// ---------- 预排产算法 ----------
-app.post('/api/main-plan/auto-schedule', (req, res) => {
+// ============================================================
+// 系统参数 (system_config 读写)
+// ============================================================
+app.get('/api/system-config', requireRole('admin', 'planning_manager', 'planner', 'dispatcher', 'supervisor'), (req, res) => {
   try {
+    res.json(db.all('SELECT config_key, config_value, description FROM system_config ORDER BY config_key'));
+  } catch (e) { sendError(res, 'GET /api/system-config', e); }
+});
+
+app.put('/api/system-config/:key', requireRole('admin', 'planning_manager'), (req, res) => {
+  try {
+    const { key } = req.params;
+    const { config_value } = req.body;
+    if (config_value === undefined || config_value === null) {
+      return res.status(400).json({ error: 'config_value 必填' });
+    }
+    const existing = db.get('SELECT config_key FROM system_config WHERE config_key = ?', [key]);
+    if (!existing) return res.status(404).json({ error: '参数不存在' });
+    db.run('UPDATE system_config SET config_value = ? WHERE config_key = ?', [String(config_value), key]);
+    logOp(req, 'system_config', 'update', null, key, `value=${config_value}`);
+    res.json({ ok: true, config_key: key, config_value: String(config_value) });
+  } catch (e) { sendError(res, 'PUT /api/system-config/:key', e); }
+});
+
+// ---------- 预排产算法 ----------
+app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
+  try {
+    // 0. 读 system_config 可调参数(带 fallback)
+    const cfgRaw = db.all('SELECT config_key, config_value FROM system_config');
+    const cfg = {};
+    for (const r of cfgRaw) cfg[r.config_key] = r.config_value;
+    const LOADING_TO_ARRIVAL = parseInt(cfg.loading_to_arrival_days) || 15;
+    const FABRIC_INSPECTION = parseInt(cfg.fabric_inspection_days) || 9;
+    const SEWING_BUFFER = parseInt(cfg.sewing_buffer_days) || 15;
+    const SEWING_REMIND = parseInt(cfg.sewing_remind_days) || 10;
+    const IRONING_BUFFER = parseInt(cfg.ironing_buffer_days) || 3;
+    const MAX_SEWING_LINES = parseInt(cfg.max_sewing_lines) || 49;
+    const DEFAULT_DAILY_TARGET = parseInt(cfg.default_daily_target) || 500;
+    const WORKSHOP_MULTI = parseInt(cfg.workshop_category_multiplier) || 3;
+
     // 1. 获取所有数据
     const loadingList = db.all('SELECT * FROM fabric_loading_list');
     const styles = db.all('SELECT * FROM styles');
@@ -1274,7 +1444,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       return {
         style_no: sn,
         qty: getQty(sn),
-        cutting_start: li ? addDays(li.loading_date, 24) : '',
+        cutting_start: li ? addDays(li.loading_date, LOADING_TO_ARRIVAL + FABRIC_INSPECTION) : '',
       };
     }).filter(item => item.cutting_start && item.qty > 0);
 
@@ -1377,20 +1547,20 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
       const sr = secondaryResults[sn] || {};
 
       // 缝制倒推（单线）
-      const sewingEnd = addDays(st.due_date, -15);
+      const sewingEnd = addDays(st.due_date, -SEWING_BUFFER);
       let dailyTarget = parseInt(st.target_daily_output) || 0;
       if (dailyTarget <= 0) {
         const pl = db.get("SELECT daily_output FROM production_lines WHERE line_name = ? AND daily_output > 0 LIMIT 1", [st.product_name || '']);
         if (pl) dailyTarget = parseInt(pl.daily_output) || 0;
       }
-      if (dailyTarget <= 0) dailyTarget = 500;
+      if (dailyTarget <= 0) dailyTarget = DEFAULT_DAILY_TARGET;
       const sewingDays = Math.ceil(qty / dailyTarget) + 1;
       const sewingStart = addDays(sewingEnd, -(sewingDays - 1));
 
       // 烫标倒推（仅 ironing_label = '是'）
       let ironingStart = '', ironingEnd = '';
       if (st.ironing_label === '是') {
-        ironingEnd = addDays(sewingStart, -3);
+        ironingEnd = addDays(sewingStart, -IRONING_BUFFER);
         const ironingMax = parseInt(st.ironing_daily_output) || 0;
         const ironingStandard = cap.ironing || 6000;
         if (ironingMax > 0 && ironingStandard > 0) {
@@ -1419,7 +1589,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
         printing_start: sr.printing_start || '', printing_end: sr.printing_end || '',
         embroidery_start: sr.embroidery_start || '', embroidery_end: sr.embroidery_end || '',
         template_start: sr.template_start || '', template_end: sr.template_end || '',
-        sewing_remind_date: addDays(sewingStart, -10), sewing_start: sewingStart, sewing_end: sewingEnd,
+        sewing_remind_date: addDays(sewingStart, -SEWING_REMIND), sewing_start: sewingStart, sewing_end: sewingEnd,
         ironing_start: ironingStart, ironing_end: ironingEnd,
         daily_target: dailyTarget,
       });
@@ -1465,11 +1635,11 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
 
       // 班组分配：不能超过分类限制和全厂限制
       const styleCategory = (styleMap[r.style_no] || {}).style_category || '';
-      const fullLimit = 49 - totalLinesAssigned;
+      const fullLimit = MAX_SEWING_LINES - totalLinesAssigned;
       let catLimit = fullLimit;
       if (styleCategory) {
         const catRows = db.all("SELECT id FROM sewing_workshop_tree WHERE category = ? AND type = 'category'", [styleCategory]);
-        const totalCatSlots = catRows.length * 3;
+        const totalCatSlots = catRows.length * WORKSHOP_MULTI;
         const catUsed = categoryUsed[styleCategory] || 0;
         catLimit = Math.min(totalCatSlots - catUsed, fullLimit);
       }
@@ -1485,7 +1655,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
         const lineQty = idx === 0 ? perQty + remainder : perQty;
         const perLineDays = Math.ceil(lineQty / dailyTarget) + 1;
         const perLineSewingStart = addDays(sewingEnd, -(perLineDays - 1));
-        const perLineIroningEnd = r.ironing_start ? addDays(perLineSewingStart, -3) : '';
+        const perLineIroningEnd = r.ironing_start ? addDays(perLineSewingStart, -IRONING_BUFFER) : '';
 
         let lineConflict = 0;
         // 1) 缝制上线 <= 前道下线（倒推来不及）
@@ -1499,7 +1669,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
           plan_qty: lineQty,
           line_index: idx + 1,
           sewing_start: perLineSewingStart,
-          sewing_remind_date: addDays(perLineSewingStart, -10),
+          sewing_remind_date: addDays(perLineSewingStart, -SEWING_REMIND),
           ironing_end: perLineIroningEnd || r.ironing_end,
           conflict_flag: lineConflict,
         });
@@ -1550,7 +1720,7 @@ app.post('/api/main-plan/auto-schedule', (req, res) => {
     res.json({ ok: true, count: results.length, conflicts: conflictCount, expired: expiredCount, lines: totalLinesAssigned });
   } catch (e) {
     console.error('POST /api/main-plan/auto-schedule error:', e);
-    res.status(500).json({ error: 'Internal server error: ' + e.message });
+    res.status(500).json({ error: '主计划自动排产失败' });
   }
 });
 
@@ -1665,7 +1835,7 @@ app.get('/api/schedule/cutting', (req, res) => {
 });
 
 // ---------- 更新 main_plan 的裁剪起止时间 ----------
-app.put('/api/main-plan/:id/cutting', (req, res) => {
+app.put('/api/main-plan/:id/cutting', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { cutting_start, cutting_end } = req.body;
     const id = req.params.id;
@@ -2300,6 +2470,110 @@ app.get('/api/schedule/sewing/summary', (req, res) => {
   }
 });
 
+// ---------- 排产计划达成率 API ----------
+app.get('/api/dashboard/achievement-rate', (req, res) => {
+  try {
+    // [fix H-04] 60 秒内存缓存 + 单 SQL 聚合,避免 6 工序×30 天×N master 的 N+1
+    const cacheKey = 'achievement-rate:v1';
+    const cached = achievementCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 60000) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.json(cached.data);
+    }
+
+    const today = fmtLocal(new Date());
+    const dates = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(fmtLocal(d));
+    }
+    const minDate = dates[0];
+
+    const processTypes = [
+      { key: 'cutting', label: '裁剪', type: 'cutting' },
+      { key: 'printing', label: '印花', type: 'secondary', subType: 'printing' },
+      { key: 'embroidery', label: '刺绣', type: 'secondary', subType: 'embroidery' },
+      { key: 'template', label: '模板', type: 'secondary', subType: 'template' },
+      { key: 'ironing', label: '烫标', type: 'secondary', subType: 'ironing' },
+      { key: 'sewing', label: '缝制', type: 'sewing' },
+    ];
+
+    // 一次拉全 schedule_master,前端按 type/secondary_type 过滤
+    const allMasters = db.all("SELECT id, schedule_type, secondary_type, workshop, plan_qty, plan_start, plan_end FROM schedule_master WHERE plan_start IS NOT NULL AND plan_end IS NOT NULL");
+    // 一次聚合全 ACTUAL
+    const allDaily = db.all("SELECT master_id, schedule_date, SUM(qty) as total FROM schedule_daily WHERE row_type='ACTUAL' AND schedule_date >= ? GROUP BY master_id, schedule_date", [minDate]);
+
+    // 用 Map 索引,master_id → daily[]
+    const dailyByMaster = new Map();
+    for (const d of allDaily) {
+      if (!dailyByMaster.has(d.master_id)) dailyByMaster.set(d.master_id, []);
+      dailyByMaster.get(d.master_id).push(d);
+    }
+    // master_id → 该 master 的累计实际按日期升序前缀和
+    const cumActualByMaster = new Map();
+    for (const [mid, arr] of dailyByMaster) {
+      arr.sort((a, b) => a.schedule_date < b.schedule_date ? -1 : 1);
+      let sum = 0;
+      const prefixByDate = new Map();
+      for (const d of arr) {
+        sum += d.total || 0;
+        prefixByDate.set(d.schedule_date, sum);
+      }
+      cumActualByMaster.set(mid, prefixByDate);
+    }
+
+    function computeRates(masters) {
+      const rates = dates.map(date => {
+        let totalPlan = 0, totalActual = 0;
+        for (const m of masters) {
+          const planQty = m.plan_qty || 0;
+          if (!planQty || !m.plan_start || !m.plan_end) continue;
+          if (date >= m.plan_end) {
+            totalPlan += planQty;
+          } else if (date >= m.plan_start) {
+            const totalDays = Math.max(1, Math.ceil((new Date(m.plan_end + 'T00:00:00') - new Date(m.plan_start + 'T00:00:00')) / 86400000) + 1);
+            const elapsed = Math.ceil((new Date(date + 'T00:00:00') - new Date(m.plan_start + 'T00:00:00')) / 86400000) + 1;
+            totalPlan += Math.round(planQty * Math.min(elapsed, totalDays) / totalDays);
+          }
+          const cum = cumActualByMaster.get(m.id);
+          if (cum) {
+            for (const [d, sum] of cum) {
+              if (d <= date) totalActual += sum;
+              else break;
+            }
+          }
+        }
+        return totalPlan > 0 ? Math.round(totalActual * 100 / totalPlan) : 0;
+      });
+      return rates;
+    }
+
+    const result = {};
+    for (const pt of processTypes) {
+      const masters = pt.type === 'secondary'
+        ? allMasters.filter(m => m.schedule_type === 'secondary' && m.secondary_type === pt.subType)
+        : allMasters.filter(m => m.schedule_type === pt.type);
+      result[pt.key] = computeRates(masters);
+    }
+
+    const sewingByWorkshop = {};
+    const workshops = db.all("SELECT * FROM workshops ORDER BY sort_order");
+    for (const w of workshops) {
+      const masters = allMasters.filter(m => m.schedule_type === 'sewing' && m.workshop === w.name);
+      sewingByWorkshop[w.name] = computeRates(masters);
+    }
+
+    const data = { dates, processRates: result, sewingByWorkshop };
+    achievementCache.set(cacheKey, { ts: Date.now(), data });
+    res.setHeader('X-Cache', 'MISS');
+    res.json(data);
+  } catch (e) {
+    console.error('GET /api/dashboard/achievement-rate error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ---------- 缝制导出（匹配缝制计划.xlsx）----------
 app.get('/api/schedule/sewing/export', async (req, res) => {
   try {
@@ -2579,6 +2853,10 @@ app.post('/api/actual', (req, res) => {
 app.get('/api/dispatch-summary', (req, res) => {
   try {
     const { schedule_type, secondary_type, workshop, style_no, date_from, date_to, group_by = 'date' } = req.query;
+    const ALLOWED_GROUP_BY = ['date', 'style', 'workshop', 'line_team'];
+    if (!ALLOWED_GROUP_BY.includes(group_by)) {
+      return res.status(400).json({ error: 'group_by 参数非法' });
+    }
     let groupExpr, selectExtra;
     switch (group_by) {
       case 'style':
@@ -2601,7 +2879,7 @@ app.get('/api/dispatch-summary', (req, res) => {
     if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
     if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
     if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
-    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (style_no) { sql += ` AND style_no LIKE ? ESCAPE '\\\\'`; params.push(`%${escapeLike(style_no)}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
     sql += ` GROUP BY ${groupExpr} ORDER BY ${groupExpr.split(',')[0]} DESC LIMIT 500`;
@@ -2718,7 +2996,7 @@ app.get('/api/dispatch-daily-trend', (req, res) => {
     if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
     if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
     if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
-    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (style_no) { sql += ` AND style_no LIKE ? ESCAPE '\\\\'`; params.push(`%${escapeLike(style_no)}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
     sql += ' GROUP BY production_date ORDER BY production_date ASC';
@@ -2795,7 +3073,7 @@ app.get('/api/dispatch-export', async (req, res) => {
     if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
     if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
     if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
-    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (style_no) { sql += ` AND style_no LIKE ? ESCAPE '\\\\'`; params.push(`%${escapeLike(style_no)}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
     sql += ' ORDER BY production_date DESC';
@@ -2845,7 +3123,7 @@ app.get('/api/dispatch-by-line', (req, res) => {
     if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
     if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
     if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
-    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (style_no) { sql += ` AND style_no LIKE ? ESCAPE '\\\\'`; params.push(`%${escapeLike(style_no)}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
     sql += ' GROUP BY workshop, line_team ORDER BY total_completed DESC';
@@ -2869,7 +3147,7 @@ app.get('/api/dispatch-by-workshop', (req, res) => {
     const params = [];
     if (schedule_type) { sql += ' AND schedule_type = ?'; params.push(schedule_type); }
     if (secondary_type) { sql += ' AND secondary_type = ?'; params.push(secondary_type); }
-    if (style_no) { sql += ' AND style_no LIKE ?'; params.push(`%${style_no}%`); }
+    if (style_no) { sql += ` AND style_no LIKE ? ESCAPE '\\\\'`; params.push(`%${escapeLike(style_no)}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
     sql += ' GROUP BY workshop ORDER BY total_completed DESC';
@@ -2911,7 +3189,7 @@ app.get('/api/shipping-plans', (req, res) => {
   catch (e) { console.error('GET /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.post('/api/shipping-plans', (req, res) => {
+app.post('/api/shipping-plans', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const p = req.body;
     if (!p.plan_no) return res.status(400).json({ error: '计划编号不能为空' });
@@ -2922,22 +3200,27 @@ app.post('/api/shipping-plans', (req, res) => {
   } catch (e) { console.error('POST /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.put('/api/shipping-plans/:id', (req, res) => {
+app.put('/api/shipping-plans/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const p = req.body;
     db.run('UPDATE shipping_plans SET customer=?, style_no=?, product_name=?, plan_qty=?, ship_date=?, status=?, remark=? WHERE id=?',
       [p.customer, p.style_no, p.product_name, p.plan_qty, p.ship_date, p.status, p.remark, req.params.id]);
+    logOp(req, 'shipping', 'update', req.params.id, p.plan_no || '');
     res.json({ ok: true });
   } catch (e) { console.error('PUT /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.delete('/api/shipping-plans/:id', (req, res) => {
-  try { db.run('DELETE FROM shipping_plans WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('DELETE /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
+app.delete('/api/shipping-plans/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
+  try {
+    const existing = db.get('SELECT plan_no FROM shipping_plans WHERE id = ?', [req.params.id]);
+    db.run('DELETE FROM shipping_plans WHERE id = ?', [req.params.id]);
+    logOp(req, 'shipping', 'delete', req.params.id, existing?.plan_no || '');
+    res.json({ ok: true });
+  } catch (e) { console.error('DELETE /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // 从主计划自动生成出货计划
-app.post('/api/shipping-plans/generate', (req, res) => {
+app.post('/api/shipping-plans/generate', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const plans = db.all('SELECT * FROM main_plan WHERE due_date IS NOT NULL ORDER BY due_date');
     let count = 0;
@@ -2962,7 +3245,7 @@ app.get('/api/strategies', (req, res) => {
   catch (e) { console.error('GET /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.post('/api/strategies', (req, res) => {
+app.post('/api/strategies', requireRole('admin', 'planning_manager'), (req, res) => {
   try {
     const s = req.body;
     const result = db.run('INSERT INTO scheduling_strategies (name, rule_type, description, config, active) VALUES (?,?,?,?,?)',
@@ -2971,7 +3254,7 @@ app.post('/api/strategies', (req, res) => {
   } catch (e) { console.error('POST /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.put('/api/strategies/:id', (req, res) => {
+app.put('/api/strategies/:id', requireRole('admin', 'planning_manager'), (req, res) => {
   try {
     const s = req.body;
     db.run('UPDATE scheduling_strategies SET name=?, rule_type=?, description=?, config=?, active=? WHERE id=?',
@@ -2980,13 +3263,13 @@ app.put('/api/strategies/:id', (req, res) => {
   } catch (e) { console.error('PUT /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.delete('/api/strategies/:id', (req, res) => {
+app.delete('/api/strategies/:id', requireRole('admin', 'planning_manager'), (req, res) => {
   try { db.run('DELETE FROM scheduling_strategies WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { console.error('DELETE /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // 一键自动排产
-app.post('/api/auto-schedule', (req, res) => {
+app.post('/api/auto-schedule', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { strategy_id } = req.body;
     const result = db.autoSchedule(strategy_id, req.user?.id);
@@ -3583,9 +3866,9 @@ app.delete('/api/dn/:id', (req, res) => {
 function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
   if (!delta || delta === 0) return;
   const potNo = extra?.pot_no || ''
-  // 查找库存记录（按 UNIQUE 约束的 4 个字段匹配）
-  const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ?',
-    [type, styleNo, color || '', sizeSpec || '']);
+  // 查找库存记录（按 UNIQUE 约束的 5 个字段匹配,含 pot_no 避免多锅号混淆）
+  const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
+    [type, styleNo, color || '', sizeSpec || '', potNo]);
   if (existing) {
     const newQty = existing.current_qty + delta;
     if (newQty < 0) {
@@ -3760,7 +4043,7 @@ app.get('/api/fabric-loading', (req, res) => {
   }
 });
 
-app.post('/api/fabric-loading', (req, res) => {
+app.post('/api/fabric-loading', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const r = req.body;
     const result = db.run(
@@ -3775,7 +4058,7 @@ app.post('/api/fabric-loading', (req, res) => {
   }
 });
 
-app.put('/api/fabric-loading/:id', (req, res) => {
+app.put('/api/fabric-loading/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const r = req.body;
     const existing = db.get('SELECT id FROM fabric_loading_list WHERE id = ?', [req.params.id]);
@@ -3791,7 +4074,7 @@ app.put('/api/fabric-loading/:id', (req, res) => {
   }
 });
 
-app.delete('/api/fabric-loading/:id', (req, res) => {
+app.delete('/api/fabric-loading/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     db.run('DELETE FROM fabric_loading_list WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
@@ -3802,7 +4085,7 @@ app.delete('/api/fabric-loading/:id', (req, res) => {
 });
 
 // 批量入库：从面料装柜清单选中多条，一键入库
-app.post('/api/fabric-loading/batch-inbound', (req, res) => {
+app.post('/api/fabric-loading/batch-inbound', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
@@ -3900,7 +4183,7 @@ app.get('/api/fabric-loading/export', async (req, res) => {
   }
 });
 
-app.post('/api/fabric-loading/import', (req, res) => {
+app.post('/api/fabric-loading/import', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { records } = req.body;
     if (!records || !records.length) return res.status(400).json({ error: '没有数据' });
@@ -3957,7 +4240,7 @@ app.get('/api/config/system', (req, res) => {
 });
 
 // [fix#9] Accept both configValue and config_value
-app.put('/api/config/system/:key', (req, res) => {
+app.put('/api/config/system/:key', requireRole('admin', 'planning_manager'), (req, res) => {
   try {
     const value = req.body.configValue ?? req.body.config_value;
     if (value === undefined) return res.status(400).json({ error: '参数值不能为空' });
@@ -4468,6 +4751,12 @@ app.post('/api/visual-schedule/move', (req, res) => {
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
+});
+
+// [2026-06-19] SPA catch-all: 兜底非 /api/ 请求返 index.html(vue-router hash 模式实际很少触发,但防 history 模式 + 直刷新)
+// 排除 /api /socket.io /assets /node_modules 等已知前缀
+app.get(/^\/(?!api|socket\.io|assets|node_modules|favicon\.ico).*/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ============================================================

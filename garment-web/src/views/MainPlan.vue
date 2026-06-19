@@ -83,6 +83,8 @@ async function batchDelete() {
 
 const autoScheduling = ref(false)
 const conflictCount = computed(() => plans.value.filter(p => p.conflict_flag).length)
+const dueWarnCount = computed(() => plans.value.filter(p => p.due_date_warning && !p.expired && !p.conflict_flag).length)
+const expiredCount = computed(() => plans.value.filter(p => p.expired).length)
 
 async function doAutoSchedule() {
   try {
@@ -540,6 +542,14 @@ onUnmounted(() => {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
           {{ conflictCount }} 条冲突
         </span>
+        <span v-if="dueWarnCount > 0" class="due-warn-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {{ dueWarnCount }} 条交期临近
+        </span>
+        <span v-if="expiredCount > 0" class="expired-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {{ expiredCount }} 条已过期
+        </span>
       </template>
     </div>
 
@@ -598,14 +608,17 @@ onUnmounted(() => {
               <span class="section-tag assigned">已排班组款式 ({{ assignedCount }})</span>
             </td>
           </tr>
-          <tr :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id), 'unassigned-row': !row.workshop || !row.line_team, 'conflict-row': row.conflict_flag && !row.expired, 'expired-row': row.expired, 'multi-line-row': row.line_count > 1 && !isFirstOfGroup(row) }">
+          <tr :class="{ 'editing-row': editingId === row.id, 'selected-row': selectedIds.has(row.id), 'unassigned-row': !row.workshop || !row.line_team, 'conflict-row': row.conflict_flag && !row.expired, 'expired-row': row.expired, 'due-warn-row': row.due_date_warning && !row.expired && !row.conflict_flag, 'multi-line-row': row.line_count > 1 && !isFirstOfGroup(row) }">
             <td class="chk-cell">
               <input type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row.id)" class="chk" />
               <span v-if="row.expired" class="expired-icon" title="已过期：交期已过，不排产">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </span>
               <span v-else-if="row.conflict_flag" class="conflict-icon" title="排程冲突：缝制/烫标上线早于二次加工下线">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+              </span>
+              <span v-else-if="row.due_date_warning" class="due-warn-icon" :title="'交期临近：' + row.due_date">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </span>
             </td>
             <td style="white-space:normal;word-break:break-all;overflow:hidden">
@@ -871,6 +884,7 @@ onUnmounted(() => {
   gap: 4px;
 }
 .conflict-icon { cursor: help; flex-shrink: 0; }
+.due-warn-icon { cursor: help; flex-shrink: 0; }
 .selected-row td {
   background: var(--primary-light) !important;
 }
@@ -915,10 +929,39 @@ onUnmounted(() => {
   background: #f9fafb !important;
   color: #9ca3af !important;
 }
+.due-warn-row td {
+  background: #fffbeb !important;
+}
 .multi-line-row td {
   border-top: 1px dashed #e5e7eb !important;
 }
 .conflict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px 10px;
+  background: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.due-warn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px 10px;
+  background: #fffbeb;
+  color: #f59e0b;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.expired-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;

@@ -1,0 +1,15 @@
+{
+  "watch": ["."],
+  "ext": "js,json",
+  "ignore": [
+    "data.sqlite",
+    "data.sqlite-shm",
+    "data.sqlite-wal",
+    "*.log",
+    "node_modules",
+    "public",
+    "temp_class.xlsx",
+    "基础数据.xlsx"
+  ],
+  "delay": 500
+}

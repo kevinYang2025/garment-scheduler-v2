@@ -4,6 +4,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useI18n } from '../composables/useI18n'
 import api from '../api'
 import { todayLocal } from '../utils/date'
 
@@ -11,6 +12,7 @@ const props = defineProps({
   workshop: { type: String, default: '' },
 })
 const router = useRouter()
+const { t } = useI18n()
 
 const records = ref([])
 const sewingMasters = ref([])   // 缝制排程主数据（含 workshop/line_team）
@@ -146,40 +148,40 @@ onMounted(async () => {
   <div class="dispatch-page">
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> 返回</el-button>
-        <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700">✂️ 缝制报工 · {{ props.workshop || '全部' }}</h2>
+        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> <span style="white-space:pre-line">{{ t('sewingDispatch.back') }}</span></el-button>
+        <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700;white-space:pre-line">🧵 {{ t('sewingDispatch.sewingReport') }} · {{ props.workshop || t('sewingDispatch.all') }}</h2>
       </div>
       <div class="header-actions">
-        <el-button type="primary" size="large" @click="openAdd()">+ 录入报工</el-button>
+        <el-button type="primary" size="large" @click="openAdd()"><span style="white-space:pre-line">{{ t('sewingDispatch.addBtn') }}</span></el-button>
       </div>
     </div>
 
     <div class="summary-bar" v-if="records.length">
       <div class="summary-item">
         <span class="summary-value">{{ records.length }}</span>
-        <span class="summary-label">报工记录</span>
+        <span class="summary-label" style="white-space:pre-line">{{ t('sewingDispatch.summary.records') }}</span>
       </div>
       <div class="summary-item">
         <span class="summary-value">{{ records.reduce((s, r) => s + (r.completed_qty || 0), 0).toLocaleString() }}</span>
-        <span class="summary-label">总完成数量</span>
+        <span class="summary-label" style="white-space:pre-line">{{ t('sewingDispatch.summary.total') }}</span>
       </div>
     </div>
 
-    <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary)">加载中...</div>
+    <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary)"><span style="white-space:pre-line">{{ t('common.loading') }}</span></div>
 
     <div v-else-if="records.length" class="excel-wrap">
       <table class="excel-table">
         <thead>
           <tr>
-            <th style="min-width:70px">车间</th>
-            <th style="min-width:60px">班组</th>
-            <th style="min-width:110px">款号</th>
-            <th style="min-width:130px">品名</th>
-            <th style="min-width:80px">完成数量</th>
-            <th style="min-width:70px">不良数量</th>
-            <th style="min-width:100px">报工日期</th>
-            <th style="min-width:140px">录入时间</th>
-            <th style="min-width:70px">操作</th>
+            <th style="min-width:70px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.workshop') }}</span></th>
+            <th style="min-width:60px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.team') }}</span></th>
+            <th style="min-width:110px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.styleNo') }}</span></th>
+            <th style="min-width:130px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.product') }}</span></th>
+            <th style="min-width:80px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.completed') }}</span></th>
+            <th style="min-width:70px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.defect') }}</span></th>
+            <th style="min-width:100px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.date') }}</span></th>
+            <th style="min-width:140px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.recordedAt') }}</span></th>
+            <th style="min-width:70px"><span style="white-space:pre-line">{{ t('sewingDispatch.cols.action') }}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -192,14 +194,14 @@ onMounted(async () => {
             <td class="num" :style="{ color: r.defect_qty > 0 ? 'var(--danger)' : 'var(--text-tertiary)' }">{{ r.defect_qty || 0 }}</td>
             <td>{{ r.production_date || '' }}</td>
             <td style="font-size:11px;color:var(--text-tertiary)">{{ r.recorded_at || '' }}</td>
-            <td><el-button size="small" text type="danger" @click="deleteRecord(r)">删除</el-button></td>
+            <td><el-button size="small" text type="danger" @click="deleteRecord(r)"><span style="white-space:pre-line">{{ t('sewingDispatch.delete') }}</span></el-button></td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div v-else style="text-align:center;padding:60px;color:var(--text-tertiary)">
-      暂无报工记录，点击"录入报工"开始
+    <div v-else style="text-align:center;padding:60px;color:var(--text-tertiary);white-space:pre-line">
+      {{ t('sewingDispatch.empty') }}
     </div>
 
     <!-- 回到顶部 -->
@@ -208,43 +210,44 @@ onMounted(async () => {
     </div>
 
     <!-- 录入弹窗 -->
-    <el-dialog v-model="showEntry" title="缝制报工" width="520px">
+    <el-dialog v-model="showEntry" width="520px">
+      <template #title><span style="white-space:pre-line">{{ t('sewingDispatch.dialogTitle') }}</span></template>
       <el-form :model="form" label-width="90px" size="default">
-        <el-form-item label="选择班组" v-if="!form.style_no">
-          <el-select filterable placeholder="筛选班组" style="width:100%" @change="onTeamSelect">
-            <el-option v-for="t in teams" :key="t" :label="t" :value="t" />
+        <el-form-item :label="t('sewingDispatch.form.selectTeam')" v-if="!form.style_no">
+          <el-select filterable :placeholder="t('sewingDispatch.form.teamFilter')" style="width:100%" @change="onTeamSelect">
+            <el-option v-for="team in teams" :key="team" :label="team" :value="team" />
           </el-select>
         </el-form-item>
-        <el-form-item label="车间">
+        <el-form-item :label="t('sewingDispatch.form.workshop')">
           <el-tag size="large">{{ props.workshop }}</el-tag>
         </el-form-item>
-        <el-form-item label="款号" required>
-          <el-select v-model="form.style_no" filterable placeholder="选择款号" style="width:100%" @change="onStyleSelect">
+        <el-form-item :label="t('sewingDispatch.form.styleNo')" required>
+          <el-select v-model="form.style_no" filterable :placeholder="t('sewingDispatch.form.stylePh')" style="width:100%" @change="onStyleSelect">
             <el-option v-for="m in filteredMasters" :key="m.style_no + m.id" :label="m.style_no + ' / ' + m.product_name" :value="m.style_no" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="selectedMaster" label="品名">
+        <el-form-item v-if="selectedMaster" :label="t('sewingDispatch.form.product')">
           <span style="color:var(--primary)">{{ selectedMaster.product_name }}</span>
         </el-form-item>
-        <el-form-item label="班组">
-          <el-input v-model="form.line_team" placeholder="自动带出或手动填写" />
+        <el-form-item :label="t('sewingDispatch.form.team')">
+          <el-input v-model="form.line_team" :placeholder="t('sewingDispatch.form.teamPh')" />
         </el-form-item>
-        <el-form-item label="报工日期" required>
+        <el-form-item :label="t('sewingDispatch.form.date')" required>
           <el-input v-model="form.production_date" type="date" />
         </el-form-item>
-        <el-form-item label="完成数量" required>
+        <el-form-item :label="t('sewingDispatch.form.completed')" required>
           <el-input-number v-model="form.completed_qty" :min="0" :step="100" style="width:100%" />
         </el-form-item>
-        <el-form-item label="不良数量">
+        <el-form-item :label="t('sewingDispatch.form.defect')">
           <el-input-number v-model="form.defect_qty" :min="0" :step="10" style="width:100%" />
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" placeholder="可选" />
+        <el-form-item :label="t('sewingDispatch.form.remark')">
+          <el-input v-model="form.remark" :placeholder="t('sewingDispatch.form.remarkPh')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showEntry = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveEntry">保存</el-button>
+        <el-button @click="showEntry = false"><span style="white-space:pre-line">{{ t('common.cancel') }}</span></el-button>
+        <el-button type="primary" :loading="saving" @click="saveEntry"><span style="white-space:pre-line">{{ t('common.save') }}</span></el-button>
       </template>
     </el-dialog>
   </div>
