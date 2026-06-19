@@ -1,0 +1,171 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:                        # 允许手动从 Actions tab 触发
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false                 # 不杀半完成的部署
+
+jobs:
+  # ============================================================
+  # Job 1: 构建产物
+  # ============================================================
+  build:
+    name: Build artifacts
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            garment-web/package-lock.json
+            garment-server/package-lock.json
+
+      # 前端构建
+      - name: Install web deps
+        working-directory: garment-web
+        run: npm ci
+
+      - name: Build web
+        working-directory: garment-web
+        run: npm run build
+
+      # 后端: CI 不编译 native module (服务器端才有 python/g++/libsqlite3-dev)
+      # 仅装 prod deps + 语法校验
+      - name: Install server deps (prod-only)
+        working-directory: garment-server
+        run: npm ci --omit=dev
+
+      - name: Syntax check server.js
+        working-directory: garment-server
+        run: node --check server.js
+
+      # 收集部署所需文件(不传 node_modules,因为 better-sqlite3 native binding 在服务器上 rebuild)
+      - name: Stage backend files
+        working-directory: garment-server
+        run: |
+          mkdir -p ../../build/garment-server
+          cp -a server.js db.js session-store.js \
+                ecosystem.config.js .env.example \
+                package.json package-lock.json \
+                ../../build/garment-server/ 2>/dev/null || true
+
+      - name: Stage frontend dist
+        run: |
+          mkdir -p build/garment-web
+          cp -a garment-web/dist build/garment-web/
+
+      - name: Stage deploy script
+        run: cp scripts/deploy.sh build/deploy.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: garment-build
+          path: build/
+          retention-days: 7
+
+  # ============================================================
+  # Job 2: 部署到生产服务器
+  # ============================================================
+  deploy:
+    name: Deploy to production
+    needs: build
+    runs-on: ubuntu-22.04
+    environment: production
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: garment-build
+          path: build
+
+      - name: Inject SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known_hosts: unnecessary
+          config: |
+            Host ${{ secrets.DEPLOY_HOST }}
+              StrictHostKeyChecking accept-new
+              UserKnownHostsFile=/dev/null
+              User ${{ secrets.DEPLOY_USER }}
+              Port ${{ secrets.DEPLOY_PORT || 22 }}
+
+      # 预检: 服务器端环境变量齐全 + 工具就绪
+      # 任意一项缺失直接 fail(避免 server.js:47-58 fatal-exit)
+      - name: Pre-flight check
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            echo "--- preflight ---"
+            [ -f /opt/garment/env/garment.env ] || { echo "MISSING /opt/garment/env/garment.env"; exit 1; }
+            grep -q '^AUTH_ENABLED=true'      /opt/garment/env/garment.env || { echo "AUTH_ENABLED != true"; exit 1; }
+            grep -q '^NODE_ENV=production'    /opt/garment/env/garment.env || { echo "NODE_ENV != production"; exit 1; }
+            grep -qE '^API_TOKEN=[a-f0-9]{32,}'       /opt/garment/env/garment.env || { echo "API_TOKEN missing/weak"; exit 1; }
+            grep -qE '^SESSION_SECRET=[a-f0-9]{32,}'  /opt/garment/env/garment.env || { echo "SESSION_SECRET missing/weak"; exit 1; }
+            grep -qE '^CORS_ORIGINS=https?://'        /opt/garment/env/garment.env || { echo "CORS_ORIGINS must be https URL"; exit 1; }
+            node -v
+            pm2 -v || { echo "pm2 not installed"; exit 1; }
+
+      # 把 build artifact 同步到服务器 /tmp/garment-deploy/
+      - name: Sync artifacts
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "build/"
+          target: "/tmp/garment-deploy"
+
+      # 跑服务器端 deploy.sh
+      - name: Run deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+            chmod +x /tmp/garment-deploy/deploy.sh
+            sudo /tmp/garment-deploy/deploy.sh
+
+      # 冒烟测试
+      - name: Smoke test
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            sleep 3
+            echo "--- /api/health (expect 200) ---"
+            curl -fsS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:3001/api/health
+            echo "--- pm2 status ---"
+            pm2 status garment-server
+            echo "--- HTTPS via Nginx ---"
+            curl -fsS -o /dev/null -w "HTTP %{http_code}\n" https://${{ secrets.DEPLOY_HOST }}/
+
+      # 通知(可选 - 配 DEPLOY_WEBHOOK_URL secret 才生效)
+      - name: Notify result
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ -n "${{ secrets.DEPLOY_WEBHOOK_URL }}" ]; then
+            curl -fsS -X POST -H 'Content-Type: application/json' \
+              -d "{\"text\":\"Deploy $STATUS on ${{ github.ref_name }} (${{ github.sha }})\"}" \
+              "${{ secrets.DEPLOY_WEBHOOK_URL }}" || true
+          fi
