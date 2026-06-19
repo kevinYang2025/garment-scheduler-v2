@@ -16,6 +16,10 @@ function fmtLocal(d) {
 function init() {
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');     // WAL 模式下安全且 ~2x 写入
+  db.pragma('temp_store = MEMORY');      // 临时表/索引放内存,减少磁盘 IO
+  db.pragma('mmap_size = 268435456');    // 256 MB memory-mapped I/O
+  db.pragma('cache_size = -64000');      // 64 MB page cache
   db.pragma('foreign_keys = ON');
   createTables();
   migrateStyles();
