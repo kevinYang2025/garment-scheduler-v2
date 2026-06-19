@@ -522,6 +522,7 @@ app.use((req, res, next) => {
 // 否则 session 登录后所有 /api 请求被 Bearer 拦截 → 401
 if (AUTH_ENABLED) {
   app.use('/api', (req, res, next) => {
+    if (req.path === '/health') return next();
     if (req.path === '/auth/login') return next();
     if (req.path.startsWith('/socket.io')) return next();
     if (req.session && req.session.user) return next();
@@ -538,6 +539,7 @@ if (AUTH_ENABLED) {
 // 排除 /api/auth/login 和 /api/socket.io/(WebSocket 升级不能拦截)
 // 注意:app.use('/api') 之后,req.path 是去掉 /api 前缀的相对路径
 app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
   if (req.path === '/auth/login') return next();
   if (req.path.startsWith('/socket.io')) return next();
   return requireAuth(req, res, next);
@@ -4757,6 +4759,24 @@ app.use((err, req, res, next) => {
 // 排除 /api /socket.io /assets /node_modules 等已知前缀
 app.get(/^\/(?!api|socket\.io|assets|node_modules|favicon\.ico).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// [2026-06-19] 健康检查: UptimeRobot / CI smoke test 用
+// 必须放在所有 catch-all 之前,否则会落到 SPA fallback
+// /api/health 在两个 auth 中间件(line 524/540)已加 /health 豁免,免登录访问
+app.get('/api/health', (req, res) => {
+  try {
+    const row = db.get('SELECT 1 AS ok');
+    res.json({
+      ok: !!(row && row.ok === 1),
+      ts: Date.now(),
+      uptime: process.uptime(),
+      auth: AUTH_ENABLED,
+      node_env: process.env.NODE_ENV || 'development',
+    });
+  } catch (e) {
+    res.status(503).json({ ok: false, error: 'db unavailable' });
+  }
 });
 
 // ============================================================
