@@ -1,0 +1,16 @@
+[Unit]
+Description=PM2 process manager for garment-server
+Documentation=https://pm2.keymetrics.io/
+After=network.target
+
+[Service]
+Type=forking
+User=deploy
+Environment=PM2_HOME=/home/deploy/.pm2
+ExecStart=/usr/bin/pm2 resurrect
+ExecReload=/usr/bin/pm2 reload ecosystem.config.js
+ExecStop=/usr/bin/pm2 kill
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
