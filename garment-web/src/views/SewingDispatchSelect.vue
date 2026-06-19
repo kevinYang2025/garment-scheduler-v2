@@ -1,8 +1,8 @@
 <template>
   <div class="sewing-dispatch-home">
     <div class="sdh-header">
-      <h2 class="sdh-title">缝制报工</h2>
-      <p class="sdh-desc">选择车间查看或录入报工数据</p>
+      <h2 class="sdh-title" style="white-space: pre-line">{{ t('nav.sewingDispatch') }}</h2>
+      <p class="sdh-desc" style="white-space: pre-line">{{ t('sewingDispatch.selectDesc') }}</p>
     </div>
     <div class="sdh-grid">
       <div
@@ -20,6 +20,8 @@
 </template>
 
 <script setup>
+import { useI18n } from '../composables/useI18n'
+const { t } = useI18n()
 // 缝制报工选车间页(Step 6 再按角色过滤)
 const workshops = ['一车间', '二车间', '三车间', '四车间', '五车间']
 </script>

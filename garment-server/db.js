@@ -21,7 +21,9 @@ function init() {
   migrateStyles();
   migrateUserColumns();
   seedDefaultData();
+  seedSystemConfig();  // [2026-06-19] system_config 每次启动 OR REPLACE,确保新参数生效
   seedUsers();
+  migratePinHashes();  // [fix] 迁移旧明文 PIN 为 bcrypt 哈希
   seedMainPlan();
   return db;
 }
@@ -516,9 +518,11 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE,           -- 账号(admin/planner/supervisor)
+      username_km TEXT,                -- 高棉文账号(dispatcher 报工员)
       pin TEXT,                        -- 4 位 PIN(dispatcher 专用,NULL 表示不用)
       password_hash TEXT,              -- bcrypt 哈希(NULL 表示不用)
       display_name TEXT NOT NULL,      -- 中文姓名
+      display_name_km TEXT,            -- 高棉文姓名
       role TEXT NOT NULL CHECK(role IN
         ('admin','planning_manager','planner','dispatcher','supervisor')),
       workshop TEXT CHECK(workshop IN
@@ -675,6 +679,9 @@ function migrateStyles() {
   // 迁移：产线加日产量字段
   try { db.prepare("ALTER TABLE production_lines ADD COLUMN daily_output INTEGER DEFAULT 0").run() } catch {}
 
+  // 迁移：产线-款式分类加日产量字段(autoSchedule 用)
+  try { db.prepare("ALTER TABLE line_style_categories ADD COLUMN daily_output INTEGER DEFAULT 0").run() } catch {}
+
   // [B-01 fix] 一次性迁移:把旧的 plan_override_<type> 行从 actual_production 复制到 schedule_plan_overrides
   // 完成后不删除旧行(保留审计);新代码不再读旧位置
   try {
@@ -729,6 +736,23 @@ function migrateUserColumns() {
       console.log('✅ schedule_daily 加 locked_at 字段');
     }
   } catch (e) { console.log('schedule_daily lock migration skip:', e.message); }
+
+  try {
+    // users 加 avatar_url(nullable)
+    const uCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+    if (!uCols.includes('avatar_url')) {
+      db.prepare("ALTER TABLE users ADD COLUMN avatar_url TEXT").run();
+      console.log('✅ users 加 avatar_url 字段');
+    }
+    if (!uCols.includes('username_km')) {
+      db.prepare("ALTER TABLE users ADD COLUMN username_km TEXT").run();
+      console.log('✅ users 加 username_km 字段');
+    }
+    if (!uCols.includes('display_name_km')) {
+      db.prepare("ALTER TABLE users ADD COLUMN display_name_km TEXT").run();
+      console.log('✅ users 加 display_name_km 字段');
+    }
+  } catch (e) { console.log('users avatar/bilingual migration skip:', e.message); }
 }
 
 function seedDefaultData() {
@@ -837,6 +861,23 @@ function seedDefaultData() {
   }
 }
 
+// [2026-06-19] system_config 独立 seed:每次启动 OR REPLACE,新增参数可即时生效
+function seedSystemConfig() {
+  const insCfg = db.prepare('INSERT OR REPLACE INTO system_config (config_key, config_value, description) VALUES (?, ?, ?)');
+  insCfg.run('shipping_buffer_days', '5', '出货前缓冲天数');
+  insCfg.run('picking_days', '3', '挑片天数');
+  insCfg.run('line_change_days', '0.5', '换线时间（天）');
+  insCfg.run('cutting_daily_capacity', '30000', '裁剪日产能');
+  insCfg.run('loading_to_arrival_days', '15', '装柜到货天数');
+  insCfg.run('fabric_inspection_days', '9', '面料检验天数');
+  insCfg.run('sewing_buffer_days', '15', '缝制出货前缓冲天数');
+  insCfg.run('sewing_remind_days', '10', '缝制提前提醒天数');
+  insCfg.run('ironing_buffer_days', '3', '烫标完成缓冲天数');
+  insCfg.run('max_sewing_lines', '49', '全厂缝制线数上限');
+  insCfg.run('default_daily_target', '500', '缝制日产量兜底');
+  insCfg.run('workshop_category_multiplier', '3', '缝制车间分类线数倍率');
+}
+
 // [2026-06-18] 用户系统:种子用户(首次启动插入 19 个账号)
 // 守护:已存在则跳过,避免重启重复插
 // - admin / admin123(首登后建议改密)
@@ -871,17 +912,32 @@ function seedUsers() {
     ins.run('sup_sewing_02', null, defaultHash, '缝制主任02', 'supervisor', 'sewing');
 
     // 7 dispatcher(裁/印/绣/模/烫 + 缝制 × 2)
-    ins.run('101', '1234', null, '裁剪报工员', 'dispatcher', 'cutting');
-    ins.run('102', '1234', null, '印花报工员', 'dispatcher', 'printing');
-    ins.run('103', '1234', null, '刺绣报工员', 'dispatcher', 'embroidery');
-    ins.run('104', '1234', null, '模板报工员', 'dispatcher', 'template');
-    ins.run('105', '1234', null, '烫标报工员(中国)', 'dispatcher', 'ironing');
-    ins.run('201', '1234', null, '缝制报工员01', 'dispatcher', 'sewing');
-    ins.run('202', '1234', null, '缝制报工员02', 'dispatcher', 'sewing');
+    const defaultPinHash = bcrypt.hashSync('1234', 10);
+    ins.run('101', defaultPinHash, null, '裁剪报工员', 'dispatcher', 'cutting');
+    ins.run('102', defaultPinHash, null, '印花报工员', 'dispatcher', 'printing');
+    ins.run('103', defaultPinHash, null, '刺绣报工员', 'dispatcher', 'embroidery');
+    ins.run('104', defaultPinHash, null, '模板报工员', 'dispatcher', 'template');
+    ins.run('105', defaultPinHash, null, '烫标报工员(中国)', 'dispatcher', 'ironing');
+    ins.run('201', defaultPinHash, null, '缝制报工员01', 'dispatcher', 'sewing');
+    ins.run('202', defaultPinHash, null, '缝制报工员02', 'dispatcher', 'sewing');
   });
   txn();
   console.log('✅ 种子用户: 1 admin + 4 planning + 7 supervisor + 7 dispatcher = 19 个');
   console.log('   默认账号: admin/admin123, 其他 123456 / PIN 1234(请尽快修改)');
+}
+
+// [fix] 迁移旧明文 PIN 为 bcrypt 哈希(兼容已有数据库)
+function migratePinHashes() {
+  const users = db.prepare('SELECT id, pin FROM users WHERE pin IS NOT NULL').all();
+  let migrated = 0;
+  for (const u of users) {
+    // bcrypt 哈希以 $2a$/$2b$ 开头，长度 60；如果不是哈希格式则为明文
+    if (u.pin && !u.pin.startsWith('$2')) {
+      db.prepare('UPDATE users SET pin = ? WHERE id = ?').run(bcrypt.hashSync(u.pin, 10), u.id);
+      migrated++;
+    }
+  }
+  if (migrated > 0) console.log(`✅ PIN 迁移: ${migrated} 个明文 PIN 已哈希`);
 }
 
 // [fix#11] Read from system_config instead of hardcoding
@@ -1034,7 +1090,7 @@ function recalcTaskStatus(masterId) {
 }
 
 // ============================================================
-// 自动排产算法（贪心）
+// 自动排产算法（按款式分类匹配产线）
 // ============================================================
 function autoSchedule(strategyId, userId) {
   try {
@@ -1051,31 +1107,106 @@ function autoSchedule(strategyId, userId) {
                   sortField === 'plan_qty' ? 'plan_qty DESC' :
                   'due_date ASC';
 
+    // 1. 获取未排产的计划
     const unplanned = db.prepare(`SELECT * FROM main_plan WHERE is_scheduled = 0 OR is_scheduled IS NULL ORDER BY ${orderBy}`).all();
     if (unplanned.length === 0) return { message: '没有待排产的计划', scheduled: 0 };
 
+    // 2. 获取款式信息（含 style_category）
+    const styleMap = {};
+    const styles = db.prepare('SELECT * FROM styles').all();
+    for (const s of styles) styleMap[s.style_no] = s;
+
+    // 3. 获取产线信息
     const lines = db.prepare("SELECT * FROM production_lines WHERE status != '故障' ORDER BY sort_order").all();
     const workshops = db.prepare('SELECT * FROM workshops ORDER BY sort_order').all();
-    const sewingCap = db.get("SELECT daily_capacity FROM capacity_config WHERE process_type = 'sewing'");
-    const dailyCapacity = sewingCap?.daily_capacity || 800;
+
+    // 4. 获取产线-款式分类映射
+    const lineCategories = db.prepare('SELECT * FROM line_style_categories').all();
+    // 建立索引：line_id → [{name, dailyOutput}]
+    const lineCatMap = {};
+    for (const lc of lineCategories) {
+      if (!lineCatMap[lc.line_id]) lineCatMap[lc.line_id] = [];
+      lineCatMap[lc.line_id].push({ name: lc.name, dailyOutput: lc.daily_output || 0 });
+    }
+    // 建立索引：category_name → [line_id]（快速查找哪些线能产某类款式）
+    const categoryLineMap = {};
+    for (const lc of lineCategories) {
+      if (!categoryLineMap[lc.name]) categoryLineMap[lc.name] = [];
+      categoryLineMap[lc.name].push(lc.line_id);
+    }
+
+    // 5. 记录每条线已分配的负荷（用于负载均衡）
+    const lineLoad = {};
+    for (const l of lines) lineLoad[l.id] = 0;
 
     let scheduled = 0;
-    let lineIdx = 0;
+    let skipped = 0;
+    const skippedReasons = [];
 
     const txn = db.transaction(() => {
       for (const plan of unplanned) {
-        if (lines.length === 0) break;
-        if (lineIdx >= lines.length) lineIdx = 0;
+        const style = styleMap[plan.style_no];
+        const category = style?.style_category || '';
 
-        const line = lines[lineIdx];
+        // 确定日产能：优先用款式自己的 target_daily_output
+        let dailyCapacity = style?.target_daily_output || 0;
+
+        // 找到能产该款式分类的产线
+        let candidateLineIds = [];
+        if (category && categoryLineMap[category]) {
+          candidateLineIds = categoryLineMap[category];
+        } else {
+          skipped++;
+          skippedReasons.push(plan.style_no + ': 无款式分类或无匹配产线');
+          continue;
+        }
+
+        if (candidateLineIds.length === 0) {
+          skipped++;
+          skippedReasons.push(plan.style_no + ': 无可用产线');
+          continue;
+        }
+
+        // 在候选产线中选负荷最小的（负载均衡）
+        let bestLineId = null;
+        let minLoad = Infinity;
+        for (const lid of candidateLineIds) {
+          if (lineLoad[lid] < minLoad) {
+            minLoad = lineLoad[lid];
+            bestLineId = lid;
+          }
+        }
+        // 选完即用,不让后续款式重复占用同一条线导致超负荷
+        if (bestLineId !== null) {
+          // 把候选池里这条线标记为不可再用
+          for (let i = candidateLineIds.length - 1; i >= 0; i--) {
+            if (candidateLineIds[i] === bestLineId) candidateLineIds.splice(i, 1);
+          }
+        }
+
+        const line = lines.find(l => l.id === bestLineId);
+        if (!line) {
+          skipped++;
+          skippedReasons.push(plan.style_no + ': 产线数据异常');
+          continue;
+        }
+
+        // 如果款式没有自定义日产能，用产线的日产能
+        if (dailyCapacity <= 0) {
+          const lcEntry = lineCatMap[line.id]?.find(c => c.name === category);
+          dailyCapacity = lcEntry?.dailyOutput || line.daily_output || 800;
+        }
+
         const workshop = workshops.find(w => w.id === line.workshop_id);
         const sewingDays = Math.ceil((plan.plan_qty || 0) / dailyCapacity);
         const startDate = plan.sewing_start || plan.cutting_start || fmtLocal(new Date());
         const endDate = plan.sewing_end || addWorkdays(startDate, sewingDays);
 
+        // 更新 main_plan
         db.run('UPDATE main_plan SET is_scheduled = 1, workshop = ?, line_team = ? WHERE id = ?',
           [workshop?.name || '', line.line_name, plan.id]);
 
+        // 写入缝制排程
         const result = db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, plan_qty, plan_start, plan_end, workshop, line_team, daily_target, due_date)
           VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [plan.style_id, plan.style_no, plan.product_name, plan.plan_qty, startDate, endDate, workshop?.name || '', line.line_name, dailyCapacity, plan.due_date || '']);
@@ -1084,11 +1215,11 @@ function autoSchedule(strategyId, userId) {
           generatePlanRows(result.lastInsertRowid, startDate, endDate, plan.plan_qty);
         }
 
-        lineIdx++;
+        lineLoad[line.id] += sewingDays;
         scheduled++;
       }
 
-      // ========== 自动生成印花排程 ==========
+      // ========== 自动生成印花排程（保留原有逻辑）==========
       const printingStyles = db.prepare("SELECT * FROM styles WHERE printing = '是' AND printing_daily_output > 0").all();
       const mainPlanAll = db.prepare("SELECT style_no, printing_start, printing_end FROM main_plan WHERE printing_start != '' AND printing_start IS NOT NULL").all();
       const printingPlanMap = {};
@@ -1121,12 +1252,17 @@ function autoSchedule(strategyId, userId) {
 
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     broadcastSection('schedule_sewing', db.all("SELECT * FROM schedule_master WHERE schedule_type = 'sewing'"));
-    logOperation('scheduling', 'auto_schedule', strategyId, strategy.name, `自动排产${scheduled}条`, userId);
+    logOperation('scheduling', 'auto_schedule', strategyId, strategy.name, `自动排产${scheduled}条，跳过${skipped}条`, userId);
 
-    return { ok: true, scheduled, strategy: strategy.name };
+    const result = { ok: true, scheduled, strategy: strategy.name };
+    if (skipped > 0) {
+      result.skipped = skipped;
+      result.skippedReasons = skippedReasons.slice(0, 10);
+    }
+    return result;
   } catch (e) {
     console.error('autoSchedule error:', e);
-    return { error: e.message };
+    return { error: '自动排产失败，请检查数据' };
   }
 }
 
@@ -1138,7 +1274,7 @@ function capacityPrecheck() {
     const plans = db.prepare("SELECT * FROM main_plan WHERE is_scheduled = 0 OR is_scheduled IS NULL").all();
     if (plans.length === 0) return { message: '没有待排产的计划', plans: [] };
 
-    const sewingCap = db.get("SELECT daily_capacity FROM capacity_config WHERE process_type = 'sewing'");
+    const sewingCap = db.prepare("SELECT daily_capacity FROM capacity_config WHERE process_type = 'sewing'").get();
     const dailyCapacity = sewingCap?.daily_capacity || 800;
     const lines = db.prepare("SELECT * FROM production_lines WHERE status != '故障'").all();
     const lineCount = lines.length;

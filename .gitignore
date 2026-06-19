@@ -27,3 +27,6 @@ Thumbs.db
 .scratch/
 pw*.json
 playwright-test*.json
+
+# 临时标记文件(2026-06-19 加入)
+mimo

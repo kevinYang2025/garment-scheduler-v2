@@ -1,4 +1,5 @@
 import axios from 'axios'
+import router from '@/router'
 
 // [2026-06-18] 用户系统:加 withCredentials 让 session cookie 跨请求保持
 const api = axios.create({
@@ -11,7 +12,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
+        // [fix Y-06] 用 router.push 替代 window.location.href,保留 Pinia 状态和 KeepAlive 缓存
+        router.push('/login').catch(() => {})
       }
     }
     return Promise.reject(error)
@@ -139,6 +141,7 @@ export default {
   // 排程汇总
   getSecondarySummary: () => api.get('/schedule/secondary/summary'),
   getSewingSummary: () => api.get('/schedule/sewing/summary'),
+  getAchievementRate: () => api.get('/dashboard/achievement-rate'),
   exportSchedule: (scheduleType, secondaryType) => api.get(`/schedule/${scheduleType}/export`, { params: { secondary_type: secondaryType || '' } }),
   importSchedule: (scheduleType, records, mode) => api.post(`/schedule/${scheduleType}/import`, { records, mode }),
 
@@ -196,6 +199,10 @@ export default {
   updateShippingPlan: (id, data) => api.put(`/shipping-plans/${id}`, data),
   deleteShippingPlan: (id) => api.delete(`/shipping-plans/${id}`),
   generateShippingPlans: () => api.post('/shipping-plans/generate'),
+
+  // 系统参数
+  getSystemConfig: () => api.get('/system-config'),
+  updateSystemConfig: (key, value) => api.put(`/system-config/${key}`, { config_value: value }),
 
   // 排产策略
   getStrategies: () => api.get('/strategies'),

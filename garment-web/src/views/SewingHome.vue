@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 
 const router = useRouter()
@@ -13,6 +13,26 @@ const sewingCards = [
 
 const summaries = ref({})
 const loading = ref(true)
+const scheduling = ref(false)
+
+async function doAutoSchedule() {
+  try {
+    await ElMessageBox.confirm('将根据预排总计划和当前激活策略，自动分配到缝制产线。确定继续？', '一键自动排产', { type: 'info' })
+  } catch { return }
+  scheduling.value = true
+  try {
+    const { data } = await api.autoSchedule()
+    if (data.ok) {
+      ElMessage.success(`排产完成：${data.scheduled} 条计划已分配到产线`)
+      loadSummaries()
+    } else if (data.message) {
+      ElMessage.info(data.message)
+    } else {
+      ElMessage.error(data.error || '排产失败')
+    }
+  } catch { ElMessage.error('自动排产失败') }
+  scheduling.value = false
+}
 
 // TODO: 权限判断接口，后续对接实际权限系统
 // 每个排程模块独立权限：view/edit/import/export
@@ -50,6 +70,13 @@ onMounted(loadSummaries)
 <template>
   <div class="sewing-home">
 
+    <!-- 顶部操作栏 -->
+    <div class="top-actions">
+      <h2 class="page-heading">缝制排程</h2>
+      <el-button type="primary" size="large" @click="doAutoSchedule" :loading="scheduling">
+        🚀 {{ scheduling ? '排产中...' : '一键自动排产' }}
+      </el-button>
+    </div>
 
     <div v-if="loading" class="loading">
       <div class="loading-spinner"></div>
@@ -90,6 +117,17 @@ onMounted(loadSummaries)
 <style scoped>
 .sewing-home {
   max-width: 800px;
+}
+.top-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.page-heading {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
 }
 
 .card-grid {

@@ -420,7 +420,8 @@ onMounted(loadGantt)
 .visual-schedule {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 140px);
+  /* 占满 main-content 剩余高度：100vh - main-header(56) - main-content padding(4 top + 24 bottom = 28) */
+  height: calc(100vh - 84px);
   background: var(--card);
   border-radius: var(--radius);
   overflow: hidden;

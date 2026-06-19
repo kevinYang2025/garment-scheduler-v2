@@ -3,11 +3,14 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useWebSocket } from './composables/useWebSocket'
 import { useAuthStore } from './stores/auth'
+import { useLangStore } from './stores/lang'
+import { t } from './i18n'
 import api from './api'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const lang = useLangStore()
 
 const { DB, connected, onlineUsers } = useWebSocket()
 const prefetchedStyles = ref(null)
@@ -30,31 +33,38 @@ watch(() => DB.value, async (db) => {
 // ==================== 导航 ====================
 // 每个 group 内含若干 route name,sidebar 自动按"当前 route 属于哪个 group"高亮
 // 嵌套 view(secondary/*, sewing/* 等)通过 groupIncludes 匹配
+// [2026-06-19] labelKey 走 i18n
 const navGroups = [
   {
-    label: '工作台',
+    labelKey: 'nav.workstation',
+    labelFallback: '工作台',
     match: ['dashboard'],
   },
   {
-    label: '基础数据',
+    labelKey: 'nav.group.basicData',
+    labelFallback: '基础数据',
     // [2026-06-18] 辅料清单暂不开放
     match: ['basicData', 'styles', 'fabricList', 'sewingWorkshop', 'preWorkshopOutput', 'styleColorSize'],
   },
   {
-    label: '计划管理',
+    labelKey: 'nav.group.planManagement',
+    labelFallback: '计划管理',
     match: ['planManagement', 'mainPlan', 'cutting', 'secondary', 'printing-plan', 'embroidery-plan', 'template-plan', 'ironing-plan', 'sewing', 'sewing-plan', 'sewing-visual', 'actualReview'],
   },
   {
-    label: '报工管理',
-    match: ['dispatch', 'dispatch-report', 'cutting-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail', 'shipping'],
+    labelKey: 'nav.group.dispatch',
+    labelFallback: '报工管理',
+    match: ['dispatch', 'dispatch-report', 'cutting-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail'],
   },
   {
-    label: '仓库',
+    labelKey: 'nav.group.warehouse',
+    labelFallback: '仓库',
     match: ['warehouse', 'warehouse-detail'],
   },
   {
-    label: '设置',
-    match: ['config', 'work-calendar', 'strategy', 'logs', 'users'],
+    labelKey: 'nav.group.settings',
+    labelFallback: '设置',
+    match: ['config', 'work-calendar', 'strategy', 'system-params', 'logs', 'users', 'userSettings'],
   },
 ]
 
@@ -76,46 +86,47 @@ const currentGroup = computed(() => {
 //   - 标 workshop: 仅当 user.workshop === workshop 时可见(supervisor / dispatcher 限定)
 const navItems = {
   // 工作台(全员)
-  home: { label: '工作台', icon: 'home' },
+  home: { label: '工作台', labelKey: 'nav.home', icon: 'home' },
   // 数据看板(只 planning 类)
-  dashboard: { label: '数据看板', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
+  dashboard: { label: '数据看板', labelKey: 'nav.dashboard', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
   // 报工总览(全员 — dispatcher 是主用户)
-  dispatch: { label: '报工总览', icon: 'data-analysis' },
+  dispatch: { label: '报工总览', labelKey: 'nav.dispatch', icon: 'data-analysis' },
   // 基础数据(只 planning)
-  basicData: { label: '基础数据总览', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
-  styles: { label: '款式管理', icon: 'tag', roles: ['admin', 'planning_manager', 'planner'] },
-  fabricList: { label: '面料装柜清单', icon: 'list', roles: ['admin', 'planning_manager', 'planner'] },
+  basicData: { label: '基础数据总览', labelKey: 'nav.basicData', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
+  styles: { label: '款式管理', labelKey: 'nav.styles', icon: 'tag', roles: ['admin', 'planning_manager', 'planner'] },
+  fabricList: { label: '面料装柜清单', labelKey: 'nav.fabricList', icon: 'list', roles: ['admin', 'planning_manager', 'planner'] },
   // [2026-06-18] 辅料清单暂不开放
   // auxiliaryList: { label: '辅料清单', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
-  sewingWorkshop: { label: '缝制车间管理', icon: 'factory', roles: ['admin', 'planning_manager', 'planner'] },
-  preWorkshopOutput: { label: '前置车间产量', icon: 'data-analysis', roles: ['admin', 'planning_manager', 'planner'] },
-  styleColorSize: { label: '分色分尺码', icon: 'ruler', roles: ['admin', 'planning_manager', 'planner'] },
+  sewingWorkshop: { label: '缝制车间管理', labelKey: 'nav.sewingWorkshop', icon: 'factory', roles: ['admin', 'planning_manager', 'planner'] },
+  preWorkshopOutput: { label: '前置车间产量', labelKey: 'nav.preWorkshopOutput', icon: 'data-analysis', roles: ['admin', 'planning_manager', 'planner'] },
+  styleColorSize: { label: '分色分尺码', labelKey: 'nav.styleColorSize', icon: 'ruler', roles: ['admin', 'planning_manager', 'planner'] },
   // 计划管理(planning 全看,supervisor 只看自己车间)
-  planManagement: { label: '计划管理总览', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
-  mainPlan: { label: '预排总计划', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
-  cutting: { label: '裁剪排程', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'cutting' },
-  secondary: { label: '二次加工', icon: 'palette', roles: ['admin', 'planning_manager', 'planner', 'supervisor'] },
-  sewing: { label: '缝制排程', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
+  planManagement: { label: '计划管理总览', labelKey: 'nav.planManagement', icon: 'grid', roles: ['admin', 'planning_manager', 'planner'] },
+  mainPlan: { label: '预排总计划', labelKey: 'nav.mainPlan', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
+  cutting: { label: '裁剪排程', labelKey: 'nav.cutting', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'cutting' },
+  secondary: { label: '二次加工', labelKey: 'nav.secondary', icon: 'palette', roles: ['admin', 'planning_manager', 'planner', 'supervisor'] },
+  sewing: { label: '缝制排程', labelKey: 'nav.sewing', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'supervisor'], workshop: 'sewing' },
   // 实际产量复核(supervisor / admin 复核)
-  actualReview: { label: '实际产量复核', icon: 'ruler', roles: ['admin', 'supervisor'] },
+  actualReview: { label: '实际产量复核', labelKey: 'nav.actualReview', icon: 'ruler', roles: ['admin', 'supervisor'] },
   // 报工(planning + dispatcher,supervisor 不报工)
-  'cutting-dispatch': { label: '裁剪报工', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'cutting' },
-  'printing-dispatch': { label: '印花报工', icon: 'printer', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'printing' },
-  'embroidery-dispatch': { label: '刺绣报工', icon: 'star', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'embroidery' },
-  'template-dispatch': { label: '模板报工', icon: 'copy', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'template' },
-  'ironing-dispatch': { label: '烫标报工', icon: 'flame', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'ironing' },
-  'sewing-dispatch': { label: '缝制报工', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
-  'sewing-dispatch-detail': { label: '缝制报工', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
-  shipping: { label: '出货计划', icon: 'van', roles: ['admin', 'planning_manager', 'planner'] },
+  'cutting-dispatch': { label: '裁剪报工', labelKey: 'nav.cuttingDispatch', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'cutting' },
+  'printing-dispatch': { label: '印花报工', labelKey: 'nav.printingDispatch', icon: 'printer', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'printing' },
+  'embroidery-dispatch': { label: '刺绣报工', labelKey: 'nav.embroideryDispatch', icon: 'star', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'embroidery' },
+  'template-dispatch': { label: '模板报工', labelKey: 'nav.templateDispatch', icon: 'copy', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'template' },
+  'ironing-dispatch': { label: '烫标报工', labelKey: 'nav.ironingDispatch', icon: 'flame', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'ironing' },
+  'sewing-dispatch': { label: '缝制报工', labelKey: 'nav.sewingDispatch', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
+  'sewing-dispatch-detail': { label: '缝制报工', labelKey: 'nav.sewingDispatch', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
   // 仓库(planning only — 仓库 freeze 中,暂不开新用户)
-  warehouse: { label: '仓库管理', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
-  'warehouse-detail': { label: '仓库详情', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  warehouse: { label: '仓库管理', labelKey: 'nav.warehouse', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  'warehouse-detail': { label: '仓库详情', labelKey: 'nav.warehouse', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
   // 设置(planning only)
-  config: { label: '系统设置', icon: 'settings', roles: ['admin', 'planning_manager', 'planner'] },
-  'work-calendar': { label: '工作日历', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
-  strategy: { label: '排产策略', icon: 'magic-stick', roles: ['admin', 'planning_manager', 'planner'] },
-  logs: { label: '操作日志', icon: 'list', roles: ['admin', 'planning_manager', 'planner'] },
-  users: { label: '用户管理', icon: 'user', roles: ['admin'] },
+  config: { label: '系统设置', labelKey: 'nav.config', icon: 'settings', roles: ['admin', 'planning_manager', 'planner'] },
+  'work-calendar': { label: '工作日历', labelKey: 'nav.workCalendar', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
+  strategy: { label: '排产策略', labelKey: 'nav.strategy', icon: 'magic-stick', roles: ['admin', 'planning_manager', 'planner'] },
+  'system-params': { label: '系统参数', labelKey: 'nav.systemParams', icon: 'sliders', roles: ['admin', 'planning_manager', 'planner'] },
+  logs: { label: '操作日志', labelKey: 'nav.logs', icon: 'list', roles: ['admin', 'planning_manager', 'planner'] },
+  users: { label: '用户管理', labelKey: 'nav.users', icon: 'user', roles: ['admin'] },
+  userSettings: { label: '个人设置', labelKey: 'nav.userSettings', icon: 'user', roles: ['admin', 'planning_manager', 'planner', 'dispatcher', 'supervisor'] },
 }
 
 // 菜单项是否对当前用户可见
@@ -130,13 +141,13 @@ function isItemVisible(item) {
   return true
 }
 
-// role 标签
+// role 标签 (用 i18n key)
 const roleLabels = {
-  admin: '系统管理员',
-  planning_manager: '计划主管',
-  planner: '计划员',
-  dispatcher: '报工员',
-  supervisor: '车间主任',
+  admin: 'role.admin',
+  planning_manager: 'role.planning_manager',
+  planner: 'role.planner',
+  dispatcher: 'role.dispatcher',
+  supervisor: 'role.supervisor',
 }
 
 const workshopNames = {
@@ -147,11 +158,63 @@ const workshopNames = {
   ironing: '烫标车间',
   sewing: '缝制车间',
 }
+const workshopKm = {
+  cutting: 'រោងចក្រកាត់',
+  printing: 'រោងចក្របោះពុម្ព',
+  embroidery: 'រោងចក្រដេរស្រោប',
+  template: 'រោងចក្រទំរង់',
+  ironing: 'រោងចក្រដុតស្លាក',
+  sewing: 'រោងចក្រដេរ',
+}
 
 // 侧边栏不显示的菜单项（路由存在但不在导航中渲染）
 const hiddenNavItems = new Set(['sewing-dispatch-detail'])
 
-const pageTitle = computed(() => navItems[route.name]?.label || 'EUC 排程系统')
+const pageTitle = computed(() => {
+  const item = navItems[route.name]
+  if (!item) return 'EUC 排程系统'
+  return item.labelKey ? t(item.labelKey) : item.label
+})
+
+// 渲染 navGroup label (i18n)
+function renderGroupLabel(g) {
+  if (g.labelKey) return t(g.labelKey)
+  return g.labelFallback || g.label || ''
+}
+
+// 渲染 navItem label (i18n)
+function renderItemLabel(name) {
+  const item = navItems[name]
+  if (!item) return ''
+  return item.labelKey ? t(item.labelKey) : item.label
+}
+
+// 用户名(中柬) — auth.user.display_name_zh / display_name_km 字段 (后续扩展)
+const displayNameBilingual = computed(() => {
+  const u = auth.user
+  if (!u) return t('common.notLogged')
+  const zh = u.display_name_zh || u.display_name || ''
+  const km = u.display_name_km || u.display_name || ''
+  if (lang.mode === 'zh') return zh
+  if (lang.mode === 'km') return km
+  if (zh && km && zh !== km) return zh + '\n' + km
+  return zh
+})
+
+// 角色(中柬) + 车间
+const roleBilingual = computed(() => {
+  const r = auth.role
+  const w = auth.workshop
+  const roleZh = r ? (roleLabels[r] ? t(roleLabels[r], 'zh') : r) : ''
+  const roleKm = r ? (roleLabels[r] ? t(roleLabels[r], 'km') : r) : ''
+  const wZh = w ? workshopNames[w] : ''
+  const wKm = w ? workshopKm[w] : ''
+  const lineZh = roleZh + (wZh ? ' · ' + wZh : '')
+  const lineKm = roleKm + (wKm ? ' · ' + wKm : '')
+  if (lang.mode === 'zh') return lineZh
+  if (lang.mode === 'km') return lineKm
+  return lineZh + '\n' + lineKm
+})
 
 // ==================== 事件处理 ====================
 function enterModule(name) {
@@ -218,22 +281,22 @@ function getIcon(name) {
         <div class="workspace-card">
           <div class="workspace-icon" v-html="getIcon('factory')"></div>
           <div class="workspace-info">
-            <span class="workspace-name">服装工厂</span>
+            <span class="workspace-name" style="white-space: pre-line">{{ t('common.workspace') }}</span>
             <div class="workspace-meta">
               <span v-html="getIcon('user')"></span>
-              <span>{{ onlineUsers.length || 1 }} 人在线</span>
+              <span>{{ onlineUsers.length || 1 }} {{ t('common.online') }}</span>
             </div>
           </div>
         </div>
 
         <div class="back-to-home" @click="goHome">
           <span v-html="getIcon('arrow-left')"></span>
-          <span>返回首页</span>
+          <span style="white-space: pre-line">{{ t('common.backHome') }}</span>
         </div>
 
         <nav class="sidebar-nav">
           <div v-if="currentGroup" class="nav-section">
-            <div class="nav-section-label">{{ currentGroup.label }}</div>
+            <div class="nav-section-label" style="white-space: pre-line">{{ renderGroupLabel(currentGroup) }}</div>
             <template v-for="name in currentGroup.match" :key="name">
               <div
                 v-if="navItems[name] && isItemVisible(navItems[name]) && !hiddenNavItems.has(name)"
@@ -243,7 +306,7 @@ function getIcon(name) {
                 @click="enterModule(name)"
               >
                 <span class="nav-icon" v-html="getIcon(navItems[name].icon)"></span>
-                <span class="nav-label">{{ navItems[name].label }}</span>
+                <span class="nav-label" style="white-space: pre-line">{{ renderItemLabel(name) }}</span>
                 <span v-if="route.name === name" class="nav-arrow" v-html="getIcon('chevron-right')"></span>
               </div>
             </template>
@@ -255,11 +318,8 @@ function getIcon(name) {
         <div class="sidebar-user" @click="onLogout" title="点击注销">
           <div class="user-avatar">{{ (auth.user?.display_name || 'U').slice(0, 2) }}</div>
           <div class="user-info">
-            <span class="user-name">{{ auth.user?.display_name || '未登录' }}</span>
-            <span class="user-email">
-              {{ roleLabels[auth.role] || auth.role }}
-              <template v-if="auth.workshop"> · {{ workshopNames[auth.workshop] }}</template>
-            </span>
+            <span class="user-name" style="white-space: pre-line">{{ displayNameBilingual }}</span>
+            <span class="user-email" style="white-space: pre-line">{{ roleBilingual }}</span>
           </div>
           <span class="logout-icon" v-html="getIcon('logout')"></span>
         </div>
@@ -272,12 +332,18 @@ function getIcon(name) {
       <header v-if="route.name !== 'home' && route.name !== 'login'" class="app-header">
         <div class="header-left">
           <button class="sidebar-toggle" @click="toggleSidebar" v-html="getIcon('panel-left')"></button>
-          <h1 class="header-title">{{ pageTitle }}</h1>
+          <h1 class="header-title" style="white-space: pre-line">{{ pageTitle }}</h1>
         </div>
         <div class="header-right">
+          <!-- 语言切换 -->
+          <div class="lang-switch">
+            <button :class="{ active: lang.mode === 'zh' }" @click="lang.setMode('zh')" title="中文">中</button>
+            <button :class="{ active: lang.mode === 'km' }" @click="lang.setMode('km')" title="ខ្មែរ">ខ្មែរ</button>
+            <button :class="{ active: lang.mode === 'both' }" @click="lang.setMode('both')" title="双语">双</button>
+          </div>
           <div class="status-chip" :class="connected ? 'online' : 'offline'">
             <span class="status-dot"></span>
-            {{ connected ? '已连接' : '未连接' }}
+            <span style="white-space: pre-line">{{ connected ? t('common.connected') : t('common.disconnected') }}</span>
           </div>
           <span class="header-date">{{ today }}</span>
         </div>
@@ -477,6 +543,18 @@ body {
 .header-title { font-size: 16px; font-weight: 600; color: var(--text); white-space: nowrap; }
 
 .header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+/* 语言切换(中/柬/双) */
+.lang-switch { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.lang-switch button { border: none; background: transparent; padding: 4px 10px; font-size: 12px; color: var(--text-secondary); cursor: pointer; transition: all .15s; }
+.lang-switch button:hover { color: var(--primary); }
+.lang-switch button.active { background: var(--primary); color: #fff; font-weight: 600; }
+.lang-switch button + button { border-left: 1px solid var(--border); }
+.lang-switch button.active + button, .lang-switch button + button.active { border-left-color: var(--primary); }
+/* 顶栏多语言标题:两行 */
+.header-title { line-height: 1.25; }
+/* nav-label 两行不挤 */
+.nav-label { line-height: 1.25; }
+.nav-section-label { line-height: 1.25; }
 .status-chip {
   display: flex; align-items: center; gap: 5px;
   padding: 4px 10px; border-radius: var(--radius-sm);

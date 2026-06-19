@@ -5,11 +5,15 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart, BarChart, LineChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
+import api from '../api'
 
 use([CanvasRenderer, PieChart, BarChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
 const props = defineProps({ db: Object })
 const emit = defineEmits(['navigate'])
+
+const achievementData = ref(null)
+const loadingAchievement = ref(false)
 
 const stats = computed(() => {
   const d = props.db
@@ -80,46 +84,67 @@ const pieOption = computed(() => {
   }
 })
 
-const barOption = computed(() => {
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月']
-  const plans = props.db?.mainPlan || []
-  const planCount = plans.length
+// 各工序达成率折线图
+const processRateOption = computed(() => {
+  if (!achievementData.value) return {}
+  const { dates, processRates } = achievementData.value
+  const shortDates = dates.map(d => d.slice(5)) // MM-DD
+  const processConfig = [
+    { key: 'cutting', label: '裁剪', color: '#ef4444' },
+    { key: 'printing', label: '印花', color: '#f59e0b' },
+    { key: 'embroidery', label: '刺绣', color: '#22c55e' },
+    { key: 'template', label: '模板', color: '#3b82f6' },
+    { key: 'ironing', label: '烫标', color: '#8b5cf6' },
+    { key: 'sewing', label: '缝制', color: '#6e3ff3' },
+  ]
   return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 40, right: 20, top: 20, bottom: 30 },
-    xAxis: {
-      type: 'category',
-      data: months,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: '#a1a1aa', fontSize: 11 },
-    },
-    yAxis: {
-      type: 'value',
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f3f4f6', type: 'solid' } },
-      axisLabel: { color: '#a1a1aa', fontSize: 11 },
-    },
-    series: [
-      {
-        name: '计划数',
-        type: 'bar',
-        barWidth: 14,
-        itemStyle: { borderRadius: [4, 4, 0, 0], color: '#6e3ff3' },
-        data: months.map((_, i) => Math.floor(planCount * (0.3 + i * 0.12))),
-      },
-      {
-        name: '完成数',
-        type: 'line',
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { color: '#22c55e', width: 2 },
-        itemStyle: { color: '#22c55e' },
-        data: months.map((_, i) => Math.floor(planCount * (0.2 + i * 0.1))),
-      },
-    ],
+    tooltip: { trigger: 'axis', formatter: (params) => {
+      let html = `<b>${params[0].axisValue}</b><br/>`
+      params.forEach(p => { html += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
+      return html
+    }},
+    legend: { data: processConfig.map(p => p.label), bottom: 0, textStyle: { fontSize: 11 } },
+    grid: { left: 40, right: 20, top: 10, bottom: 60 },
+    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 10, rotate: 45, margin: 12 } },
+    yAxis: { type: 'value', max: 100, axisLabel: { color: '#a1a1aa', fontSize: 11, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#f3f4f6', type: 'solid' } } },
+    series: processConfig.map(p => ({
+      name: p.label,
+      type: 'line',
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: p.color, width: 2 },
+      itemStyle: { color: p.color },
+      data: processRates[p.key] || dates.map(() => 0),
+    })),
+  }
+})
+
+// 缝制各车间达成率折线图
+const sewingWorkshopOption = computed(() => {
+  if (!achievementData.value) return {}
+  const { dates, sewingByWorkshop } = achievementData.value
+  const shortDates = dates.map(d => d.slice(5))
+  const colors = ['#6e3ff3', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444']
+  const workshops = Object.keys(sewingByWorkshop)
+  return {
+    tooltip: { trigger: 'axis', formatter: (params) => {
+      let html = `<b>${params[0].axisValue}</b><br/>`
+      params.forEach(p => { html += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
+      return html
+    }},
+    legend: { data: workshops.map(w => w + '车间'), bottom: 0, textStyle: { fontSize: 11 } },
+    grid: { left: 40, right: 20, top: 10, bottom: 60 },
+    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 10, rotate: 45, margin: 12 } },
+    yAxis: { type: 'value', max: 100, axisLabel: { color: '#a1a1aa', fontSize: 11, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#f3f4f6', type: 'solid' } } },
+    series: workshops.map((w, i) => ({
+      name: w + '车间',
+      type: 'line',
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: colors[i % colors.length], width: 2 },
+      itemStyle: { color: colors[i % colors.length] },
+      data: sewingByWorkshop[w] || dates.map(() => 0),
+    })),
   }
 })
 
@@ -133,6 +158,17 @@ const workshopLines = computed(() => {
   return lines.slice(0, 10)
 })
 
+async function loadAchievementRate() {
+  loadingAchievement.value = true
+  try {
+    const { data } = await api.getAchievementRate()
+    achievementData.value = data
+  } catch (e) {
+    console.error('加载达成率失败:', e)
+  }
+  loadingAchievement.value = false
+}
+
 function getKpiIcon(name) {
   const icons = {
     tag: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>`,
@@ -142,24 +178,22 @@ function getKpiIcon(name) {
   }
   return icons[name] || ''
 }
+
+onMounted(() => {
+  loadAchievementRate()
+})
 </script>
 
 <template>
   <div class="dashboard">
-    <!-- Welcome Section -->
+    <!-- Welcome Section (无按钮) -->
     <div class="welcome-section">
       <div class="welcome-text">
-        <h2 class="welcome-title">欢迎回来！</h2>
+        <h2 class="welcome-title">数据看板</h2>
         <p class="welcome-desc">
           当前有 <strong>{{ stats.busyLines }} 条产线</strong> 正在生产，
           <strong>{{ stats.mainPlan }} 个计划</strong> 进行中
         </p>
-      </div>
-      <div class="welcome-actions">
-  <button class="btn btn-primary" @click="emit('navigate', 'mainPlan')">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-          新建计划
-        </button>
       </div>
     </div>
 
@@ -176,18 +210,47 @@ function getKpiIcon(name) {
               {{ card.value }}
               <span v-if="card.total" class="stat-total">/ {{ card.total }}</span>
             </span>
-            <div v-if="card.change" class="stat-change">
-              <span :class="card.isPositive ? 'change-positive' : 'change-negative'">
-                {{ card.change }}
-              </span>
-              <span class="change-label">{{ card.changeLabel }}</span>
-            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Charts Row -->
+    <!-- 达成率图表 -->
+    <div class="charts-row">
+      <!-- 各工序达成率 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-area">
+            <div class="chart-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            </div>
+            <span class="chart-title">各工序排产计划达成率（近30天）</span>
+          </div>
+        </div>
+        <div class="chart-body">
+          <v-chart v-if="achievementData" :option="processRateOption" :autoresize="true" style="height: 280px; width: 100%;" />
+          <div v-else class="chart-loading">加载中...</div>
+        </div>
+      </div>
+
+      <!-- 缝制各车间达成率 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-area">
+            <div class="chart-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            </div>
+            <span class="chart-title">缝制各车间排产计划达成率（近30天）</span>
+          </div>
+        </div>
+        <div class="chart-body">
+          <v-chart v-if="achievementData" :option="sewingWorkshopOption" :autoresize="true" style="height: 280px; width: 100%;" />
+          <div v-else class="chart-loading">加载中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 原有图表 -->
     <div class="charts-row">
       <!-- Pie Chart: 产能分布 -->
       <div class="chart-card">
@@ -212,31 +275,7 @@ function getKpiIcon(name) {
         </div>
       </div>
 
-      <!-- Bar Chart: 生产趋势 -->
-      <div class="chart-card">
-        <div class="chart-header">
-          <div class="chart-title-area">
-            <div class="chart-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
-            </div>
-            <span class="chart-title">生产趋势</span>
-          </div>
-          <div class="chart-legend-inline">
-            <span class="legend-dot" style="background: #6e3ff3;"></span>
-            <span class="legend-text">计划数</span>
-            <span class="legend-dot" style="background: #22c55e;"></span>
-            <span class="legend-text">完成数</span>
-          </div>
-        </div>
-        <div class="chart-body">
-          <v-chart :option="barOption" :autoresize="true" style="height: 240px; width: 100%;" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Tables Row -->
-    <div class="tables-row">
-      <!-- Workshop Lines Status -->
+      <!-- Tables -->
       <div class="table-card">
         <div class="table-header">
           <div class="table-title-area">
@@ -283,9 +322,11 @@ function getKpiIcon(name) {
           </table>
         </div>
       </div>
+    </div>
 
-      <!-- Recent Plans -->
-      <div class="table-card">
+    <!-- 近期计划 -->
+    <div class="tables-row">
+      <div class="table-card full-width">
         <div class="table-header">
           <div class="table-title-area">
             <div class="table-icon">
@@ -294,32 +335,30 @@ function getKpiIcon(name) {
             <span class="table-title">近期预排总计划</span>
             <span class="table-count">{{ recentPlans.length }}</span>
           </div>
-          <button class="btn btn-sm btn-outline" @click="emit('navigate', 'mainPlan')">查看全部</button>
         </div>
         <div class="table-body">
           <table class="data-table">
             <thead>
               <tr>
-                <th>#</th>
-                <th>款式</th>
-                <th>数量</th>
+                <th>款号</th>
+                <th>品名</th>
+                <th>计划数量</th>
                 <th>交期</th>
+                <th>缝制开始</th>
+                <th>缝制结束</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(plan, i) in recentPlans" :key="plan.id">
-                <td class="cell-index">{{ i + 1 }}</td>
-                <td>
-                  <div class="cell-with-badge">
-                    <span class="plan-badge">{{ (plan.style_no || plan.style_id || '?').toString().slice(0, 2) }}</span>
-                    <span class="cell-name">{{ plan.style_no || plan.style_id }}</span>
-                  </div>
-                </td>
-                <td class="cell-mono">{{ plan.plan_qty || '-' }}</td>
-                <td class="cell-muted">{{ plan.due_date || '-' }}</td>
+              <tr v-for="plan in recentPlans" :key="plan.id">
+                <td class="cell-name">{{ plan.style_no }}</td>
+                <td class="cell-muted">{{ plan.product_name }}</td>
+                <td>{{ plan.plan_qty?.toLocaleString() }}</td>
+                <td>{{ plan.due_date || '-' }}</td>
+                <td>{{ plan.sewing_start || '-' }}</td>
+                <td>{{ plan.sewing_end || '-' }}</td>
               </tr>
               <tr v-if="!recentPlans.length">
-                <td colspan="4" class="cell-empty">暂无计划数据</td>
+                <td colspan="6" class="cell-empty">暂无计划数据</td>
               </tr>
             </tbody>
           </table>
@@ -334,73 +373,23 @@ function getKpiIcon(name) {
   max-width: 1200px;
 }
 
-/* Welcome Section */
 .welcome-section {
   display: flex;
-  align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 24px;
-  gap: 16px;
+  align-items: center;
+  margin-bottom: 20px;
 }
 .welcome-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
-  color: var(--text);
-  margin-bottom: 6px;
+  margin: 0 0 4px;
 }
 .welcome-desc {
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-.welcome-desc strong {
-  color: var(--text);
-  font-weight: 600;
-}
-.welcome-actions {
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 16px;
-  height: 36px;
-  border-radius: 8px;
   font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all .15s ease;
-  border: none;
-  white-space: nowrap;
-}
-.btn-sm {
-  height: 30px;
-  padding: 0 12px;
-  font-size: 12px;
-}
-.btn-primary {
-  background: var(--primary);
-  color: white;
-}
-.btn-primary:hover {
-  background: var(--primary-hover);
-}
-.btn-outline {
-  background: var(--card);
-  color: var(--text);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-}
-.btn-outline:hover {
-  background: var(--primary-light);
-  border-color: var(--border-hover);
+  color: var(--text-secondary, #6b7280);
+  margin: 0;
 }
 
-/* Stats Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -408,255 +397,198 @@ function getKpiIcon(name) {
   margin-bottom: 20px;
 }
 .stat-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  transition: all .15s ease;
-}
-.stat-card:hover {
-  box-shadow: var(--shadow-md);
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius, 8px);
+  padding: 16px;
 }
 .stat-content {
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
+  align-items: center;
+  gap: 12px;
 }
 .stat-icon-wrap {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
 }
 .stat-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
 }
 .stat-label {
   font-size: 12px;
-  color: var(--text-tertiary);
-  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
 }
 .stat-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
-  color: var(--text);
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
+  color: var(--text, #111827);
 }
 .stat-total {
   font-size: 14px;
-  font-weight: 500;
-  color: var(--text-tertiary);
+  font-weight: 400;
+  color: var(--text-secondary, #6b7280);
 }
-.stat-change {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  margin-top: 2px;
-}
-.change-positive { color: #22c55e; }
-.change-negative { color: #ef4444; }
-.change-label { color: var(--text-tertiary); }
 
-/* Charts Row */
 .charts-row {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 20px;
 }
 .chart-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius, 8px);
+  padding: 16px;
 }
 .chart-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  align-items: center;
+  margin-bottom: 12px;
 }
 .chart-title-area {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .chart-icon {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  background: #f3f0ff;
+  color: #6e3ff3;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
 }
 .chart-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
 }
 .chart-subtitle {
   font-size: 12px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary, #6b7280);
 }
-.chart-legend-inline {
+.chart-body {
+  min-height: 280px;
+}
+.chart-loading {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  height: 280px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.chart-body-pie {
+  display: flex;
+  flex-direction: column;
+}
+.pie-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 8px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
 }
 .legend-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  display: inline-block;
-}
-.legend-text {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-.chart-body-pie {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.pie-legend {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.legend-item .legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  flex-shrink: 0;
 }
 .legend-name {
-  flex: 1;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text-secondary, #6b7280);
 }
 .legend-value {
   font-weight: 600;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.chart-body {
-  min-height: 240px;
 }
 
-/* Tables Row */
 .tables-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  margin-bottom: 20px;
+}
+.full-width {
+  grid-column: 1 / -1;
 }
 .table-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius, 8px);
+  padding: 16px;
 }
 .table-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
 }
 .table-title-area {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .table-icon {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  background: #f3f0ff;
+  color: #6e3ff3;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
 }
 .table-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
 }
 .table-count {
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 11px;
+  background: #f3f0ff;
+  color: #6e3ff3;
+  font-size: 12px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 9999px;
-}
-.table-body {
-  overflow-x: auto;
+  border-radius: 10px;
 }
 
-/* Data Table */
 .data-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 13px;
 }
 .data-table th {
   text-align: left;
-  padding: 10px 16px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: .3px;
-  border-bottom: 1px solid var(--border);
-  background: var(--card);
+  padding: 8px 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  border-bottom: 1px solid var(--border, #e5e7eb);
 }
 .data-table td {
-  padding: 10px 16px;
-  font-size: 13px;
-  color: var(--text);
-  border-bottom: 1px solid var(--border-light);
-}
-.data-table tr:last-child td {
-  border-bottom: none;
-}
-.data-table tr:hover td {
-  background: var(--primary-light);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
 }
 .cell-index {
-  color: var(--text-tertiary);
+  color: var(--text-secondary, #6b7280);
+}
+.cell-name {
   font-weight: 500;
-  width: 40px;
 }
 .cell-muted {
-  color: var(--text-secondary);
-}
-.cell-mono {
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
 }
 .cell-empty {
   text-align: center;
-  color: var(--text-tertiary);
-  padding: 32px 16px !important;
+  color: var(--text-secondary, #6b7280);
+  padding: 24px !important;
 }
 .cell-with-badge {
   display: flex;
@@ -664,63 +596,31 @@ function getKpiIcon(name) {
   gap: 8px;
 }
 .line-badge {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 6px;
-  color: white;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
 }
-.plan-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--primary-light);
-  color: var(--primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-.cell-name {
-  font-weight: 500;
-}
-
-/* Status Badge */
 .status-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 10px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
 }
 .status-active {
   background: #f0fdf4;
   color: #22c55e;
 }
 .status-idle {
-  background: #f8f9fb;
-  color: #a1a1aa;
+  background: #f3f4f6;
+  color: #6b7280;
 }
 .status-error {
   background: #fef2f2;
   color: #ef4444;
-}
-
-@media (max-width: 1024px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .charts-row { grid-template-columns: 1fr; }
-  .tables-row { grid-template-columns: 1fr; }
-}
-@media (max-width: 640px) {
-  .stats-grid { grid-template-columns: 1fr; }
-  .welcome-section { flex-direction: column; align-items: flex-start; }
 }
 </style>
