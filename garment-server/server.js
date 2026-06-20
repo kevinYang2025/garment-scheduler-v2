@@ -4765,28 +4765,32 @@ app.put('/api/asn/:id/status', (req, res) => {
       return res.status(400).json({ error: `不能从 ${asn.status} 转换到 ${status}` });
     }
 
-    db.run(`UPDATE asn_list SET status = ?, actual_date = datetime('now','localtime') WHERE id = ?`, [status, req.params.id]);
+    // [2026-06-20 fix#后端-P2-4] status 变更 + 入库副作用整段包事务,失败可回滚
+    const asnTxn = db.getDb().transaction(() => {
+      db.run(`UPDATE asn_list SET status = ?, actual_date = datetime('now','localtime') WHERE id = ?`, [status, req.params.id]);
 
-    if (status === 'COMPLETED') {
-      // 入库完成：更新库存
-      const details = db.all('SELECT * FROM asn_detail WHERE asn_id = ?', [asn.id]);
-      for (const d of details) {
-        const qty = d.actual_qty || d.plan_qty || 0;
-        if (qty > 0) {
-          updateInventory(asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, { pot_no: d.pot_no });
-          // 写入 inbound 记录
-          db.run(`INSERT INTO warehouse_inbound (warehouse_type, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, unit, remark, order_no)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, asn.actual_date || fmtLocal(new Date()), asn.operator, d.pot_no, d.fabric_name, asn.supplier, d.unit, `ASN:${asn.asn_code}`, asn.asn_code]);
+      if (status === 'COMPLETED') {
+        // 入库完成：更新库存
+        const details = db.all('SELECT * FROM asn_detail WHERE asn_id = ?', [asn.id]);
+        for (const d of details) {
+          const qty = d.actual_qty || d.plan_qty || 0;
+          if (qty > 0) {
+            updateInventory(asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, { pot_no: d.pot_no });
+            // 写入 inbound 记录
+            db.run(`INSERT INTO warehouse_inbound (warehouse_type, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, unit, remark, order_no)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              [asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, asn.actual_date || fmtLocal(new Date()), asn.operator, d.pot_no, d.fabric_name, asn.supplier, d.unit, `ASN:${asn.asn_code}`, asn.asn_code]);
+          }
         }
+        // 更新 ASN 汇总
+        const receivedTotal = details.reduce((s, d) => s + (d.actual_qty || d.plan_qty || 0), 0);
+        const shortageTotal = details.reduce((s, d) => s + (d.shortage_qty || 0), 0);
+        const damageTotal = details.reduce((s, d) => s + (d.damage_qty || 0), 0);
+        db.run('UPDATE asn_list SET received_qty = ?, shortage_qty = ?, damage_qty = ? WHERE id = ?',
+          [receivedTotal, shortageTotal, damageTotal, asn.id]);
       }
-      // 更新 ASN 汇总
-      const receivedTotal = details.reduce((s, d) => s + (d.actual_qty || d.plan_qty || 0), 0);
-      const shortageTotal = details.reduce((s, d) => s + (d.shortage_qty || 0), 0);
-      const damageTotal = details.reduce((s, d) => s + (d.damage_qty || 0), 0);
-      db.run('UPDATE asn_list SET received_qty = ?, shortage_qty = ?, damage_qty = ? WHERE id = ?',
-        [receivedTotal, shortageTotal, damageTotal, asn.id]);
-    }
+    });
+    asnTxn();
 
     const statusLabels = { PENDING: '待收货', RECEIVED: '已收货', INSPECTING: '质检中', COMPLETED: '已完成', CANCELLED: '已取消' };
     logOp(req, 'asn', status.toLowerCase(), req.params.id, asn.asn_code, statusLabels[status] || status);
