@@ -130,20 +130,11 @@ const dateCols = computed(() => {
   return cols
 })
 
-// 单款某色码某日的 planQty（与缝制同款算法）
+// [2026-06-20 S-2] 后端已返回 dateData,前端直接读取,不再重复计算
 function calcPlanQty(r, date) {
-  if (!r.cutting_start || !r.cutting_end) return 0
-  if (!r.daily_target || !r.plan_qty) return 0
-  if (date < r.cutting_start || date > r.cutting_end) return 0
-  const sd = new Date(r.cutting_start + 'T00:00:00')
-  const cd = new Date(date + 'T00:00:00')
-  const dayIdx = Math.floor((cd - sd) / 86400000)
-  const totalQty = r.plan_qty
-  const fullDays = Math.floor(totalQty / r.daily_target)
-  const remainder = totalQty % r.daily_target
-  if (dayIdx < fullDays) return r.daily_target
-  if (dayIdx === fullDays && remainder > 0) return remainder
-  return 0
+  if (!r.dateData) return 0
+  const dd = r.dateData.find(d => d.date === date)
+  return dd ? (dd.plan || 0) : 0
 }
 function dailyPlan(r, date) { return calcPlanQty(r, date) }
 function dailyActual(r, date) {

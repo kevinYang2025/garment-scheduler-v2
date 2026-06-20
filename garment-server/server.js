@@ -622,7 +622,96 @@ function validateMainPlan(p) {
   if (p.style_no && p.style_no.length > 50) errors.push('款号长度不能超过50');
   if (!p.due_date) errors.push('交期不能为空');
   if (p.plan_qty !== undefined && (isNaN(p.plan_qty) || p.plan_qty < 0)) errors.push('计划数量必须为非负数');
+  // [2026-06-20 S-4] 日期逻辑校验:due_date 必须是有效日期
+  if (p.due_date && !/^\d{4}-\d{2}-\d{2}/.test(String(p.due_date))) {
+    errors.push('交期格式必须为 YYYY-MM-DD');
+  }
   return errors;
+}
+
+// [2026-06-20 S-2] 后端统一日产量分配算法
+// 输入: 开始/结束日期, 计划数量, 日产能
+// 输出: [{ date, plan, actual, diff }] 数组
+// 算法: 全天满载 + 最后一天余数(与 sewing-daily-plan 保持一致)
+function computeDateData(start, end, planQty, dailyTarget) {
+  if (!start || !end || !planQty || !dailyTarget) return [];
+  const sd = new Date(start + 'T00:00:00');
+  const ed = new Date(end + 'T00:00:00');
+  if (isNaN(sd.getTime()) || isNaN(ed.getTime()) || sd > ed) return [];
+  const result = [];
+  const fullDays = Math.floor(planQty / dailyTarget);
+  const remainder = planQty % dailyTarget;
+  const totalDays = remainder > 0 ? fullDays + 1 : fullDays;
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(sd);
+    d.setDate(d.getDate() + i);
+    let plan = 0;
+    if (i < fullDays) plan = dailyTarget;
+    else if (i === fullDays && remainder > 0) plan = remainder;
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    result.push({ date: dateStr, plan, actual: 0, diff: -plan });
+  }
+  return result;
+}
+
+// [2026-06-20 S-1] 后端统一日期倒推算法,从 due_date 倒推
+// 前端 autoCalcDates 同步采用此函数,不再各自实现
+// 算法:
+//   sewing_end    = due_date - SEWING_BUFFER
+//   sewing_days   = ceil(plan_qty / sewing_capacity)
+//   sewing_start  = sewing_end - sewing_days - line_change_days
+//   secondary_end = sewing_start - 1
+//   secondary_start = secondary_end - 3
+//   cutting_end   = secondary_start - picking_days
+//   cutting_days  = ceil(plan_qty / cutting_capacity)
+//   cutting_start = cutting_end - cutting_days
+//   ironing_start = sewing_end + 1, ironing_end = ironing_start + ironing_buffer
+//   sewing_remind = sewing_start - 2
+function recalcMainPlanDates(p) {
+  if (!p.due_date) return p;
+  const cfgRaw = db.all('SELECT config_key, config_value FROM system_config');
+  const cfg = {};
+  for (const r of cfgRaw) cfg[r.config_key] = r.config_value;
+  const SEWING_BUFFER = parseInt(cfg.shipping_buffer_days) || 5;
+  const IRONING_BUFFER = parseInt(cfg.ironing_buffer_days) || 3;
+  const SEWING_REMIND = parseInt(cfg.sewing_remind_days) || 2;
+  const PICKING_DAYS = parseInt(cfg.picking_days) || 2;
+  const LINE_CHANGE_DAYS = parseInt(cfg.line_change_days) || 1;
+  const SEWING_CAP = parseInt(cfg.sewing_capacity) || 800;
+  const CUTTING_CAP = parseInt(cfg.cutting_capacity) || 2000;
+
+  const due = new Date(p.due_date + 'T00:00:00');
+  if (isNaN(due.getTime())) return p;
+  const qty = parseInt(p.plan_qty) || 0;
+
+  function offset(date, days) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return fmtLocal(d);
+  }
+
+  const sewingEnd = offset(due, -SEWING_BUFFER);
+  const sewingDays = Math.max(1, Math.ceil(qty / SEWING_CAP));
+  const sewingStart = offset(new Date(sewingEnd + 'T00:00:00'), -(sewingDays - 1 + LINE_CHANGE_DAYS));
+  const sewingRemind = offset(new Date(sewingStart + 'T00:00:00'), -SEWING_REMIND);
+  const secondaryEnd = offset(new Date(sewingStart + 'T00:00:00'), -1);
+  const secondaryStart = offset(new Date(secondaryEnd + 'T00:00:00'), -3);
+  const cuttingEnd = offset(new Date(secondaryStart + 'T00:00:00'), -PICKING_DAYS);
+  const cuttingDays = Math.max(1, Math.ceil(qty / CUTTING_CAP));
+  const cuttingStart = offset(new Date(cuttingEnd + 'T00:00:00'), -(cuttingDays - 1));
+  const ironingStart = offset(new Date(sewingEnd + 'T00:00:00'), 1);
+  const ironingEnd = offset(new Date(ironingStart + 'T00:00:00'), IRONING_BUFFER - 1);
+
+  p.sewing_remind_date = sewingRemind;
+  p.cutting_start = cuttingStart;
+  p.cutting_end = cuttingEnd;
+  p.secondary_start = secondaryStart;
+  p.secondary_end = secondaryEnd;
+  p.sewing_start = sewingStart;
+  p.sewing_end = sewingEnd;
+  p.ironing_start = ironingStart;
+  p.ironing_end = ironingEnd;
+  return p;
 }
 
 function validateWarehouseRecord(r, type) {
@@ -1244,9 +1333,38 @@ app.post('/api/sewing-workshop-tree/import', async (req, res) => {
 // ---------- 主计划 ----------
 app.get('/api/main-plan', (req, res) => {
   try {
-    res.json(db.all('SELECT * FROM main_plan'));
+    // [2026-06-20 M-1] 支持 page/limit/sort/dir 简单分页参数
+    // 不传 page/limit 时返回全部(向后兼容)
+    const page = Math.max(1, parseInt(req.query.page) || 0);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 0));
+    if (!page && !limit) {
+      return res.json(db.all('SELECT * FROM main_plan'));
+    }
+    const offset = (page - 1) * limit;
+    const total = db.get('SELECT COUNT(*) as c FROM main_plan').c;
+    const rows = db.all(`SELECT * FROM main_plan ORDER BY id DESC LIMIT ? OFFSET ?`, [limit, offset]);
+    res.json({ rows, total, page, limit });
   } catch (e) {
     console.error('GET /api/main-plan error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// [2026-06-20] 裁片库入库：返回有裁剪计划的款式（供入库弹窗选择）
+app.get('/api/main-plan/styles', (req, res) => {
+  try {
+    const { keyword } = req.query;
+    let sql = `SELECT DISTINCT style_no, product_name, due_date, cutting_start, cutting_end
+      FROM main_plan WHERE style_no IS NOT NULL AND style_no != ''`;
+    const params = [];
+    if (keyword) {
+      sql += ` AND (style_no LIKE ? OR product_name LIKE ?)`;
+      params.push(`%${keyword}%`, `%${keyword}%`);
+    }
+    sql += ' ORDER BY cutting_start DESC, style_no LIMIT 100';
+    res.json(db.all(sql, params));
+  } catch (e) {
+    console.error('GET /api/main-plan/styles error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1306,6 +1424,9 @@ app.post('/api/main-plan', requireRole('admin', 'planning_manager', 'planner'), 
     const p = req.body;
     const errors = validateMainPlan(p);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
+
+    // [2026-06-20 S-1] 后端统一重算日期,不信任前端传的日期值
+    recalcMainPlanDates(p);
 
     if (p.id) {
       const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [p.id]);
@@ -1880,21 +2001,26 @@ app.get('/api/schedule/cutting', (req, res) => {
         due_date: p.due_date || '',
         daily_target: dailyTarget,
       };
+      // [2026-06-20 S-2] 后端算每日计划量,与 sewing-daily-plan 对齐
+      const dateData = computeDateData(p.cutting_start, p.cutting_end, p.plan_qty || 0, dailyTarget);
       if (csList.length === 0) {
         rows.push({
           ...base,
           row_id: `m${p.main_plan_id || 0}_`,
           color: '', size_spec: '',
           plan_qty: p.plan_qty || 0,
+          dateData,
         });
       } else {
         for (const cs of csList) {
+          const csDateData = computeDateData(p.cutting_start, p.cutting_end, cs.plan_qty || 0, dailyTarget);
           rows.push({
             ...base,
             row_id: `m${p.main_plan_id || 0}_${cs.color || ''}_${cs.size_spec || ''}`,
             color: cs.color || '',
             size_spec: cs.size_spec || '',
             plan_qty: cs.plan_qty || 0,
+            dateData: csDateData,
           });
         }
       }
@@ -2675,6 +2801,41 @@ app.get('/api/dashboard/achievement-rate', (req, res) => {
     res.json(data);
   } catch (e) {
     console.error('GET /api/dashboard/achievement-rate error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// [2026-06-20 M-4] 首页一次性统计接口
+// 替代 EntryHome.vue 8 个并行请求
+app.get('/api/dashboard/stats', (req, res) => {
+  try {
+    const today = fmtLocal(new Date());
+    const stylesCount = db.get('SELECT COUNT(*) as c FROM styles').c;
+    const planCount = db.get('SELECT COUNT(*) as c FROM main_plan').c;
+    const workshopsCount = db.get('SELECT COUNT(*) as c FROM workshops').c;
+    const linesCount = db.get('SELECT COUNT(*) as c FROM production_lines').c;
+    const busyLinesCount = db.get("SELECT COUNT(*) as c FROM production_lines WHERE status = '生产中'").c;
+    const cutPiecesInventory = db.get("SELECT COALESCE(SUM(current_qty), 0) as t FROM warehouse_inventory WHERE warehouse_type = 'cutting_piece'").t;
+    const todayInbound = db.get(
+      "SELECT COALESCE(SUM(qty), 0) as t FROM warehouse_inbound WHERE warehouse_type = 'cutting_piece' AND inbound_date = ?",
+      [today]
+    ).t;
+    const todayOutbound = db.get(
+      "SELECT COALESCE(SUM(qty), 0) as t FROM warehouse_outbound WHERE warehouse_type = 'cutting_piece' AND outbound_date = ?",
+      [today]
+    ).t;
+    res.json({
+      styles_count: stylesCount,
+      main_plan_count: planCount,
+      workshops_count: workshopsCount,
+      lines_count: linesCount,
+      busy_lines_count: busyLinesCount,
+      cut_pieces_inventory: cutPiecesInventory,
+      cut_pieces_today_inbound: todayInbound,
+      cut_pieces_today_outbound: todayOutbound,
+    });
+  } catch (e) {
+    console.error('GET /api/dashboard/stats error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

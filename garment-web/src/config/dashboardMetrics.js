@@ -3,6 +3,15 @@
 // calc 接收 stats(扁平字段),返回 { value, total, percent }
 // 加新指标:往数组 push 一个对象,calc 函数自己定义
 
+// [2026-06-20] 百分数安全钳制 helper
+// 防止 total=0 时 Infinity%、done<0 时负数、done>total 时>100%
+function safePct(done, total) {
+  if (!total || total <= 0) return 0
+  const p = (done / total) * 100
+  if (!Number.isFinite(p)) return 0  // NaN/Infinity 兜底
+  return Math.max(0, Math.min(100, Math.round(p)))
+}
+
 export const DASHBOARD_METRICS = [
   {
     key: 'sewing_completion',
@@ -14,7 +23,7 @@ export const DASHBOARD_METRICS = [
       return {
         value: done,
         total,
-        percent: total ? Math.round((done / total) * 100) : 0
+        percent: safePct(done, total)
       }
     }
   },
@@ -46,7 +55,7 @@ export const DASHBOARD_METRICS = [
       return {
         value: done,
         total,
-        percent: total ? Math.round((done / total) * 100) : 0
+        percent: safePct(done, total)
       }
     }
   }

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, shallowRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { formatLocal as fmtLocal } from '../utils/date'
 import StylePicker from '../components/StylePicker.vue'
 import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
@@ -299,13 +300,6 @@ async function loadConfig() {
     configCache.value.sewingCapacity = parseInt(cap.find(c => c.process_type === 'sewing')?.daily_capacity || '800')
     configCache.value.cuttingCapacity = parseInt(cap.find(c => c.process_type === 'cutting')?.daily_capacity || '30000')
   } catch (e) { /* use defaults */ }
-}
-
-function fmtLocal(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
 }
 
 async function autoCalcDates() {
