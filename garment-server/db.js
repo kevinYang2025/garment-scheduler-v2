@@ -1209,10 +1209,16 @@ function getFullData() {
 // ============================================================
 // 任务状态计算
 // ============================================================
+// [2026-06-20 fix#业务-P2-5] recalc 互斥锁(同 masterId 重入直接 skip,避免多进程下读写竞态)
+const __recalcLocks = new Set();
 function recalcTaskStatus(masterId) {
+  if (__recalcLocks.has(masterId)) {
+    return { ok: true, skipped: 'reentry' };
+  }
+  __recalcLocks.add(masterId);
   try {
     const master = db.prepare('SELECT * FROM schedule_master WHERE id = ?').get(masterId);
-    if (!master) return { ok: false, error: 'master not found' };
+    if (!master) { __recalcLocks.delete(masterId); return { ok: false, error: 'master not found' }; }
 
     // 计算实际总完成量
     const actual = db.prepare(
@@ -1255,11 +1261,13 @@ function recalcTaskStatus(masterId) {
 
     db.prepare('UPDATE schedule_master SET task_status = ?, progress_pct = ?, first_inspection_completed_at = COALESCE(NULLIF(?, \'\'), first_inspection_completed_at), second_inspection_completed_at = COALESCE(NULLIF(?, \'\'), second_inspection_completed_at) WHERE id = ?')
       .run(taskStatus, progressPct, firstAt, secondAt, masterId);
+    __recalcLocks.delete(masterId);
     return { ok: true };
   } catch (e) {
     // [2026-06-20 fix#业务-P1-11] 返回失败状态而非只 log,调用方可在 transaction 外
     // 显式记入操作日志(operation_logs),便于事故复盘
     // 注:这里不抛错以避免回滚外层 transaction,调用方接住返回值后自行 logOp
+    __recalcLocks.delete(masterId);
     console.error('recalcTaskStatus error:', e.message);
     return { ok: false, error: e.message };
   }
