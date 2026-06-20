@@ -948,6 +948,17 @@ app.post('/api/styles/import', async (req, res) => {
     const { file } = req.body;
     if (!file) return res.status(400).json({ error: '请上传文件' });
     const buffer = Buffer.from(file, 'base64');
+    // [2026-06-20 fix#后端-P3-10] magic bytes 校验: xlsx=PK, xls=D0CF11E0;拒绝其它类型避免恶意上传
+    const magic = buffer.slice(0, 4);
+    const isXlsx = magic[0] === 0x50 && magic[1] === 0x4B;       // 'PK'
+    const isXls  = magic[0] === 0xD0 && magic[1] === 0xCF && magic[2] === 0x11 && magic[3] === 0xE0;
+    if (!isXlsx && !isXls) {
+      return res.status(400).json({ error: '文件格式不合法,仅支持 .xlsx / .xls' });
+    }
+    // 上限 10MB(对齐 express.json limit)
+    if (buffer.length > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: '文件过大(>10MB)' });
+    }
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
     const ws = workbook.worksheets[0];
