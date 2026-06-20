@@ -1597,7 +1597,14 @@ app.delete('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'plann
   try {
     const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
-    db.run('DELETE FROM main_plan WHERE id = ?', [req.params.id]);
+    // [2026-06-20 fix#业务-P1-6] 级联删除:schedule_daily + schedule_master 同步清
+    //   避免下游孤儿行(原 main_plan_id 找不到)
+    const delTxn = db.getDb().transaction(() => {
+      db.run('DELETE FROM schedule_daily WHERE master_id IN (SELECT id FROM schedule_master WHERE style_id = (SELECT style_id FROM main_plan WHERE id = ?))', [req.params.id]);
+      db.run('DELETE FROM schedule_master WHERE style_id = (SELECT style_id FROM main_plan WHERE id = ?)', [req.params.id]);
+      db.run('DELETE FROM main_plan WHERE id = ?', [req.params.id]);
+    });
+    delTxn();
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     logOp(req, 'main_plan', 'delete', req.params.id, '');
     res.json({ ok: true });
