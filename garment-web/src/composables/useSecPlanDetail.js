@@ -23,6 +23,9 @@ export function useSecPlanDetail(secType, options = {}) {
     exportFilename: options.exportFilename || `${cfg.title}排程`,
   }
 
+  // [2026-06-19] 只有 印花/刺绣 显示裁剪二检数行(其它类型无来源)
+  const showSecondInspection = ref(secType === 'printing' || secType === 'embroidery')
+
   // 虚拟滚动
   const vs = useVirtualScroll(38, 8)
 
@@ -123,19 +126,22 @@ export function useSecPlanDetail(secType, options = {}) {
         const totalOrder = group.rows.reduce((s, x) => s + x.order_qty, 0)
         const totalPlan = group.rows.reduce((s, x) => s + x.totalPlan, 0)
         const totalActual = group.rows.reduce((s, x) => s + x.totalActual, 0)
+        const totalSecondInspection = group.rows.reduce((s, x) => s + (x.totalSecondInspection || 0), 0)
         const dateMap = {}
         for (const rr of group.rows) {
           for (const dd of rr.dateData) {
-            if (!dateMap[dd.date]) dateMap[dd.date] = { date: dd.date, plan: 0, actual: 0, diff: 0 }
+            if (!dateMap[dd.date]) dateMap[dd.date] = { date: dd.date, plan: 0, actual: 0, secondInspection: 0, diff: 0 }
             dateMap[dd.date].plan += dd.plan
             dateMap[dd.date].actual += dd.actual
+            dateMap[dd.date].secondInspection += dd.secondInspection || 0
             dateMap[dd.date].diff += dd.diff
           }
         }
         result.push({
           style_no: r.style_no, product_name: r.product_name,
           color: '', size_spec: '',
-          order_qty: totalOrder, totalPlan, totalActual, totalDiff: totalActual - totalPlan,
+          order_qty: totalOrder, totalPlan, totalActual, totalSecondInspection,
+          totalDiff: totalActual - totalPlan,
           dateMap, firstOfGroup: true, collapsed: true,
         })
         continue
@@ -143,7 +149,8 @@ export function useSecPlanDetail(secType, options = {}) {
       if (!firstOfGroup && !expandedSet.value.has(r.style_no)) continue
       const dateMap = {}
       for (const dd of r.dateData) { dateMap[dd.date] = dd }
-      result.push({ ...r, firstOfGroup, dateMap })
+      const totalSecondInspection = r.dateData.reduce((s, dd) => s + (dd.secondInspection || 0), 0)
+      result.push({ ...r, firstOfGroup, dateMap, totalSecondInspection })
     }
     return result
   })
@@ -158,6 +165,10 @@ export function useSecPlanDetail(secType, options = {}) {
       } else {
         out.push({ ...r, _key: `${k}|plan`, _type: 'plan' })
         out.push({ ...r, _key: `${k}|actual`, _type: 'actual' })
+        // [2026-06-19] 印花/刺绣 加二检数行(从裁剪报工来,不在此页编辑)
+        if (showSecondInspection.value) {
+          out.push({ ...r, _key: `${k}|second`, _type: 'second' })
+        }
         out.push({ ...r, _key: `${k}|diff`, _type: 'diff' })
       }
     }
@@ -396,6 +407,8 @@ export function useSecPlanDetail(secType, options = {}) {
     filteredPlanRows, groupedRows, tableRows, vtStartIndex, vtVisibleCount, vtVisibleRows,
     importDialogVisible, importFile, importing, importMode, importPreview,
     expandedSet,
+    // [2026-06-19] 二检数行
+    showSecondInspection,
     // methods
     load, saveActual, savePlanEdit, startEdit, cancelEdit, isEditing,
     onTextFilter, onNumFilter, onSort, isFilterActive,

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useWebSocket } from './composables/useWebSocket'
 import { useAuthStore } from './stores/auth'
@@ -19,8 +19,12 @@ const sidebarCollapsed = ref(false)
 const _d = new Date()
 const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`
 
+// [2026-06-19] 把 lang mode 挂到 body 属性, CSS 用 body[data-lang-mode="both"] 缩字号
+watch(() => lang.mode, (m) => {
+  if (typeof document !== 'undefined' && document.body) document.body.setAttribute('data-lang-mode', m)
+}, { immediate: true })
+
 // 预加载款式数据(Dashboard 用)
-import { watch } from 'vue'
 watch(() => DB.value, async (db) => {
   if (db && !prefetchedStyles.value) {
     try {
@@ -54,11 +58,11 @@ const navGroups = [
   {
     labelKey: 'nav.group.dispatch',
     labelFallback: '报工管理',
-    match: ['dispatch', 'dispatch-report', 'cutting-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail'],
+    match: ['dispatch', 'dispatch-report', 'cutting-dispatch', 'cutting-second-dispatch', 'printing-dispatch', 'embroidery-dispatch', 'template-dispatch', 'ironing-dispatch', 'sewing-dispatch', 'sewing-dispatch-detail'],
   },
   {
     labelKey: 'nav.group.warehouse',
-    labelFallback: '仓库',
+    labelFallback: '裁片库',
     match: ['warehouse', 'warehouse-detail'],
   },
   {
@@ -109,7 +113,8 @@ const navItems = {
   // 实际产量复核(supervisor / admin 复核)
   actualReview: { label: '实际产量复核', labelKey: 'nav.actualReview', icon: 'ruler', roles: ['admin', 'supervisor'] },
   // 报工(planning + dispatcher,supervisor 不报工)
-  'cutting-dispatch': { label: '裁剪报工', labelKey: 'nav.cuttingDispatch', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'cutting' },
+  'cutting-dispatch': { label: '裁剪报工(一检)', labelKey: 'nav.cuttingDispatch', icon: 'cut', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'cutting' },
+  'cutting-second-dispatch': { label: '裁剪二检报工', labelKey: 'nav.cuttingSecondDispatch', icon: 'check', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'cutting' },
   'printing-dispatch': { label: '印花报工', labelKey: 'nav.printingDispatch', icon: 'printer', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'printing' },
   'embroidery-dispatch': { label: '刺绣报工', labelKey: 'nav.embroideryDispatch', icon: 'star', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'embroidery' },
   'template-dispatch': { label: '模板报工', labelKey: 'nav.templateDispatch', icon: 'copy', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'template' },
@@ -117,8 +122,8 @@ const navItems = {
   'sewing-dispatch': { label: '缝制报工', labelKey: 'nav.sewingDispatch', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
   'sewing-dispatch-detail': { label: '缝制报工', labelKey: 'nav.sewingDispatch', icon: 'scissors', roles: ['admin', 'planning_manager', 'planner', 'dispatcher'], workshop: 'sewing' },
   // 仓库(planning only — 仓库 freeze 中,暂不开新用户)
-  warehouse: { label: '仓库管理', labelKey: 'nav.warehouse', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
-  'warehouse-detail': { label: '仓库详情', labelKey: 'nav.warehouse', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  warehouse: { label: '裁片库', labelKey: 'nav.warehouse', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
+  'warehouse-detail': { label: '裁片库详情', labelKey: 'nav.warehouse', icon: 'package', roles: ['admin', 'planning_manager', 'planner'] },
   // 设置(planning only)
   config: { label: '系统设置', labelKey: 'nav.config', icon: 'settings', roles: ['admin', 'planning_manager', 'planner'] },
   'work-calendar': { label: '工作日历', labelKey: 'nav.workCalendar', icon: 'calendar', roles: ['admin', 'planning_manager', 'planner'] },
@@ -168,7 +173,7 @@ const workshopKm = {
 }
 
 // 侧边栏不显示的菜单项（路由存在但不在导航中渲染）
-const hiddenNavItems = new Set(['sewing-dispatch-detail'])
+const hiddenNavItems = new Set(['sewing-dispatch-detail', 'warehouse-detail'])
 
 const pageTitle = computed(() => {
   const item = navItems[route.name]
@@ -258,6 +263,7 @@ const icons = {
   'magic-stick': `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 4-3 3"/><path d="M2 22 11 13"/><path d="m18 6 4 4"/><path d="m17 7 3 3"/><path d="m19 9 3 3"/><path d="m21 11 3 3"/></svg>`,
   user: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
   logout: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>`,
+  check: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
 }
 function getIcon(name) {
   return icons[name] || ''
@@ -394,7 +400,7 @@ function getIcon(name) {
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Khmer", "Khmer OS", "Battambang", "Noto Sans Khmer", sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
@@ -698,4 +704,39 @@ body {
 .el-tabs__item.is-active { color: var(--primary) !important; }
 .el-tabs__active-bar { background-color: var(--primary) !important; }
 .el-pagination { --el-pagination-button-color: var(--text-secondary); --el-pagination-hover-color: var(--primary); }
+
+/* [2026-06-19] 双语模式 (both) 字号缩放: 让中柬双行显示不溢出 */
+/* 选择器 body[data-lang-mode="both"] 只命中 both 模式, zh/km 模式完全不命中, 无回归 */
+body[data-lang-mode="both"] { font-size: 12px; }
+body[data-lang-mode="both"] .nav-label { font-size: 12px; line-height: 1.4; }
+body[data-lang-mode="both"] .nav-section-label { font-size: 10px; line-height: 1.4; }
+body[data-lang-mode="both"] .header-title { font-size: 14px; line-height: 1.4; }
+body[data-lang-mode="both"] .sdh-card-name { font-size: 14px; line-height: 1.4; }
+body[data-lang-mode="both"] .sdh-title { font-size: 20px; line-height: 1.4; }
+body[data-lang-mode="both"] .sdh-desc { font-size: 12px; line-height: 1.4; }
+body[data-lang-mode="both"] .page-heading { font-size: 18px; line-height: 1.4; }
+body[data-lang-mode="both"] .page-desc { font-size: 12px; line-height: 1.4; }
+body[data-lang-mode="both"] .summary-label { font-size: 10px; }
+body[data-lang-mode="both"] .card-label { font-size: 11px; }
+body[data-lang-mode="both"] .card-value { font-size: 24px; }
+body[data-lang-mode="both"] .workspace-name { font-size: 12px; }
+body[data-lang-mode="both"] .workspace-meta { font-size: 10px; }
+body[data-lang-mode="both"] .user-name { font-size: 12px; }
+body[data-lang-mode="both"] .user-email { font-size: 10px; }
+body[data-lang-mode="both"] .excel-table { font-size: 12px; }
+body[data-lang-mode="both"] .excel-table thead th { font-size: 10px; padding: 8px 10px; }
+body[data-lang-mode="both"] .excel-table td { padding: 10px 12px; }
+body[data-lang-mode="both"] .el-table { font-size: 12px; }
+body[data-lang-mode="both"] .el-table th.el-table__cell { font-size: 10px !important; }
+body[data-lang-mode="both"] .el-form-item__label { font-size: 12px !important; line-height: 1.4; }
+body[data-lang-mode="both"] .el-dialog__title { font-size: 14px !important; }
+body[data-lang-mode="both"] .el-message-box__title { font-size: 14px !important; line-height: 1.4; }
+body[data-lang-mode="both"] .el-tabs__item { font-size: 12px !important; }
+body[data-lang-mode="both"] .el-button { font-size: 12px !important; height: 32px !important; padding: 0 12px !important; }
+body[data-lang-mode="both"] .el-button--small { height: 28px !important; font-size: 11px !important; }
+body[data-lang-mode="both"] .el-tag { font-size: 10px !important; padding: 1px 6px !important; }
+body[data-lang-mode="both"] .el-checkbox__label,
+body[data-lang-mode="both"] .el-radio__label { font-size: 12px !important; }
+body[data-lang-mode="both"] .empty-state { padding: 60px 20px; }
+body[data-lang-mode="both"] .empty-state p { font-size: 12px; }
 </style>

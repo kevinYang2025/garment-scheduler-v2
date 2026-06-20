@@ -36,6 +36,7 @@ import VisualSchedule from '../views/VisualSchedule.vue'
 import DispatchHome from '../views/DispatchHome.vue'
 import DispatchReport from '../views/DispatchReport.vue'
 import CuttingDispatch from '../views/CuttingDispatch.vue'
+import CuttingSecondDispatch from '../views/CuttingSecondDispatch.vue'
 import SecondaryDispatch from '../views/SecondaryDispatch.vue'
 import SewingDispatchSelect from '../views/SewingDispatchSelect.vue'
 import SewingDispatch from '../views/SewingDispatch.vue'
@@ -96,6 +97,7 @@ const routes = [
   { path: '/dispatch', name: 'dispatch', component: DispatchHome },
   { path: '/dispatch/report', name: 'dispatch-report', component: DispatchReport },
   { path: '/cutting-dispatch', name: 'cutting-dispatch', component: CuttingDispatch },
+  { path: '/cutting-second-dispatch', name: 'cutting-second-dispatch', component: CuttingSecondDispatch },
   { path: '/printing-dispatch', name: 'printing-dispatch', component: SecondaryDispatch, props: { reportType: 'printing' } },
   { path: '/embroidery-dispatch', name: 'embroidery-dispatch', component: SecondaryDispatch, props: { reportType: 'embroidery' } },
   { path: '/template-dispatch', name: 'template-dispatch', component: SecondaryDispatch, props: { reportType: 'template' } },

@@ -204,6 +204,20 @@ async function customConfirmImport() {
               </td>
               <td class="fix"></td>
             </tr>
+            <!-- [2026-06-19] 二检数行(裁剪二检 A品数,从 actual_production 读) -->
+            <tr v-else-if="row._type === 'second'" class="row-second">
+              <td class="fix"></td>
+              <td class="fix"></td>
+              <td class="fix"></td>
+              <td class="fix"></td>
+              <td class="fix"></td>
+              <td class="fix num sum-cell" style="color:#92400e">{{ row.totalSecondInspection?.toLocaleString() }}</td>
+              <td class="fix type-label second-label">二检数</td>
+              <td v-for="d in visibleDates" :key="'s'+d" class="cell-num" :class="{ 'today-col': d === today }">
+                {{ (row.dateMap[d] || {}).secondInspection || '' }}
+              </td>
+              <td class="fix"></td>
+            </tr>
             <tr v-else class="row-diff">
               <td class="fix"></td>
               <td class="fix"></td>
@@ -307,6 +321,7 @@ async function customConfirmImport() {
 
 .row-plan { background: #f5f0ff; }
 .row-actual { background: #f0fff4; }
+.row-second { background: #fff7ed; }
 .row-diff { background: #fffaf0; }
 .row-diff td { border-bottom: 2px solid var(--border); }
 .first-group td { border-top: 2px solid var(--primary); }
@@ -319,6 +334,7 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 .fix { position: sticky; left: 0; z-index: 1; background: inherit; }
 .row-plan .fix { background: #f5f0ff; }
 .row-actual .fix { background: #f0fff4; }
+.row-second .fix { background: #fff7ed; }
 .row-diff .fix { background: #fffaf0; }
 .excel-table thead .fix { z-index: 4; background: var(--card); }
 
@@ -330,6 +346,7 @@ tbody tr:hover td:not(.fix) { background: var(--primary-light); }
 .type-label { font-weight: 600; font-size: 12px; }
 .plan-label { color: #7c3aed; }
 .actual-label { color: #059669; }
+.second-label { color: #92400e; }
 .diff-label { color: #d97706; }
 .diff-pos { color: #059669; font-weight: 600; }
 .diff-neg { color: #dc2626; font-weight: 600; }
