@@ -1,14 +1,15 @@
 // [2026-06-18] 用户系统:手写 better-sqlite3 session store
 // 复用项目已有的 better-sqlite3,避免引入 connect-sqlite3 的原生 sqlite3 编译
 // 接口参考 express-session 的 Store 抽象
+// [2026-06-20] 过期时间配置化: env SESSION_EXPIRE_DAYS (默认 7)
 const session = require('express-session');
 
 class SqliteStore extends session.Store {
-  constructor(db) {
+  constructor(db, options = {}) {
     super();
     this.db = db;
-    // 7 天过期(与 session cookie maxAge 对齐)
-    this.EXPIRE_MS = 7 * 24 * 60 * 60 * 1000;
+    const days = Number(options.expireDays ?? process.env.SESSION_EXPIRE_DAYS ?? 7);
+    this.EXPIRE_MS = days * 24 * 60 * 60 * 1000;
 
     // sessions 表(独立于 business data)
     db.exec(`

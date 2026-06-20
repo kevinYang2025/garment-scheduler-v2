@@ -196,22 +196,7 @@ const SCHEDULE_TYPE_WORKSHOP = {
   sewing: 'sewing',
 };
 
-function requireWorkshopMatch(scheduleType) {
-  return (req, res, next) => {
-    const u = (req.session && req.session.user) || req.user;
-    if (!u) return res.status(401).json({ error: '未登录' });
-    if (u.role === 'admin') return next();  // admin bypass
-    if (u.role !== 'supervisor') {
-      return res.status(403).json({ error: '该操作仅限车间主任' });
-    }
-    const need = SCHEDULE_TYPE_WORKSHOP[scheduleType];
-    if (!need) return res.status(500).json({ error: '未知的 scheduleType' });
-    if (u.workshop !== need) {
-      return res.status(403).json({ error: '无权操作其他车间的数据' });
-    }
-    next();
-  };
-}
+// [2026-06-20 段15 LOW 清理] requireWorkshopMatch 死代码删除(全文件无引用,角色校验已 inline 在各端点)
 
 // 启动时清一次过期 session
 const _cleanedCount = sessionStore.cleanup();

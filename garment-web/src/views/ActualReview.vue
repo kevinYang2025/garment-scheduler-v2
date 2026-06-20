@@ -145,9 +145,10 @@ async function load() {
 
 async function save(row) {
   try {
-    await api.put(`/schedule/daily/actual/${row.id}`, { qty: row.qty })
-    row.locked_by_user_id = auth.user?.id
-    row.locked_at = new Date().toISOString()
+    const { data } = await api.put(`/schedule/daily/actual/${row.id}`, { qty: row.qty })
+    // [2026-06-20 段15 BUG 3] 用后端返回的锁持有者(admin 改不抢锁,保持原锁)
+    row.locked_by_user_id = data?.locked_by_user_id ?? auth.user?.id
+    row.locked_at = data?.locked_at || new Date().toISOString()
     ElMessage.success(t('actualReview.toast.saveOk'))
   } catch (e) {
     ElMessage.error(t('actualReview.toast.saveFail', null, { err: e.response?.data?.error || e.message }))

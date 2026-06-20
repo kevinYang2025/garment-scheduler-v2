@@ -802,17 +802,16 @@ function migrateStyles() {
 // [2026-06-18] 用户系统:为已有表加 user_id / 锁字段
 // - operation_logs: 加 user_id(写操作关联到具体人)
 // - schedule_daily: 加 locked_by_user_id + locked_at(supervisor 改 ACTUAL 锁)
+// [2026-06-20] 整函数包事务,DDL 失败回滚避免部分迁移导致 INSERT 静默失败
 function migrateUserColumns() {
-  try {
+  const tx = db.transaction(() => {
     // operation_logs 加 user_id(nullable,历史日志留空)
     const opCols = db.prepare("PRAGMA table_info(operation_logs)").all().map(c => c.name);
     if (!opCols.includes('user_id')) {
       db.prepare("ALTER TABLE operation_logs ADD COLUMN user_id INTEGER REFERENCES users(id)").run();
       console.log('✅ operation_logs 加 user_id 字段');
     }
-  } catch (e) { console.log('operation_logs.user_id migration skip:', e.message); }
 
-  try {
     // schedule_daily 加锁字段(nullable,历史数据默认未锁)
     const sdCols = db.prepare("PRAGMA table_info(schedule_daily)").all().map(c => c.name);
     if (!sdCols.includes('locked_by_user_id')) {
@@ -823,10 +822,8 @@ function migrateUserColumns() {
       db.prepare("ALTER TABLE schedule_daily ADD COLUMN locked_at TEXT").run();
       console.log('✅ schedule_daily 加 locked_at 字段');
     }
-  } catch (e) { console.log('schedule_daily lock migration skip:', e.message); }
 
-  try {
-    // users 加 avatar_url(nullable)
+    // users 加 avatar_url + username_km + display_name_km(nullable)
     const uCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
     if (!uCols.includes('avatar_url')) {
       db.prepare("ALTER TABLE users ADD COLUMN avatar_url TEXT").run();
@@ -840,10 +837,8 @@ function migrateUserColumns() {
       db.prepare("ALTER TABLE users ADD COLUMN display_name_km TEXT").run();
       console.log('✅ users 加 display_name_km 字段');
     }
-  } catch (e) { console.log('users avatar/bilingual migration skip:', e.message); }
 
-  // [2026-06-19] 特殊水洗 + 裁剪二检 + 裁剪参数 + system_params
-  try {
+    // [2026-06-19] 特殊水洗 + 裁剪二检 + 裁剪参数 + system_params
     const sCols = db.prepare("PRAGMA table_info('styles')").all().map(c => c.name);
     if (!sCols.includes('has_special_wash')) {
       db.prepare("ALTER TABLE styles ADD COLUMN has_special_wash INTEGER DEFAULT 0").run();
@@ -876,7 +871,8 @@ function migrateUserColumns() {
       );
       console.log('✅ system_params 初始化 special_wash_days=7');
     }
-  } catch (e) { console.log('2026-06-19 migration skip:', e.message); }
+  });
+  try { tx(); } catch (e) { console.error('migrateUserColumns 失败(已回滚):', e.message); }
 }
 
 function seedDefaultData() {
@@ -1488,11 +1484,13 @@ function addWorkdays(startDate, days) {
 // 操作日志
 // ============================================================
 // [2026-06-18] 加 userId 参数(末尾,可空),所有写操作的 user_id 都从这里来
+// [2026-06-20] 返回 lastInsertRowid,失败 stderr(不再完全静默吞错)
 function logOperation(module, action, targetId, targetName, detail, userId) {
   try {
-    db.prepare('INSERT INTO operation_logs (module, action, target_id, target_name, detail, user_id) VALUES (?,?,?,?,?,?)')
+    const r = db.prepare('INSERT INTO operation_logs (module, action, target_id, target_name, detail, user_id) VALUES (?,?,?,?,?,?)')
       .run(module, action, targetId || null, targetName || '', detail || '', userId || null);
-  } catch (e) { console.error('logOperation error:', e.message); }
+    return r.lastInsertRowid;
+  } catch (e) { console.error('logOperation error:', e.message); return null; }
 }
 
 // ============================================================
