@@ -38,6 +38,15 @@ function sendError(res, endpoint, err) {
   }
 }
 
+// [2026-06-20 fix#业务-P1-9] dashboard 数据按用户 workshop 隔离
+// admin 看全部,其他角色(req.user.workshop)只看本车间数据
+// 用于 dashboard 路由(避免 supervisor 越权看全公司)
+function dashboardWorkshopScope(req) {
+  if (!req.user) return null;
+  if (req.user.role === 'admin') return null;
+  return req.user.workshop || null;
+}
+
 // [2026-06-20 批次1-业务-P0-6] 报工数据合理性校验
 // 防御:负数 / NaN / 超 plan_qty*2 / 未来日期
 // 用于 POST/PUT /api/actual(/batch),返回 null 表示通过,否则返回 {status, body}
@@ -2943,16 +2952,31 @@ app.get('/api/schedule/sewing/summary', (req, res) => {
 app.get('/api/dashboard/line-status', (req, res) => {
   try {
     const today = fmtLocal(new Date());
+    // [2026-06-20 fix#业务-P1-9] 非 admin 按 workshop 过滤
+    const userWs = dashboardWorkshopScope(req);
     // 所有车间
-    const workshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
+    const workshops = userWs
+      ? db.all('SELECT * FROM workshops WHERE name = ? ORDER BY sort_order', [userWs])
+      : db.all('SELECT * FROM workshops ORDER BY sort_order');
     // 所有产线
-    const lines = db.all('SELECT pl.*, ws.name as workshop_name FROM production_lines pl JOIN workshops ws ON pl.workshop_id = ws.id ORDER BY ws.sort_order, pl.sort_order');
+    const lines = userWs
+      ? db.all('SELECT pl.*, ws.name as workshop_name FROM production_lines pl JOIN workshops ws ON pl.workshop_id = ws.id WHERE ws.name = ? ORDER BY ws.sort_order, pl.sort_order', [userWs])
+      : db.all('SELECT pl.*, ws.name as workshop_name FROM production_lines pl JOIN workshops ws ON pl.workshop_id = ws.id ORDER BY ws.sort_order, pl.sort_order');
     // 当前在产的缝制排程（今天在 plan_start ~ plan_end 之间）
-    const activeSchedules = db.all(`
-      SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty, sm.plan_start, sm.plan_end, sm.workshop, sm.line_team
-      FROM schedule_master sm
-      WHERE sm.schedule_type = 'sewing' AND sm.plan_start <= ? AND sm.plan_end >= ?
-    `, [today, today]);
+    let activeSchedules;
+    if (userWs) {
+      activeSchedules = db.all(`
+        SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty, sm.plan_start, sm.plan_end, sm.workshop, sm.line_team
+        FROM schedule_master sm
+        WHERE sm.schedule_type = 'sewing' AND sm.workshop = ? AND sm.plan_start <= ? AND sm.plan_end >= ?
+      `, [userWs, today, today]);
+    } else {
+      activeSchedules = db.all(`
+        SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty, sm.plan_start, sm.plan_end, sm.workshop, sm.line_team
+        FROM schedule_master sm
+        WHERE sm.schedule_type = 'sewing' AND sm.plan_start <= ? AND sm.plan_end >= ?
+      `, [today, today]);
+    }
     // 车间名归一化
     const wsNorm = { '一车间': '1', '二车间': '2', '三车间': '3', '四车间': '4', '五车间': '5' };
     const stripSuffix = (name) => String(name || '').replace(/班$/, '');
@@ -3015,6 +3039,8 @@ app.get('/api/dashboard/line-status', (req, res) => {
 app.get('/api/dashboard/secondary-status', (req, res) => {
   try {
     const today = fmtLocal(new Date());
+    // [2026-06-20 fix#业务-P1-9] 非 admin 按 workshop 过滤
+    const userWs = dashboardWorkshopScope(req);
     const processTypes = ['cutting', 'printing', 'embroidery', 'template', 'ironing'];
     const result = {};
 
@@ -3022,7 +3048,8 @@ app.get('/api/dashboard/secondary-status', (req, res) => {
       let items = [];
 
       if (type === 'cutting') {
-        // 裁剪：从 main_plan 取今天在裁剪时间段内的
+        // 裁剪:从 main_plan 取今天在裁剪时间段内的
+        // [fix#业务-P1-9] main_plan 没有 workshop 字段,裁剪是前置工序对所有用户都可见
         const plans = db.all(`
           SELECT mp.id, mp.style_no, mp.product_name, mp.plan_qty,
                  mp.cutting_start as plan_start, mp.cutting_end as plan_end
@@ -3055,15 +3082,26 @@ app.get('/api/dashboard/secondary-status', (req, res) => {
         }));
       } else {
         // 二次加工：从 schedule_master 取
-        const masters = db.all(`
-          SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty,
-                 sm.plan_start, sm.plan_end, sm.color, sm.size_spec
-          FROM schedule_master sm
-          WHERE sm.schedule_type = ?
-            AND sm.plan_start IS NOT NULL AND sm.plan_end IS NOT NULL
-            AND sm.plan_start <= ? AND sm.plan_end >= ?
-          ORDER BY sm.plan_start
-        `, [type, today, today]);
+        // [fix#业务-P1-9] 非 admin 加 workshop 过滤
+        const masters = userWs
+          ? db.all(`
+            SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty,
+                   sm.plan_start, sm.plan_end, sm.color, sm.size_spec
+            FROM schedule_master sm
+            WHERE sm.schedule_type = ? AND sm.workshop = ?
+              AND sm.plan_start IS NOT NULL AND sm.plan_end IS NOT NULL
+              AND sm.plan_start <= ? AND sm.plan_end >= ?
+            ORDER BY sm.plan_start
+          `, [type, userWs, today, today])
+          : db.all(`
+            SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty,
+                   sm.plan_start, sm.plan_end, sm.color, sm.size_spec
+            FROM schedule_master sm
+            WHERE sm.schedule_type = ?
+              AND sm.plan_start IS NOT NULL AND sm.plan_end IS NOT NULL
+              AND sm.plan_start <= ? AND sm.plan_end >= ?
+            ORDER BY sm.plan_start
+          `, [type, today, today]);
 
         const masterIds = masters.map(m => m.id);
         const actualMap = {};
@@ -3113,6 +3151,8 @@ app.get('/api/dashboard/secondary-status', (req, res) => {
 app.get('/api/dashboard/order-stats', (req, res) => {
   try {
     const { mode = 'week' } = req.query; // 'week' or 'month'
+    // [2026-06-20 fix#业务-P1-9] 非 admin 按 workshop 过滤
+    const userWs = dashboardWorkshopScope(req);
     const now = new Date();
     const periods = [];
 
@@ -3158,18 +3198,32 @@ app.get('/api/dashboard/order-stats', (req, res) => {
       received.push(recv?.cnt || 0);
 
       // 完成订单：缝制排程中该时间段内 plan_end 且实际完成量 >= 计划量的款数
-      const comp = db.get(`
-        SELECT COUNT(DISTINCT sm.style_no) as cnt
-        FROM schedule_master sm
-        WHERE sm.schedule_type = 'sewing'
-          AND sm.plan_end BETWEEN ? AND ?
-          AND sm.plan_qty > 0
-          AND (
-            SELECT IFNULL(SUM(ap.completed_qty), 0)
-            FROM actual_production ap
-            WHERE ap.style_no = sm.style_no AND ap.schedule_type = 'sewing'
-          ) >= sm.plan_qty
-      `, [p.start, p.end]);
+      // [fix#业务-P1-9] 非 admin 加 workshop 过滤
+      const comp = userWs
+        ? db.get(`
+          SELECT COUNT(DISTINCT sm.style_no) as cnt
+          FROM schedule_master sm
+          WHERE sm.schedule_type = 'sewing' AND sm.workshop = ?
+            AND sm.plan_end BETWEEN ? AND ?
+            AND sm.plan_qty > 0
+            AND (
+              SELECT IFNULL(SUM(ap.completed_qty), 0)
+              FROM actual_production ap
+              WHERE ap.style_no = sm.style_no AND ap.schedule_type = 'sewing'
+            ) >= sm.plan_qty
+        `, [userWs, p.start, p.end])
+        : db.get(`
+          SELECT COUNT(DISTINCT sm.style_no) as cnt
+          FROM schedule_master sm
+          WHERE sm.schedule_type = 'sewing'
+            AND sm.plan_end BETWEEN ? AND ?
+            AND sm.plan_qty > 0
+            AND (
+              SELECT IFNULL(SUM(ap.completed_qty), 0)
+              FROM actual_production ap
+              WHERE ap.style_no = sm.style_no AND ap.schedule_type = 'sewing'
+            ) >= sm.plan_qty
+        `, [p.start, p.end]);
       completed.push(comp?.cnt || 0);
     }
 
@@ -3187,8 +3241,10 @@ app.get('/api/dashboard/order-stats', (req, res) => {
 // ---------- 排产计划达成率 API ----------
 app.get('/api/dashboard/achievement-rate', (req, res) => {
   try {
+    // [2026-06-20 fix#业务-P1-9] 非 admin 按 workshop 隔离缓存
+    const userWs = dashboardWorkshopScope(req);
     // [fix H-04] 60 秒内存缓存 + 单 SQL 聚合,避免 6 工序×30 天×N master 的 N+1
-    const cacheKey = 'achievement-rate:v1';
+    const cacheKey = `achievement-rate:v1:${userWs || 'all'}`;
     const cached = achievementCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < 60000) {
       res.setHeader('X-Cache', 'HIT');
@@ -3214,7 +3270,10 @@ app.get('/api/dashboard/achievement-rate', (req, res) => {
     ];
 
     // 一次拉全 schedule_master,前端按 type/secondary_type 过滤
-    const allMasters = db.all("SELECT id, schedule_type, secondary_type, workshop, plan_qty, plan_start, plan_end FROM schedule_master WHERE plan_start IS NOT NULL AND plan_end IS NOT NULL");
+    // [fix#业务-P1-9] 非 admin 加 workshop 过滤
+    const allMasters = userWs
+      ? db.all("SELECT id, schedule_type, secondary_type, workshop, plan_qty, plan_start, plan_end FROM schedule_master WHERE workshop = ? AND plan_start IS NOT NULL AND plan_end IS NOT NULL", [userWs])
+      : db.all("SELECT id, schedule_type, secondary_type, workshop, plan_qty, plan_start, plan_end FROM schedule_master WHERE plan_start IS NOT NULL AND plan_end IS NOT NULL");
     // 一次聚合全 ACTUAL
     const allDaily = db.all("SELECT master_id, schedule_date, SUM(qty) as total FROM schedule_daily WHERE row_type='ACTUAL' AND schedule_date >= ? GROUP BY master_id, schedule_date", [minDate]);
 
@@ -3272,7 +3331,10 @@ app.get('/api/dashboard/achievement-rate', (req, res) => {
     }
 
     const sewingByWorkshop = {};
-    const workshops = db.all("SELECT * FROM workshops ORDER BY sort_order");
+    // [fix#业务-P1-9] 非 admin 只展示本车间 sewing 达成率
+    const workshops = userWs
+      ? db.all("SELECT * FROM workshops WHERE name = ? ORDER BY sort_order", [userWs])
+      : db.all("SELECT * FROM workshops ORDER BY sort_order");
     for (const w of workshops) {
       const masters = allMasters.filter(m => m.schedule_type === 'sewing' && m.workshop === w.name);
       sewingByWorkshop[w.name] = computeRates(masters);
