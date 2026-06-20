@@ -325,7 +325,7 @@ function rateLimit(req, res, next) {
 // 两种登录方式:
 //   1. 账号+密码:admin / planner / planning_manager / supervisor
 //   2. 工号+PIN:dispatcher
-app.post('/api/auth/login', rateLimit, (req, res) => {
+app.post('/api/auth/login', rateLimit, async (req, res) => {
   try {
     const { username, password, pin_no, pin } = req.body || {};
 
@@ -334,7 +334,8 @@ app.post('/api/auth/login', rateLimit, (req, res) => {
       user = db.get('SELECT * FROM users WHERE username = ? AND active = 1', [username]);
       if (!user) return res.status(401).json({ error: '账号或密码错误' });
       if (!user.password_hash) return res.status(401).json({ error: '该账号未设置密码' });
-      if (!bcrypt.compareSync(password, user.password_hash)) {
+      // [2026-06-20 fix#后端-P1-3] bcrypt 异步,不阻塞事件循环
+      if (!(await bcrypt.compare(password, user.password_hash))) {
         return res.status(401).json({ error: '账号或密码错误' });
       }
     } else if (pin_no && pin) {
@@ -343,7 +344,7 @@ app.post('/api/auth/login', rateLimit, (req, res) => {
       if (user.role !== 'dispatcher') {
         return res.status(401).json({ error: '该工号不可用 PIN 登录' });
       }
-      if (!user.pin || !bcrypt.compareSync(pin, user.pin)) {
+      if (!user.pin || !(await bcrypt.compare(pin, user.pin))) {
         return res.status(401).json({ error: '工号或 PIN 错误' });
       }
     } else {
@@ -396,7 +397,7 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 // POST /api/auth/change-password
-app.post('/api/auth/change-password', requireAuth, (req, res) => {
+app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   try {
     const { old_password, new_password } = req.body || {};
     if (!old_password || !new_password) {
@@ -409,10 +410,11 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
     if (!user || !user.password_hash) {
       return res.status(400).json({ error: '该账号未设置密码,无法自助改密' });
     }
-    if (!bcrypt.compareSync(old_password, user.password_hash)) {
+    // [2026-06-20 fix#后端-P1-3] bcrypt 异步
+    if (!(await bcrypt.compare(old_password, user.password_hash))) {
       return res.status(401).json({ error: '旧密码错误' });
     }
-    const newHash = bcrypt.hashSync(new_password, 10);
+    const newHash = await bcrypt.hash(new_password, 10);
     db.run("UPDATE users SET password_hash = ?, updated_at = datetime('now','localtime') WHERE id = ?",
       [newHash, req.session.user.id]);
     logOp(req, 'users', 'change_password', req.session.user.id, user.username, '');
@@ -442,7 +444,7 @@ app.get('/api/users', requireRole('admin'), (req, res) => {
   } catch (e) { sendError(res, 'GET /api/users', e); }
 });
 
-app.post('/api/users', requireRole('admin'), (req, res) => {
+app.post('/api/users', requireRole('admin'), async (req, res) => {
   try {
     const { username, username_km, pin, password, display_name, display_name_km, role, workshop } = req.body || {};
     if (!username || !display_name || !role) {
@@ -469,8 +471,9 @@ app.post('/api/users', requireRole('admin'), (req, res) => {
     const existing = db.get('SELECT id FROM users WHERE username = ?', [username]);
     if (existing) return res.status(400).json({ error: '账号已存在' });
 
-    const passwordHash = password ? bcrypt.hashSync(password, 10) : null;
-    const pinHash = pin ? bcrypt.hashSync(pin, 10) : null;
+    // [2026-06-20 fix#后端-P1-3] bcrypt 异步
+    const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+    const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
     const r = db.run(`INSERT INTO users (username, username_km, pin, password_hash, display_name, display_name_km, role, workshop, active)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [username, username_km || null, pinHash, passwordHash, display_name, display_name_km || null, role, workshop || null]);
@@ -480,7 +483,7 @@ app.post('/api/users', requireRole('admin'), (req, res) => {
   } catch (e) { sendError(res, 'POST /api/users', e); }
 });
 
-app.put('/api/users/:id', requireAuth, (req, res) => {
+app.put('/api/users/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const isSelf = req.session.user.id === Number(id);
@@ -560,13 +563,16 @@ app.put('/api/users/:id', requireAuth, (req, res) => {
     if (role !== undefined) { fields.push('role = ?'); params.push(role); }
     if (workshop !== undefined) { fields.push('workshop = ?'); params.push(workshop || null); }
     if (active !== undefined) { fields.push('active = ?'); params.push(active ? 1 : 0); }
+    // [2026-06-20 fix#后端-P1-3] bcrypt 异步
     if (password) {
       if (password.length < 6) return res.status(400).json({ error: '密码至少 6 位' });
-      fields.push('password_hash = ?'); params.push(bcrypt.hashSync(password, 10));
+      const passwordHash = await bcrypt.hash(password, 10);
+      fields.push('password_hash = ?'); params.push(passwordHash);
     }
     if (pin) {
       if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN 必须 4 位数字' });
-      fields.push('pin = ?'); params.push(bcrypt.hashSync(pin, 10));
+      const pinHash = await bcrypt.hash(pin, 10);
+      fields.push('pin = ?'); params.push(pinHash);
     }
     if (avatar_url !== undefined) {
       // [fix M-09] avatar_url 限制: 仅允许 data:image/(png|jpg|jpeg|webp) 前缀,长度 ≤ 5KB,避免 SVG XSS / base64 DoS
@@ -617,7 +623,7 @@ app.delete('/api/users/:id', requireRole('admin'), (req, res) => {
   } catch (e) { sendError(res, 'DELETE /api/users/:id', e); }
 });
 
-app.post('/api/users/:id/reset-pin', requireRole('admin'), (req, res) => {
+app.post('/api/users/:id/reset-pin', requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const { new_pin } = req.body || {};
@@ -629,14 +635,16 @@ app.post('/api/users/:id/reset-pin', requireRole('admin'), (req, res) => {
     if (existing.role !== 'dispatcher') {
       return res.status(400).json({ error: '该功能仅用于 dispatcher' });
     }
-    db.run("UPDATE users SET pin = ?, updated_at = datetime('now','localtime') WHERE id = ?", [bcrypt.hashSync(new_pin, 10), id]);
+    // [2026-06-20 fix#后端-P1-3] bcrypt 异步
+    const pinHash = await bcrypt.hash(new_pin, 10);
+    db.run("UPDATE users SET pin = ?, updated_at = datetime('now','localtime') WHERE id = ?", [pinHash, id]);
     logOp(req, 'users', 'reset_pin', id, existing.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/users/:id/reset-pin', e); }
 });
 
 // [M3] 管理员重置任意用户密码
-app.post('/api/users/:id/reset-password', requireRole('admin'), (req, res) => {
+app.post('/api/users/:id/reset-password', requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const { new_password } = req.body || {};
@@ -645,8 +653,10 @@ app.post('/api/users/:id/reset-password', requireRole('admin'), (req, res) => {
     }
     const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
     if (!existing) return res.status(404).json({ error: '用户不存在' });
+    // [2026-06-20 fix#后端-P1-3] bcrypt 异步
+    const passwordHash = await bcrypt.hash(new_password, 10);
     db.run("UPDATE users SET password_hash = ?, updated_at = datetime('now','localtime') WHERE id = ?",
-      [bcrypt.hashSync(new_password, 10), id]);
+      [passwordHash, id]);
     logOp(req, 'users', 'reset_password', id, existing.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/users/:id/reset-password', e); }
