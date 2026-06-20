@@ -145,6 +145,8 @@ export default {
   getSecondarySummary: () => api.get('/schedule/secondary/summary'),
   getSewingSummary: () => api.get('/schedule/sewing/summary'),
   getAchievementRate: () => api.get('/dashboard/achievement-rate'),
+  getLineStatus: () => api.get('/dashboard/line-status'),
+  getSecondaryStatus: () => api.get('/dashboard/secondary-status'),
   exportSchedule: (scheduleType, secondaryType) => api.get(`/schedule/${scheduleType}/export`, { params: { secondary_type: secondaryType || '' } }),
   importSchedule: (scheduleType, records, mode) => api.post(`/schedule/${scheduleType}/import`, { records, mode }),
 
@@ -166,8 +168,6 @@ export default {
   // 配置
   getCapacityConfig: () => api.get('/config/capacity'),
   updateCapacityConfig: (id, data) => api.put(`/config/capacity/${id}`, data),
-  getSystemConfig: () => api.get('/config/system'),
-  updateSystemConfig: (key, data) => api.put(`/config/system/${key}`, data),
 
   // 甘特图字段配置
   getGanttConfig: () => api.get('/config/gantt'),

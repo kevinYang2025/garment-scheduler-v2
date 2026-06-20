@@ -2,6 +2,7 @@
 const { createServer } = require('http');
 const { Server: SocketIO } = require('socket.io');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('./db');
 const ExcelJS = require('exceljs');
 
@@ -27,6 +28,44 @@ function sendError(res, endpoint, err) {
   if (!res.headersSent) {
     res.status(500).json({ error: '服务器内部错误' });
   }
+}
+
+// [2026-06-20 批次1-业务-P0-6] 报工数据合理性校验
+// 防御:负数 / NaN / 超 plan_qty*2 / 未来日期
+// 用于 POST/PUT /api/actual(/batch),返回 null 表示通过,否则返回 {status, body}
+function validateActualPayload(r, existing = null) {
+  const qty = r.completed_qty != null ? Number(r.completed_qty) : 0;
+  if (Number.isNaN(qty) || qty < 0) {
+    return { status: 400, body: { error: 'completed_qty 必须是非负数' } };
+  }
+  const defect = r.defect_qty != null ? Number(r.defect_qty) : 0;
+  if (Number.isNaN(defect) || defect < 0) {
+    return { status: 400, body: { error: 'defect_qty 必须是非负数' } };
+  }
+  // 日期合理性:不晚于今天
+  const date = r.production_date || (existing && existing.production_date);
+  if (date) {
+    const todayStr = (function () {
+      const t = new Date();
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    })();
+    if (date > todayStr) {
+      return { status: 400, body: { error: `production_date ${date} 不能晚于今天 ${todayStr}` } };
+    }
+  }
+  // 超量上限:completed_qty <= plan_qty * 2(防止 inventory_delta 暴涨)
+  if (r.style_no && qty > 0) {
+    try {
+      const plan = db.get('SELECT plan_qty FROM main_plan WHERE style_no = ? ORDER BY id DESC LIMIT 1', [r.style_no]);
+      const planQty = (plan && plan.plan_qty) || 0;
+      if (planQty > 0 && qty > planQty * 2) {
+        return { status: 400, body: { error: `completed_qty ${qty} 超过 plan_qty*2 (${planQty * 2})` } };
+      }
+    } catch (_) {
+      // 表/列不存在或 db 未初始化时静默放行,不影响主路径
+    }
+  }
+  return null;
 }
 
 // [2026-06-20 段7 C-1] system_config 内存缓存
@@ -276,7 +315,11 @@ app.post('/api/auth/login', rateLimit, (req, res) => {
     }
 
     // 写 session(不存 password_hash / pin)
-    req.session.regenerate(() => {
+    // [fix 2026-06-20 S-1] regenerate 回调里必须显式 save,
+    // 否则 res.json 触发的 end 不会自动持久化新 session,
+    // 客户端拿不到 set-cookie,后续 API 401
+    req.session.regenerate((regenErr) => {
+      if (regenErr) return sendError(res, 'session.regenerate', regenErr);
       req.session.user = {
         id: user.id,
         username: user.username,
@@ -287,7 +330,10 @@ app.post('/api/auth/login', rateLimit, (req, res) => {
         workshop: user.workshop,
         avatar_url: user.avatar_url || ''
       };
-      res.json({ ok: true, user: req.session.user });
+      req.session.save((saveErr) => {
+        if (saveErr) return sendError(res, 'session.save', saveErr);
+        res.json({ ok: true, user: req.session.user });
+      });
     });
   } catch (e) { sendError(res, 'POST /api/auth/login', e); }
 });
@@ -1581,6 +1627,20 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     // [2026-06-19] 特殊水洗前置天数 — 款式 has_special_wash=1 时裁剪提前 N 天
     const SPECIAL_WASH_DAYS = parseInt(db.getSystemParam('special_wash_days')) || 7;
 
+    // [2026-06-20 批次2-业务-P0-5] 稳定排序种子
+    // 同一份输入数据,每次 auto-schedule 都用同一个 runSeed 作打破平局字段
+    // 避免不同进程/不同启动顺序导致的 plan_qty 分配不一致
+    const runSeed = crypto.randomBytes(4).readUInt32BE(0);
+    function styleHash(styleNo) {
+      // FNV-1a 32-bit hash,salted with runSeed
+      let h = (0x811c9dc5 ^ runSeed) >>> 0;
+      for (let i = 0; i < styleNo.length; i++) {
+        h ^= styleNo.charCodeAt(i);
+        h = (h * 0x01000193) >>> 0;
+      }
+      return h;
+    }
+
     // 1. 获取所有数据
     const loadingList = db.all('SELECT * FROM fabric_loading_list');
     const styles = db.all('SELECT * FROM styles');
@@ -1664,7 +1724,10 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     cuttingItems.sort((a, b) => {
       const priDiff = cuttingPriority(b.style_no) - cuttingPriority(a.style_no);
       if (priDiff !== 0) return priDiff;
-      return a.cutting_start.localeCompare(b.cutting_start) || a.style_no.localeCompare(b.style_no);
+      const dateDiff = a.cutting_start.localeCompare(b.cutting_start);
+      if (dateDiff !== 0) return dateDiff;
+      // [2026-06-20 批次2-业务-P0-5] 稳定打破平局
+      return styleHash(a.style_no) - styleHash(b.style_no);
     });
 
     const cuttingStandard = cap.cutting || 60000;
@@ -1717,7 +1780,12 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
           };
         });
 
-      items.sort((a, b) => a.start.localeCompare(b.start) || a.style_no.localeCompare(b.style_no));
+      items.sort((a, b) => {
+      const dateDiff = a.start.localeCompare(b.start);
+      if (dateDiff !== 0) return dateDiff;
+      // [2026-06-20 批次2-业务-P0-5] 稳定打破平局
+      return styleHash(a.style_no) - styleHash(b.style_no);
+    });
 
       let curDay = '';
       let remain = sec.standard;
@@ -1822,7 +1890,12 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     const categoryUsed = {};
     let totalLinesAssigned = 0;
 
-    baseResults.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+    baseResults.sort((a, b) => {
+      const dateDiff = (a.due_date || '').localeCompare(b.due_date || '');
+      if (dateDiff !== 0) return dateDiff;
+      // [2026-06-20 批次2-业务-P0-5] 稳定打破平局
+      return styleHash(a.style_no) - styleHash(b.style_no);
+    });
 
     for (const r of baseResults) {
       if (r.expired) { r.line_count = 1; r.line_index = 1; r.conflict_flag = 1; results.push(r); continue; }
@@ -1908,6 +1981,11 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
 
     const rawDb = db.getDb();
     const writeTxn = rawDb.transaction(() => {
+      // [2026-06-20 批次2-业务-P0-1] 级联清理下游"未来计划"表,避免孤儿数据
+      // 注意:actual_production(报工历史)和 schedule_plan_overrides(用户手动调整)不删,
+      //       这两类是"历史事实",重新排产不应覆盖它们
+      rawDb.prepare(`DELETE FROM schedule_daily WHERE master_id IN (SELECT id FROM schedule_master)`).run();
+      rawDb.prepare(`DELETE FROM schedule_master`).run();
       rawDb.prepare('DELETE FROM main_plan').run();
       const stmt = rawDb.prepare(`INSERT INTO main_plan
         (style_id,style_no,product_name,plan_qty,due_date,arrival_date,
@@ -2623,7 +2701,7 @@ app.get('/api/schedule/:scheduleType/:masterId/daily', (req, res) => {
   }
 });
 
-app.post('/api/schedule/:scheduleType', (req, res) => {
+app.post('/api/schedule/:scheduleType', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const validTypes = ['cutting', 'secondary', 'sewing'];
     if (!validTypes.includes(req.params.scheduleType)) {
@@ -2649,7 +2727,7 @@ app.post('/api/schedule/:scheduleType', (req, res) => {
   }
 });
 
-app.put('/api/schedule/:scheduleType/:id', (req, res) => {
+app.put('/api/schedule/:scheduleType/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const m = req.body;
     console.log('PUT /api/schedule', req.params.scheduleType, req.params.id, JSON.stringify(m).slice(0, 200));
@@ -2668,7 +2746,7 @@ app.put('/api/schedule/:scheduleType/:id', (req, res) => {
   }
 });
 
-app.delete('/api/schedule/:scheduleType/:id', (req, res) => {
+app.delete('/api/schedule/:scheduleType/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const existing = db.get('SELECT id FROM schedule_master WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -2710,6 +2788,251 @@ app.get('/api/schedule/sewing/summary', (req, res) => {
     res.json({ plan: makeStats(planMasters), visual: makeStats(visualMasters) });
   } catch (e) {
     console.error('Sewing summary error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 产线状态详情（数据看板用）----------
+app.get('/api/dashboard/line-status', (req, res) => {
+  try {
+    const today = fmtLocal(new Date());
+    // 所有车间
+    const workshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
+    // 所有产线
+    const lines = db.all('SELECT pl.*, ws.name as workshop_name FROM production_lines pl JOIN workshops ws ON pl.workshop_id = ws.id ORDER BY ws.sort_order, pl.sort_order');
+    // 当前在产的缝制排程（今天在 plan_start ~ plan_end 之间）
+    const activeSchedules = db.all(`
+      SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty, sm.plan_start, sm.plan_end, sm.workshop, sm.line_team
+      FROM schedule_master sm
+      WHERE sm.schedule_type = 'sewing' AND sm.plan_start <= ? AND sm.plan_end >= ?
+    `, [today, today]);
+    // 车间名归一化
+    const wsNorm = { '一车间': '1', '二车间': '2', '三车间': '3', '四车间': '4', '五车间': '5' };
+    const stripSuffix = (name) => String(name || '').replace(/班$/, '');
+    // 按 workshop+line_team 索引排程
+    const schedMap = {};
+    for (const s of activeSchedules) {
+      const wNorm = wsNorm[s.workshop] || s.workshop || '';
+      const key = wNorm + '|' + (s.line_team || '');
+      if (!schedMap[key]) schedMap[key] = [];
+      schedMap[key].push(s);
+    }
+    // 实际产量按 style_no+line_team 聚合
+    const styleNos = [...new Set(activeSchedules.map(s => s.style_no))];
+    let actualMap = {};
+    if (styleNos.length > 0) {
+      const placeholders = styleNos.map(() => '?').join(',');
+      const actuals = db.all(`
+        SELECT style_no, line_team, SUM(completed_qty) as total
+        FROM actual_production
+        WHERE schedule_type = 'sewing' AND style_no IN (${placeholders})
+        GROUP BY style_no, line_team
+      `, styleNos);
+      for (const a of actuals) {
+        const key = (a.style_no || '') + '|' + (a.line_team || '');
+        actualMap[key] = a.total || 0;
+      }
+    }
+    // 组装结果
+    const result = workshops.map(ws => ({
+      workshop: ws.name,
+      lines: lines.filter(l => l.workshop_id === ws.id).map(line => {
+        const lNum = stripSuffix(line.line_name);
+        const key = wsNorm[ws.name] + '|' + lNum;
+        const tasks = schedMap[key] || [];
+        const current = tasks[0] || null;
+        let completed = 0;
+        if (current) {
+          completed = actualMap[current.style_no + '|' + current.line_team] || 0;
+        }
+        return {
+          line_name: line.line_name,
+          status: line.status,
+          daily_output: line.daily_output || 0,
+          style_no: current?.style_no || '',
+          product_name: current?.product_name || '',
+          plan_qty: current?.plan_qty || 0,
+          completed,
+          progress: current?.plan_qty ? Math.round(completed / current.plan_qty * 100) : 0,
+        };
+      })
+    }));
+    res.json(result);
+  } catch (e) {
+    console.error('GET /api/dashboard/line-status error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 前置车间生产状态（数据看板用）----------
+app.get('/api/dashboard/secondary-status', (req, res) => {
+  try {
+    const today = fmtLocal(new Date());
+    const processTypes = ['cutting', 'printing', 'embroidery', 'template', 'ironing'];
+    const result = {};
+
+    for (const type of processTypes) {
+      let items = [];
+
+      if (type === 'cutting') {
+        // 裁剪：从 main_plan 取今天在裁剪时间段内的
+        const plans = db.all(`
+          SELECT mp.id, mp.style_no, mp.product_name, mp.plan_qty,
+                 mp.cutting_start as plan_start, mp.cutting_end as plan_end
+          FROM main_plan mp
+          WHERE mp.cutting_start IS NOT NULL AND mp.cutting_end IS NOT NULL
+            AND mp.cutting_start <= ? AND mp.cutting_end >= ?
+          ORDER BY mp.cutting_start
+        `, [today, today]);
+
+        const styleNos = plans.map(p => p.style_no).filter(Boolean);
+        const actualMap = {};
+        if (styleNos.length > 0) {
+          const ph = styleNos.map(() => '?').join(',');
+          const actuals = db.all(`
+            SELECT style_no, SUM(completed_qty) as total
+            FROM actual_production
+            WHERE schedule_type = 'cutting' AND style_no IN (${ph})
+            GROUP BY style_no
+          `, styleNos);
+          for (const a of actuals) actualMap[a.style_no] = a.total || 0;
+        }
+
+        items = plans.map(p => ({
+          style_no: p.style_no,
+          product_name: p.product_name || '',
+          plan_qty: p.plan_qty || 0,
+          completed: actualMap[p.style_no] || 0,
+          plan_start: p.plan_start,
+          plan_end: p.plan_end,
+        }));
+      } else {
+        // 二次加工：从 schedule_master 取
+        const masters = db.all(`
+          SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty,
+                 sm.plan_start, sm.plan_end, sm.color, sm.size_spec
+          FROM schedule_master sm
+          WHERE sm.schedule_type = ?
+            AND sm.plan_start IS NOT NULL AND sm.plan_end IS NOT NULL
+            AND sm.plan_start <= ? AND sm.plan_end >= ?
+          ORDER BY sm.plan_start
+        `, [type, today, today]);
+
+        const masterIds = masters.map(m => m.id);
+        const actualMap = {};
+        if (masterIds.length > 0) {
+          const ph = masterIds.map(() => '?').join(',');
+          const actuals = db.all(`
+            SELECT master_id, SUM(qty) as total
+            FROM schedule_daily
+            WHERE master_id IN (${ph}) AND row_type = 'ACTUAL'
+            GROUP BY master_id
+          `, ...masterIds);
+          for (const a of actuals) actualMap[a.master_id] = a.total || 0;
+        }
+
+        items = masters.map(m => ({
+          style_no: m.style_no,
+          product_name: m.product_name || '',
+          color: m.color || '',
+          size_spec: m.size_spec || '',
+          plan_qty: m.plan_qty || 0,
+          completed: actualMap[m.id] || 0,
+          plan_start: m.plan_start,
+          plan_end: m.plan_end,
+        }));
+      }
+
+      // 计算状态
+      for (const item of items) {
+        const pct = item.plan_qty > 0 ? item.completed / item.plan_qty : 0;
+        if (pct >= 1) item.status = '已完成';
+        else if (pct > 0) item.status = '进行中';
+        else item.status = '待生产';
+        item.progress = Math.round(pct * 100);
+      }
+
+      result[type] = items;
+    }
+
+    res.json(result);
+  } catch (e) {
+    console.error('GET /api/dashboard/secondary-status error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- 订单接收/完成统计（数据看板用）----------
+app.get('/api/dashboard/order-stats', (req, res) => {
+  try {
+    const { mode = 'week' } = req.query; // 'week' or 'month'
+    const now = new Date();
+    const periods = [];
+
+    if (mode === 'week') {
+      // 最近 12 周
+      for (let i = 11; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(start.getDate() - start.getDay() + 1 - i * 7); // 周一
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6); // 周日
+        periods.push({
+          label: `${start.getMonth() + 1}/${start.getDate()}`,
+          start: fmtLocal(start),
+          end: fmtLocal(end),
+        });
+      }
+    } else {
+      // 最近 6 个月
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const start = fmtLocal(d);
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const end = fmtLocal(lastDay);
+        periods.push({
+          label: `${d.getMonth() + 1}月`,
+          start,
+          end,
+        });
+      }
+    }
+
+    const received = [];
+    const completed = [];
+
+    for (const p of periods) {
+      // 接收订单：面料装柜清单中该时间段内的去重款数
+      const recv = db.get(`
+        SELECT COUNT(DISTINCT style_no) as cnt
+        FROM fabric_loading_list
+        WHERE style_no IS NOT NULL AND style_no != ''
+          AND (loading_date BETWEEN ? AND ? OR (loading_date IS NULL AND created_at BETWEEN ? AND ? || ' 23:59:59'))
+      `, [p.start, p.end, p.start, p.end]);
+      received.push(recv?.cnt || 0);
+
+      // 完成订单：缝制排程中该时间段内 plan_end 且实际完成量 >= 计划量的款数
+      const comp = db.get(`
+        SELECT COUNT(DISTINCT sm.style_no) as cnt
+        FROM schedule_master sm
+        WHERE sm.schedule_type = 'sewing'
+          AND sm.plan_end BETWEEN ? AND ?
+          AND sm.plan_qty > 0
+          AND (
+            SELECT IFNULL(SUM(ap.completed_qty), 0)
+            FROM actual_production ap
+            WHERE ap.style_no = sm.style_no AND ap.schedule_type = 'sewing'
+          ) >= sm.plan_qty
+      `, [p.start, p.end]);
+      completed.push(comp?.cnt || 0);
+    }
+
+    res.json({
+      labels: periods.map(p => p.label),
+      received,
+      completed,
+    });
+  } catch (e) {
+    console.error('GET /api/dashboard/order-stats error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -3123,6 +3446,9 @@ app.post('/api/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, 
     if (parseInt(r.is_second_inspection) > 0 && !r.source_type) {
       return res.status(400).json({ error: '二检报工必须选择来源(印花/刺绣)' });
     }
+    // [2026-06-20 批次1-业务-P0-6] 数值/日期合理性校验
+    const vErr = validateActualPayload(r);
+    if (vErr) return res.status(vErr.status).json(vErr.body);
 
     const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time, is_second_inspection, source_type)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -3206,6 +3532,11 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
     const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: '记录不存在' });
 
+    // [2026-06-20 批次1-业务-P0-6] 数值/日期合理性校验(基于合并后的值)
+    const merged = { ...existing, ...r };
+    const vErr = validateActualPayload(merged, existing);
+    if (vErr) return res.status(vErr.status).json(vErr.body);
+
     // [2026-06-20] 跨车间拦截:supervisor 只能改自己车间的报工,dispatcher 只能改自己车间的报工
     const u = req.user;
     if (u.role !== 'admin') {
@@ -3220,32 +3551,40 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
     const newIsSecond = r.is_second_inspection != null ? parseInt(r.is_second_inspection) : parseInt(existing.is_second_inspection);
     const newSourceType = r.source_type != null ? r.source_type : (existing.source_type || '');
 
-    db.run(`UPDATE actual_production SET schedule_type=?, secondary_type=?, style_id=?, style_no=?, color=?, size_spec=?,
-      production_date=?, completed_qty=?, defect_qty=?, workshop=?, line_team=?, remark=?,
-      worker_name=?, start_time=?, end_time=?, is_second_inspection=?, source_type=? WHERE id=?`,
-      [r.schedule_type || existing.schedule_type, r.secondary_type ?? existing.secondary_type,
-       newStyleId, r.style_no || existing.style_no,
-       r.color ?? existing.color, r.size_spec ?? existing.size_spec,
-       r.production_date || existing.production_date, r.completed_qty ?? existing.completed_qty,
-       r.defect_qty ?? existing.defect_qty, r.workshop ?? existing.workshop,
-       r.line_team ?? existing.line_team, r.remark ?? existing.remark,
-       r.worker_name ?? existing.worker_name, r.start_time ?? existing.start_time,
-       r.end_time ?? existing.end_time,
-       newIsSecond, newSourceType, req.params.id]);
-
-    // [2026-06-19] 如果二检标记/数量变了 → 回滚旧入库并按新值重入
     const oldIsSecond = parseInt(existing.is_second_inspection) || 0;
     const oldQty = parseInt(existing.completed_qty) || 0;
     const newQty = r.completed_qty != null ? parseInt(r.completed_qty) : oldQty;
-    if (oldIsSecond !== newIsSecond || oldQty !== newQty) {
-      db.rollbackCutPiecesInbound(existing);
-      const updated = { ...existing, ...r, is_second_inspection: newIsSecond, source_type: newSourceType, completed_qty: newQty };
-      db.recordCutPiecesInbound(updated);
-    }
 
-    syncActualToDaily({ ...existing, ...r, style_id: newStyleId });
-    if (newStyleId) db.recalcTaskStatus(newStyleId);
-    if (oldStyleId && oldStyleId !== newStyleId) db.recalcTaskStatus(oldStyleId);
+    // [2026-06-20 批次2-业务-P1-8] UPDATE + 副作用整段包事务
+    // 之前 rollbackCutPiecesInbound / recordCutPiecesInbound / syncActualToDaily 都不在事务内
+    // 失败会留下不一致状态(库存扣了但 actual 没改 / 反之)
+    const updateTxn = db.getDb().transaction(() => {
+      db.run(`UPDATE actual_production SET schedule_type=?, secondary_type=?, style_id=?, style_no=?, color=?, size_spec=?,
+        production_date=?, completed_qty=?, defect_qty=?, workshop=?, line_team=?, remark=?,
+        worker_name=?, start_time=?, end_time=?, is_second_inspection=?, source_type=? WHERE id=?`,
+        [r.schedule_type || existing.schedule_type, r.secondary_type ?? existing.secondary_type,
+         newStyleId, r.style_no || existing.style_no,
+         r.color ?? existing.color, r.size_spec ?? existing.size_spec,
+         r.production_date || existing.production_date, r.completed_qty ?? existing.completed_qty,
+         r.defect_qty ?? existing.defect_qty, r.workshop ?? existing.workshop,
+         r.line_team ?? existing.line_team, r.remark ?? existing.remark,
+         r.worker_name ?? existing.worker_name, r.start_time ?? existing.start_time,
+         r.end_time ?? existing.end_time,
+         newIsSecond, newSourceType, req.params.id]);
+
+      // [2026-06-19] 如果二检标记/数量变了 → 回滚旧入库并按新值重入
+      if (oldIsSecond !== newIsSecond || oldQty !== newQty) {
+        db.rollbackCutPiecesInbound(existing);
+        const updated = { ...existing, ...r, is_second_inspection: newIsSecond, source_type: newSourceType, completed_qty: newQty };
+        db.recordCutPiecesInbound(updated);
+      }
+
+      // syncActualToDaily 内部自带事务(SQLite SAVEPOINT 兼容嵌套)
+      syncActualToDaily({ ...existing, ...r, style_id: newStyleId });
+      if (newStyleId) db.recalcTaskStatus(newStyleId);
+      if (oldStyleId && oldStyleId !== newStyleId) db.recalcTaskStatus(oldStyleId);
+    });
+    updateTxn();
     logOp(req, 'actual_production', 'update', req.params.id, existing.style_no, `qty: ${oldQty}→${newQty} ${existing.schedule_type}`);
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true });
@@ -3302,6 +3641,11 @@ app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), 
     const batchTxn = db.getDb().transaction(() => {
       for (const r of records) {
         if (!r.style_no || !r.production_date) continue;
+        // [2026-06-20 批次1-业务-P0-6] 单条数值/日期合理性校验,失败整批回滚
+        const vErr = validateActualPayload(r);
+        if (vErr) {
+          throw Object.assign(new Error('batch validation failed'), { httpStatus: vErr.status, httpBody: vErr.body });
+        }
         const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time, is_second_inspection, source_type)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           [r.schedule_type || '', r.secondary_type || '', r.style_id || 0, r.style_no, r.color || '', r.size_spec || '',
@@ -3321,6 +3665,8 @@ app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), 
     res.json({ ok: true, inserted });
   } catch (e) {
     console.error('POST /api/actual/batch error:', e);
+    // [2026-06-20 批次1-业务-P0-6] 业务校验错透传 4xx,不要全返 500
+    if (e && e.httpStatus && e.httpBody) return res.status(e.httpStatus).json(e.httpBody);
     res.status(500).json({ error: '批量导入失败' });
   }
 });
@@ -3740,7 +4086,7 @@ app.get('/api/schedule/daily/actuals', (req, res) => {
   } catch (e) { sendError(res, 'GET /api/schedule/daily/actuals', e); }
 });
 
-app.put('/api/schedule/daily/actual/:id', (req, res) => {
+app.put('/api/schedule/daily/actual/:id', requireRole('admin', 'supervisor'), (req, res) => {
   try {
     const { id } = req.params;
     const { qty } = req.body || {};
@@ -3773,8 +4119,19 @@ app.put('/api/schedule/daily/actual/:id', (req, res) => {
       }
 
       // [2026-06-18] admin 改不抢锁(保持原锁);supervisor 改才写自己的锁
+      // [2026-06-20 批次1-业务-P0-4] admin 覆盖锁强制写审计 diff + 通知原锁定 supervisor
       if (req.user.role === 'admin') {
+        const previousLocker = row.locked_by_user_id;
+        const previousQty = row.qty;
         db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [qty, id]);
+        // 只有原本被其他 supervisor 锁住、且 admin 改动了 qty,才算覆盖
+        if (previousLocker && previousLocker !== req.user.id && Number(previousQty) !== Number(qty)) {
+          logOp(req, 'schedule_daily', 'admin_override',
+            id,
+            JSON.stringify({ qty: previousQty, locked_by_user_id: previousLocker }),
+            JSON.stringify({ qty, overridden_by: req.user.id, overridden_at: fmtLocal(new Date()) }));
+          try { io.emit('scheduleDaily:overridden', { id, qty, by: req.user.username, previousLocker }); } catch (_) {}
+        }
       } else {
         db.run(`UPDATE schedule_daily SET qty = ?, locked_by_user_id = ?, locked_at = datetime('now','localtime') WHERE id = ?`,
           [qty, req.user.id, id]);
@@ -5182,6 +5539,46 @@ app.get('/api/health', (req, res) => {
     res.status(503).json({ ok: false, error: 'db unavailable' });
   }
 });
+
+// ============================================================
+// 全局异常兜底 [批次1-后端-P0-1]
+// ============================================================
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[unhandledRejection]', reason && reason.stack ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err && err.stack ? err.stack : err);
+  // 已知致命错误(如 DB 文件被删/磁盘满)→ 进程退出由 PM2/systemd 重启
+  // 这里不主动 process.exit,避免与连接清理冲突
+});
+
+// [2026-06-20 批次2-业务-P0-2] 锁超时自动清理
+// supervisor 锁了 schedule_daily 行后,如果浏览器崩溃 / 离职 / 忘解锁 → dispatcher 永远报不进去
+// 方案:每 5 分钟扫描一次,锁定时间 > 2 小时的锁自动释放
+// 注:locked_at 是 'YYYY-MM-DD HH:mm:ss' 字符串,SQLite 字符串比较能正确工作
+const LOCK_TIMEOUT_HOURS = 2;
+const LOCK_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+setInterval(() => {
+  try {
+    const result = db.run(
+      `UPDATE schedule_daily
+         SET locked_by_user_id = NULL, locked_at = NULL
+       WHERE locked_at IS NOT NULL
+         AND locked_at < datetime('now','localtime', ?)`,
+      [`-${LOCK_TIMEOUT_HOURS} hours`]
+    );
+    if (result.changes > 0) {
+      console.log(`[lock-cleanup] 自动释放 ${result.changes} 条过期锁`);
+      // 通知所有客户端:锁变化
+      try {
+        const daily = db.all("SELECT * FROM schedule_daily WHERE locked_by_user_id IS NOT NULL");
+        broadcastSection('schedule_sewing', daily);
+      } catch (_) { /* 广播失败不影响主路径 */ }
+    }
+  } catch (e) {
+    console.error('[lock-cleanup] error:', e && e.message);
+  }
+}, LOCK_CLEANUP_INTERVAL_MS).unref();  // 不阻止进程退出
 
 // ============================================================
 // START
