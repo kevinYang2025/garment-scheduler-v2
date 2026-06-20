@@ -5615,7 +5615,16 @@ io.on('connection', (socket) => {
 // ---------- 日报 ----------
 app.get('/api/daily', (req, res) => {
   try {
-    res.json(db.all('SELECT * FROM daily_reports ORDER BY date DESC'));
+    // [2026-06-20 fix#业务-P2-3] 支持 ?limit (1..1000,默认200) + ?offset + ?from/to 日期过滤
+    const limit = Math.max(1, Math.min(1000, parseInt(req.query.limit) || 200));
+    const offset = Math.max(0, parseInt(req.query.offset) || 0);
+    let sql = 'SELECT * FROM daily_reports WHERE 1=1';
+    const params = [];
+    if (req.query.from && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) { sql += ' AND date >= ?'; params.push(req.query.from); }
+    if (req.query.to && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) { sql += ' AND date <= ?'; params.push(req.query.to); }
+    sql += ' ORDER BY date DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+    res.json(db.all(sql, params));
   } catch (e) {
     console.error('GET /api/daily error:', e);
     res.status(500).json({ error: 'Internal server error' });
