@@ -378,6 +378,26 @@ app.put('/api/users/:id', requireAuth, (req, res) => {
       }
     }
 
+    // [2026-06-20] 自残守卫:admin 不能停用自己 / 改自己角色(避免 confused deputy)
+    if (isSelf && isAdmin) {
+      if (active === 0 || active === false) {
+        return res.status(403).json({ error: '不能停用自己' });
+      }
+      if (role !== undefined && role !== 'admin') {
+        return res.status(403).json({ error: '不能修改自己的角色' });
+      }
+    }
+
+    // [2026-06-20] 最后一人 admin 保护:停用最后一个 active admin 会锁死系统
+    if (active === 0 || active === false) {
+      if (existing.role === 'admin' && existing.active === 1) {
+        const adminCount = db.get("SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND active = 1", []).c;
+        if (adminCount <= 1) {
+          return res.status(403).json({ error: '至少保留一个 active admin' });
+        }
+      }
+    }
+
     // 确定最终角色(用新角色或已有角色)
     const finalRole = role || existing.role;
 
@@ -439,14 +459,19 @@ app.put('/api/users/:id', requireAuth, (req, res) => {
     }
     if (username_km !== undefined) { fields.push('username_km = ?'); params.push(username_km || null); }
     if (display_name_km !== undefined) { fields.push('display_name_km = ?'); params.push(display_name_km || null); }
-    // 同步到 session(若是改自己)
-    if (req.session?.user && req.session.user.id === Number(id)) {
-      if (username_km !== undefined) req.session.user.username_km = username_km || null;
-      if (display_name_km !== undefined) req.session.user.display_name_km = display_name_km || null;
-    }
     fields.push("updated_at = datetime('now','localtime')");
     params.push(id);
     db.run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, params);
+    // [2026-06-20] 同步 session(若是改自己)— 完整字段,不只是 i18n 字段,
+    // 否则下次 requireRole 仍按旧 role 判断(短期 cookie 不变即可绕过刚做的降级)
+    if (req.session?.user && req.session.user.id === Number(id)) {
+      if (display_name !== undefined) req.session.user.display_name = display_name;
+      if (username_km !== undefined) req.session.user.username_km = username_km || null;
+      if (display_name_km !== undefined) req.session.user.display_name_km = display_name_km || null;
+      if (role !== undefined) req.session.user.role = role;
+      if (workshop !== undefined) req.session.user.workshop = workshop || null;
+      if (active !== undefined) req.session.user.active = active ? 1 : 0;
+    }
     logOp(req, 'users', 'update', id, existing.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'PUT /api/users/:id', e); }
@@ -3506,37 +3531,43 @@ app.put('/api/schedule/daily/actual/:id', (req, res) => {
     if (qty == null || isNaN(qty) || qty < 0) {
       return res.status(400).json({ error: 'qty 必须是非负数' });
     }
-    const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
-    if (!row) return res.status(404).json({ error: '记录不存在' });
 
-    // 角色 + 车间检查:admin 全权,supervisor 限本车间,其他角色拒绝
-    const master = db.get('SELECT schedule_type FROM schedule_master WHERE id = ?', [row.master_id]);
-    if (!master) return res.status(404).json({ error: 'master 不存在' });
-    if (req.user.role === 'admin') {
-      // 通过
-    } else if (req.user.role === 'supervisor') {
-      if (req.user.workshop !== SCHEDULE_TYPE_WORKSHOP[master.schedule_type]) {
-        return res.status(403).json({ error: '无权操作其他车间的数据' });
+    // [2026-06-20] 锁检查 + UPDATE 包进事务,避免理论并发竞态
+    // (SQLite WAL 下 db.run 串行化,但业务层"读到未锁 → 写时已被锁"窗口存在)
+    const txn = db.getDb().transaction(() => {
+      const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
+      if (!row) return { status: 404, body: { error: '记录不存在' } };
+
+      // 角色 + 车间检查:admin 全权,supervisor 限本车间,其他角色拒绝
+      const master = db.get('SELECT schedule_type FROM schedule_master WHERE id = ?', [row.master_id]);
+      if (!master) return { status: 404, body: { error: 'master 不存在' } };
+      if (req.user.role === 'admin') {
+        // 通过
+      } else if (req.user.role === 'supervisor') {
+        if (req.user.workshop !== SCHEDULE_TYPE_WORKSHOP[master.schedule_type]) {
+          return { status: 403, body: { error: '无权操作其他车间的数据' } };
+        }
+      } else {
+        return { status: 403, body: { error: '该操作仅限车间主任或管理员' } };
       }
-    } else {
-      return res.status(403).json({ error: '该操作仅限车间主任或管理员' });
-    }
 
-    // 锁检查:已被其他主任锁定?admin 可覆盖任何锁
-    if (row.locked_by_user_id && row.locked_by_user_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(409).json({ error: '该日已被其他主任修改锁定' });
-    }
+      // 锁检查:已被其他主任锁定?admin 可覆盖任何锁
+      if (row.locked_by_user_id && row.locked_by_user_id !== req.user.id && req.user.role !== 'admin') {
+        return { status: 409, body: { error: '该日已被其他主任修改锁定' } };
+      }
 
-    // [2026-06-18] admin 改不抢锁(保持原锁);supervisor 改才写自己的锁
-    // 这样 admin 改后原 supervisor 仍能 unlock
-    if (req.user.role === 'admin') {
-      db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [qty, id]);
-    } else {
-      db.run(`UPDATE schedule_daily SET qty = ?, locked_by_user_id = ?, locked_at = datetime('now','localtime') WHERE id = ?`,
-        [qty, req.user.id, id]);
-    }
-    logOp(req, 'schedule_daily', 'update_actual', id, '', `qty=${qty} by ${req.user.username}`);
-    res.json({ ok: true, locked_by_user_id: row.locked_by_user_id || req.user.id, locked_at: fmtLocal(new Date()) });
+      // [2026-06-18] admin 改不抢锁(保持原锁);supervisor 改才写自己的锁
+      if (req.user.role === 'admin') {
+        db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [qty, id]);
+      } else {
+        db.run(`UPDATE schedule_daily SET qty = ?, locked_by_user_id = ?, locked_at = datetime('now','localtime') WHERE id = ?`,
+          [qty, req.user.id, id]);
+      }
+      logOp(req, 'schedule_daily', 'update_actual', id, '', `qty=${qty} by ${req.user.username}`);
+      return { status: 200, body: { ok: true, locked_by_user_id: row.locked_by_user_id || req.user.id, locked_at: fmtLocal(new Date()) } };
+    });
+    const result = txn();
+    res.status(result.status).json(result.body);
   } catch (e) { sendError(res, 'PUT /api/schedule/daily/actual/:id', e); }
 });
 
