@@ -430,8 +430,8 @@ async function confirmImport() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.vt-container')
-  if (el) el.scrollTop = 0
+  // [2026-06-20 段16 C-1] 用 composable ref 替代 querySelector
+  if (vs.container.value) vs.container.value.scrollTop = 0
 }
 
 // Drag-to-scroll on empty td areas

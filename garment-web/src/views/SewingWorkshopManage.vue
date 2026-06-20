@@ -438,8 +438,8 @@ async function doImport() {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.excel-body')
-  if (el) el.scrollTop = 0
+  // [2026-06-20 段16 C-1] 用 bodyRef 替代 querySelector
+  if (bodyRef.value) bodyRef.value.scrollTop = 0
 }
 
 onMounted(() => {
