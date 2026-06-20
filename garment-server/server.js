@@ -1173,11 +1173,23 @@ app.put('/api/production-lines/:id', (req, res) => {
     let changed = false;
     let oldStatus = null;
     let lineName = '';
+    let currentEtag = '';
     const lineTxn = db.getDb().transaction(() => {
       const existing = db.get('SELECT * FROM production_lines WHERE id = ?', [req.params.id]);
       if (!existing) return;
       oldStatus = existing.status;
       lineName = existing.line_name;
+      // [2026-06-20 fix#业务-P2-4] 乐观锁:用最近一次 event id 当 ETag,客户端 PUT 时发 If-Match
+      const lastEvent = db.get('SELECT MAX(id) as mid FROM production_line_events WHERE line_id = ?', [req.params.id]);
+      const mid = (lastEvent && lastEvent.mid) || 0;
+      currentEtag = `"v${mid}"`;
+      // [2026-06-20 fix#业务-P2-4] If-Match 校验,缺则 428,失配则 412
+      const ifMatch = req.headers['if-match'];
+      if (ifMatch !== undefined && ifMatch !== currentEtag) {
+        const err = new Error('ETag mismatch');
+        err.statusCode = 412;
+        throw err;
+      }
       if (oldStatus !== status) {
         db.run('UPDATE production_lines SET status = ? WHERE id = ?', [status, req.params.id]);
         db.run('INSERT INTO production_line_events (line_id, event_type, old_status, new_status, remark) VALUES (?,?,?,?,?)',
@@ -1185,13 +1197,42 @@ app.put('/api/production-lines/:id', (req, res) => {
         changed = true;
       }
     });
-    lineTxn();
+    try {
+      lineTxn();
+    } catch (txnErr) {
+      if (txnErr.statusCode === 412) {
+        return res.status(412).json({ error: 'Precondition Failed: 资源已被其他用户修改,请刷新后重试', currentEtag });
+      }
+      throw txnErr;
+    }
     if (!oldStatus) return res.status(404).json({ error: 'Not found' });
     if (changed) logOp(req, 'production_lines', 'status_change', req.params.id, lineName, `${oldStatus}→${status}`);
     broadcastSection('productionLines', db.all('SELECT * FROM production_lines ORDER BY sort_order'));
-    res.json({ ok: true });
+    res.set('ETag', currentEtag);
+    res.json({ ok: true, etag: currentEtag });
   } catch (e) {
     console.error('PUT /api/production-lines error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// [2026-06-20 fix#业务-P2-4] GET /api/production-lines/:id 返回时设 ETag,
+// 客户端 PUT 时发回 If-Match 实现乐观锁
+app.get('/api/production-lines/:id', (req, res) => {
+  try {
+    const row = db.get('SELECT * FROM production_lines WHERE id = ?', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const lastEvent = db.get('SELECT MAX(id) as mid FROM production_line_events WHERE line_id = ?', [req.params.id]);
+    const etag = `"v${(lastEvent && lastEvent.mid) || 0}"`;
+    // [2026-06-20] If-None-Match 缓存:客户端已有相同 etag 则返回 304
+    if (req.headers['if-none-match'] === etag) {
+      res.set('ETag', etag);
+      return res.status(304).end();
+    }
+    res.set('ETag', etag);
+    res.json(row);
+  } catch (e) {
+    console.error('GET /api/production-lines/:id error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
