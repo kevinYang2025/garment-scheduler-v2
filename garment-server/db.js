@@ -1261,6 +1261,28 @@ function recalcTaskStatus(masterId) {
 
     db.prepare('UPDATE schedule_master SET task_status = ?, progress_pct = ?, first_inspection_completed_at = COALESCE(NULLIF(?, \'\'), first_inspection_completed_at), second_inspection_completed_at = COALESCE(NULLIF(?, \'\'), second_inspection_completed_at) WHERE id = ?')
       .run(taskStatus, progressPct, firstAt, secondAt, masterId);
+
+    // [2026-06-20 fix#业务-P3-2] secondary 报工完成 → 回写 main_plan 的对应 _end 字段
+    // 仅当 100% 完成且 type 属于 printing/embroidery/template/ironing 时执行
+    // 该简化版本:取 max(actual_production.production_date) 作为该工序结束日
+    // 已知限制:实际生产日是 max,可能晚于计划 secondary_end(逾期),不改 plan_qty
+    if (master.schedule_type === 'secondary' && taskStatus === 'COMPLETED'
+        && ['printing', 'embroidery', 'template', 'ironing'].includes(master.secondary_type)
+        && master.style_id) {
+      try {
+        const lastDate = db.prepare(
+          "SELECT MAX(production_date) as d FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND secondary_type = ?"
+        ).get(master.style_no, master.color || '', master.size_spec || '', master.secondary_type);
+        if (lastDate && lastDate.d) {
+          const field = master.secondary_type + '_end';
+          db.prepare(`UPDATE main_plan SET ${field} = ? WHERE id = ?`).run(lastDate.d, master.style_id);
+        }
+      } catch (e) {
+        // 回写失败不阻塞 recalc 主流程,仅 log
+        console.warn('secondary -> main_plan 回写失败:', master.secondary_type, e.message);
+      }
+    }
+
     __recalcLocks.delete(masterId);
     return { ok: true };
   } catch (e) {
