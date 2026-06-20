@@ -92,16 +92,21 @@ function validateActualPayload(r, existing = null) {
 //   当前 ecosystem.config.js 用 instances=1 fork 模式,缓存一致;若改 cluster mode,
 //   单进程内仍 OK 但 reload 后第一个进程可能与新进程不一致 → 短期可接受(配置低频写)
 //   长期方案:用 SQLite 直接走 db.get() 或用 Redis 集中缓存
+// [2026-06-20 fix#业务-P3-1] 加 TTL 兜底:即使 PUT 后忘了 invalidate,5 分钟后自动刷新
+const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
 let _configCache = null;
+let _configCacheTime = 0;
 function getSystemConfig() {
-  if (!_configCache) {
+  const now = Date.now();
+  if (!_configCache || (now - _configCacheTime) > CONFIG_CACHE_TTL_MS) {
     const rows = db.all('SELECT config_key, config_value FROM system_config');
     _configCache = {};
     for (const r of rows) _configCache[r.config_key] = r.config_value;
+    _configCacheTime = now;
   }
   return _configCache;
 }
-function invalidateSystemConfig() { _configCache = null; }
+function invalidateSystemConfig() { _configCache = null; _configCacheTime = 0; }
 
 // [2026-06-18] 日志 helper:从 req 自动取 user_id(替代直接调 db.logOperation)
 // 替换 server.js 中所有 `db.logOperation(` → `logOp(req, ` 即可
