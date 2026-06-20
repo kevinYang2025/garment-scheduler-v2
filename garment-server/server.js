@@ -101,9 +101,18 @@ function invalidateSystemConfig() { _configCache = null; }
 
 // [2026-06-18] 日志 helper:从 req 自动取 user_id(替代直接调 db.logOperation)
 // 替换 server.js 中所有 `db.logOperation(` → `logOp(req, ` 即可
+// [2026-06-20 fix#业务-P2-1] 自动附加 IP + UA 到 detail(敏感操作如 PIN/密码重置 便于审计)
 function logOp(req, module, action, targetId, targetName, detail) {
   const userId = (req && req.user && req.user.id) || null;
-  db.logOperation(module, action, targetId, targetName, detail, userId);
+  // 敏感操作:在 detail 末尾追加 [ip=xxx ua=xxx]
+  const SENSITIVE = ['reset_pin', 'reset_password', 'change_password'];
+  let extra = '';
+  if (SENSITIVE.includes(action) && req) {
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const ua = (req.headers['user-agent'] || '').slice(0, 80);
+    extra = ` [ip=${ip} ua=${ua}]`;
+  }
+  db.logOperation(module, action, targetId, targetName, (detail || '') + extra, userId);
 }
 
 // ============================================================
