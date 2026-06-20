@@ -16,7 +16,7 @@ const props = defineProps({
 const router = useRouter()
 const emit = defineEmits(['navigate'])
 
-// TODO: 权限判断接口，后续对接实际权限系统
+// [fix#前端-P2-2] 权限已由后端 requireRole 控制,前端保留函数占位以便未来扩展细粒度
 function hasPermission(perm) {
   // eslint-disable-next-line no-unused-vars
   const _p = perm
