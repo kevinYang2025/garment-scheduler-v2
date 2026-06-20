@@ -29,6 +29,20 @@ function sendError(res, endpoint, err) {
   }
 }
 
+// [2026-06-20 段7 C-1] system_config 内存缓存
+// 减少 recalcMainPlanDates / auto-schedule 等热路径的重复 SELECT
+// PUT /api/system-config/:key 和 /api/config/system/:key 后 invalidate
+let _configCache = null;
+function getSystemConfig() {
+  if (!_configCache) {
+    const rows = db.all('SELECT config_key, config_value FROM system_config');
+    _configCache = {};
+    for (const r of rows) _configCache[r.config_key] = r.config_value;
+  }
+  return _configCache;
+}
+function invalidateSystemConfig() { _configCache = null; }
+
 // [2026-06-18] 日志 helper:从 req 自动取 user_id(替代直接调 db.logOperation)
 // 替换 server.js 中所有 `db.logOperation(` → `logOp(req, ` 即可
 function logOp(req, module, action, targetId, targetName, detail) {
@@ -669,9 +683,7 @@ function computeDateData(start, end, planQty, dailyTarget) {
 //   sewing_remind = sewing_start - 2
 function recalcMainPlanDates(p) {
   if (!p.due_date) return p;
-  const cfgRaw = db.all('SELECT config_key, config_value FROM system_config');
-  const cfg = {};
-  for (const r of cfgRaw) cfg[r.config_key] = r.config_value;
+  const cfg = getSystemConfig();
   const SEWING_BUFFER = parseInt(cfg.shipping_buffer_days) || 5;
   const IRONING_BUFFER = parseInt(cfg.ironing_buffer_days) || 3;
   const SEWING_REMIND = parseInt(cfg.sewing_remind_days) || 2;
@@ -1540,6 +1552,7 @@ app.put('/api/system-config/:key', requireRole('admin', 'planning_manager'), (re
     const existing = db.get('SELECT config_key FROM system_config WHERE config_key = ?', [key]);
     if (!existing) return res.status(404).json({ error: '参数不存在' });
     db.run('UPDATE system_config SET config_value = ? WHERE config_key = ?', [String(config_value), key]);
+    invalidateSystemConfig();  // [段7 C-1] 刷新缓存
     logOp(req, 'system_config', 'update', null, key, `value=${config_value}`);
     res.json({ ok: true, config_key: key, config_value: String(config_value) });
   } catch (e) { sendError(res, 'PUT /api/system-config/:key', e); }
@@ -1565,9 +1578,7 @@ app.put('/api/system-params/:key', requireRole('admin', 'planning_manager'), (re
 app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     // 0. 读 system_config 可调参数(带 fallback)
-    const cfgRaw = db.all('SELECT config_key, config_value FROM system_config');
-    const cfg = {};
-    for (const r of cfgRaw) cfg[r.config_key] = r.config_value;
+    const cfg = getSystemConfig();
     const LOADING_TO_ARRIVAL = parseInt(cfg.loading_to_arrival_days) || 15;
     const FABRIC_INSPECTION = parseInt(cfg.fabric_inspection_days) || 9;
     const SEWING_BUFFER = parseInt(cfg.sewing_buffer_days) || 15;
@@ -4614,6 +4625,7 @@ app.put('/api/config/system/:key', requireRole('admin', 'planning_manager'), (re
     const value = req.body.configValue ?? req.body.config_value;
     if (value === undefined) return res.status(400).json({ error: '参数值不能为空' });
     db.run('UPDATE system_config SET config_value = ? WHERE config_key = ?', [String(value), req.params.key]);
+    invalidateSystemConfig();  // [段7 C-1] 刷新缓存
     broadcastSection('systemConfig', db.all('SELECT * FROM system_config'));
     res.json({ ok: true });
   } catch (e) {
