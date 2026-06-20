@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+import { useI18n } from '../composables/useI18n'
 import * as XLSX from 'xlsx'
 
 const props = defineProps({
@@ -12,6 +13,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'imported'])
+
+const { t } = useI18n()
 
 const importing = ref(false)
 const previewData = ref([])
@@ -40,7 +43,7 @@ function onFileChange(e) {
         remark: r['备注'] || r['remark'] || '',
       })).filter(r => r.style_no && r.production_date)
     } catch {
-      ElMessage.error('文件解析失败')
+      ElMessage.error(t('importActual.toast.parseFail'))
     }
   }
   reader.readAsArrayBuffer(file)
@@ -48,19 +51,19 @@ function onFileChange(e) {
 
 async function doImport() {
   if (previewData.value.length === 0) {
-    ElMessage.warning('没有可导入的数据')
+    ElMessage.warning(t('importActual.toast.empty'))
     return
   }
   importing.value = true
   try {
     const { data } = await api.batchImportActual(previewData.value)
-    ElMessage.success(`成功导入 ${data.inserted} 条记录`)
+    ElMessage.success(t('importActual.toast.importOk', null, { count: data.inserted }))
     emit('imported')
     emit('update:modelValue', false)
     previewData.value = []
     fileName.value = ''
   } catch {
-    ElMessage.error('导入失败')
+    ElMessage.error(t('importActual.toast.importFail'))
   }
   importing.value = false
 }
@@ -81,25 +84,29 @@ function downloadTemplate() {
   XLSX.utils.book_append_sheet(wb, ws, '报工模板')
   XLSX.writeFile(wb, '报工导入模板.xlsx')
 }
+
+function typeLabel(s) {
+  return s ? t('importActual.type.' + s, null) : ''
+}
 </script>
 
 <template>
   <el-dialog
     :model-value="modelValue"
     @update:model-value="close"
-    title="批量导入报工"
+    :title="t('importActual.title')"
     width="600px"
     :close-on-click-modal="false"
   >
     <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px">
-      <el-button size="small" @click="downloadTemplate">下载模板</el-button>
+      <el-button size="small" @click="downloadTemplate"><span style="white-space:pre-line">{{ t('importActual.btn.template') }}</span></el-button>
       <input type="file" accept=".xlsx,.xls" @change="onFileChange" style="display:none" ref="fileInputRef" />
-      <el-button type="primary" size="small" @click="fileInputRef.click()">选择文件</el-button>
+      <el-button type="primary" size="small" @click="fileInputRef.click()"><span style="white-space:pre-line">{{ t('importActual.btn.chooseFile') }}</span></el-button>
       <span v-if="fileName" style="color: var(--text-secondary); font-size: 13px">{{ fileName }}</span>
     </div>
 
-    <div v-if="previewData.length > 0" style="margin-bottom: 8px; font-size: 13px; color: var(--text-secondary)">
-      预览：共 {{ previewData.length }} 条记录
+    <div v-if="previewData.length > 0" style="margin-bottom: 8px; font-size: 13px; color: var(--text-secondary); white-space:pre-line">
+      {{ t('importActual.preview.count', null, { count: previewData.length }) }}
     </div>
 
     <el-table
@@ -110,28 +117,28 @@ function downloadTemplate() {
       stripe
       style="width: 100%"
     >
-      <el-table-column prop="schedule_type" label="类型" width="80">
+      <el-table-column prop="schedule_type" :label="t('importActual.cols.type')" width="80">
         <template #default="{ row }">
-          {{ row.schedule_type === 'sewing' ? '缝制' : row.schedule_type === 'cutting' ? '裁剪' : '二次' }}
+          {{ typeLabel(row.schedule_type) }}
         </template>
       </el-table-column>
-      <el-table-column prop="style_no" label="款号" min-width="120" show-overflow-tooltip />
-      <el-table-column prop="production_date" label="日期" width="110" />
-      <el-table-column prop="completed_qty" label="完成数" width="80" align="right" />
-      <el-table-column prop="defect_qty" label="次品" width="70" align="right" />
-      <el-table-column prop="workshop" label="车间" width="80" />
-      <el-table-column prop="line_team" label="班组" width="70" />
+      <el-table-column prop="style_no" :label="t('importActual.cols.styleNo')" min-width="120" show-overflow-tooltip />
+      <el-table-column prop="production_date" :label="t('importActual.cols.date')" width="110" />
+      <el-table-column prop="completed_qty" :label="t('importActual.cols.completed')" width="80" align="right" />
+      <el-table-column prop="defect_qty" :label="t('importActual.cols.defect')" width="70" align="right" />
+      <el-table-column prop="workshop" :label="t('importActual.cols.workshop')" width="80" />
+      <el-table-column prop="line_team" :label="t('importActual.cols.team')" width="70" />
     </el-table>
 
     <template #footer>
-      <el-button @click="close">取消</el-button>
+      <el-button @click="close"><span style="white-space:pre-line">{{ t('importActual.btn.cancel') }}</span></el-button>
       <el-button
         type="primary"
         :loading="importing"
         :disabled="previewData.length === 0"
         @click="doImport"
       >
-        确认导入 ({{ previewData.length }}条)
+        <span style="white-space:pre-line">{{ t('importActual.btn.confirm', null, { count: previewData.length }) }}</span>
       </el-button>
     </template>
   </el-dialog>

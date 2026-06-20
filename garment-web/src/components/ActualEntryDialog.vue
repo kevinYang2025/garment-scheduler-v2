@@ -1,7 +1,8 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+import { useI18n } from '../composables/useI18n'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -16,6 +17,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'saved'])
+
+const { t } = useI18n()
 
 const styleOptions = ref([])
 const loading = ref(false)
@@ -37,18 +40,19 @@ const form = ref({
   remark: '',
 })
 
-const scheduleTypes = [
-  { value: 'sewing', label: '缝制' },
-  { value: 'cutting', label: '裁剪' },
-  { value: 'secondary', label: '二次加工' },
-]
+// 类型 / 工序 options (走 i18n)
+const scheduleTypes = computed(() => [
+  { value: 'sewing', label: t('actualEntry.type.sewing') },
+  { value: 'cutting', label: t('actualEntry.type.cutting') },
+  { value: 'secondary', label: t('actualEntry.type.secondary') },
+])
 
-const secondaryTypes = [
-  { value: '印花', label: '印花' },
-  { value: '刺绣', label: '刺绣' },
-  { value: '模板', label: '模板' },
-  { value: '烫标', label: '烫标' },
-]
+const secondaryTypes = computed(() => [
+  { value: '印花', label: t('actualEntry.process.printing') },
+  { value: '刺绣', label: t('actualEntry.process.embroidery') },
+  { value: '模板', label: t('actualEntry.process.template') },
+  { value: '烫标', label: t('actualEntry.process.ironing') },
+])
 
 function getToday() {
   const d = new Date()
@@ -110,10 +114,10 @@ function addQty(field, amount) {
 }
 
 function validate() {
-  if (!form.value.style_no) return '请选择款号'
-  if (!form.value.production_date) return '请选择日期'
-  if (form.value.completed_qty <= 0) return '完成数量必须大于0'
-  if (form.value.production_date > getToday()) return '日期不能是未来日期'
+  if (!form.value.style_no) return t('actualEntry.toast.chooseStyle')
+  if (!form.value.production_date) return t('actualEntry.toast.chooseDate')
+  if (form.value.completed_qty <= 0) return t('actualEntry.toast.qtyZero')
+  if (form.value.production_date > getToday()) return t('actualEntry.toast.futureDate')
   return null
 }
 
@@ -132,10 +136,10 @@ async function save() {
 
     if (props.editRecord?.id) {
       await api.updateActual(props.editRecord.id, form.value)
-      ElMessage.success('修改成功')
+      ElMessage.success(t('actualEntry.toast.editOk'))
     } else {
       await api.saveActual(form.value)
-      ElMessage.success('录入成功')
+      ElMessage.success(t('actualEntry.toast.addOk'))
     }
     emit('saved')
     if (continuousMode.value && !props.editRecord) {
@@ -146,7 +150,7 @@ async function save() {
       emit('update:modelValue', false)
     }
   } catch (e) {
-    ElMessage.error(props.editRecord?.id ? '修改失败' : '录入失败')
+    ElMessage.error(props.editRecord?.id ? t('actualEntry.toast.editFail') : t('actualEntry.toast.addFail'))
   }
   saving.value = false
 }
@@ -179,29 +183,29 @@ onUnmounted(() => {
   <el-dialog
     :model-value="modelValue"
     @update:model-value="close"
-    :title="editRecord ? '修改报工' : '录入报工'"
+    :title="editRecord ? t('actualEntry.title.edit') : t('actualEntry.title.add')"
     width="480px"
     :close-on-click-modal="false"
     destroy-on-close
   >
     <el-form :model="form" label-width="70px" size="large" class="dialog-form">
-      <el-form-item v-if="!props.scheduleType" label="类型">
+      <el-form-item v-if="!props.scheduleType" :label="t('actualEntry.cols.type')">
         <el-select v-model="form.schedule_type" style="width: 100%">
           <el-option v-for="o in scheduleTypes" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="form.schedule_type === 'secondary' && !props.secondaryType" label="工序">
+      <el-form-item v-if="form.schedule_type === 'secondary' && !props.secondaryType" :label="t('actualEntry.cols.process')">
         <el-select v-model="form.secondary_type" style="width: 100%">
           <el-option v-for="o in secondaryTypes" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </el-form-item>
 
-      <el-form-item label="款号">
+      <el-form-item :label="t('actualEntry.cols.styleNo')">
         <el-select
           v-model="form.style_no"
           filterable
-          placeholder="搜索款号..."
+          :placeholder="t('actualEntry.ph.styleNo')"
           :loading="loading"
           :disabled="!!props.styleNo"
           style="width: 100%"
@@ -216,11 +220,11 @@ onUnmounted(() => {
         </el-select>
       </el-form-item>
 
-      <el-form-item label="日期">
+      <el-form-item :label="t('actualEntry.cols.date')">
         <el-date-picker
           v-model="form.production_date"
           type="date"
-          placeholder="选择日期"
+          :placeholder="t('actualEntry.ph.date')"
           value-format="YYYY-MM-DD"
           :disabled="!!props.date"
           :disabled-date="(date) => date > new Date()"
@@ -230,7 +234,7 @@ onUnmounted(() => {
 
       <el-row :gutter="12">
         <el-col :span="14">
-          <el-form-item label="完成数">
+          <el-form-item :label="t('actualEntry.cols.completed')">
             <div class="qty-input-group">
               <el-input-number
                 v-model="form.completed_qty"
@@ -240,15 +244,15 @@ onUnmounted(() => {
                 style="width: 100%"
               />
               <div class="qty-quick-btns">
-                <el-button size="small" @click="addQty('completed_qty', 10)">+10</el-button>
-                <el-button size="small" @click="addQty('completed_qty', 50)">+50</el-button>
-                <el-button size="small" @click="addQty('completed_qty', 100)">+100</el-button>
+                <el-button size="small" @click="addQty('completed_qty', 10)">{{ t('actualEntry.quick.10') }}</el-button>
+                <el-button size="small" @click="addQty('completed_qty', 50)">{{ t('actualEntry.quick.50') }}</el-button>
+                <el-button size="small" @click="addQty('completed_qty', 100)">{{ t('actualEntry.quick.100') }}</el-button>
               </div>
             </div>
           </el-form-item>
         </el-col>
         <el-col :span="10">
-          <el-form-item label="次品">
+          <el-form-item :label="t('actualEntry.cols.defect')">
             <el-input-number
               v-model="form.defect_qty"
               :min="0"
@@ -261,31 +265,33 @@ onUnmounted(() => {
 
       <el-row :gutter="12">
         <el-col :span="12">
-          <el-form-item label="车间">
-            <el-input v-model="form.workshop" placeholder="如: A车间" />
+          <el-form-item :label="t('actualEntry.cols.workshop')">
+            <el-input v-model="form.workshop" :placeholder="t('actualEntry.ph.workshop')" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="班组">
-            <el-input v-model="form.line_team" placeholder="如: 1班" />
+          <el-form-item :label="t('actualEntry.cols.team')">
+            <el-input v-model="form.line_team" :placeholder="t('actualEntry.ph.team')" />
           </el-form-item>
         </el-col>
       </el-row>
 
-      <el-form-item label="备注">
-        <el-input v-model="form.remark" placeholder="可选" />
+      <el-form-item :label="t('actualEntry.cols.remark')">
+        <el-input v-model="form.remark" :placeholder="t('actualEntry.ph.remark')" />
       </el-form-item>
 
       <div class="form-options" v-if="!editRecord">
-        <el-checkbox v-model="continuousMode">连续录入模式</el-checkbox>
-        <span class="shortcut-hint">Ctrl+Enter 提交 / Esc 关闭</span>
+        <el-checkbox v-model="continuousMode" style="white-space:pre-line">{{ t('actualEntry.continuous') }}</el-checkbox>
+        <span class="shortcut-hint" style="white-space:pre-line">{{ t('actualEntry.shortcut') }}</span>
       </div>
     </el-form>
 
     <template #footer>
-      <el-button @click="close" size="large">取消</el-button>
+      <el-button @click="close" size="large"><span style="white-space:pre-line">{{ t('actualEntry.btn.cancel') }}</span></el-button>
       <el-button type="primary" :loading="saving" @click="save" size="large" style="min-width: 120px">
-        {{ editRecord ? '保存' : (continuousMode ? '提交并继续' : '提交') }}
+        <span v-if="editRecord" style="white-space:pre-line">{{ t('actualEntry.btn.save') }}</span>
+        <span v-else-if="continuousMode" style="white-space:pre-line">{{ t('actualEntry.btn.submitContinue') }}</span>
+        <span v-else style="white-space:pre-line">{{ t('actualEntry.btn.submit') }}</span>
       </el-button>
     </template>
   </el-dialog>

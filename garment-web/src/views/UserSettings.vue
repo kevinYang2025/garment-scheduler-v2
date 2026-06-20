@@ -1,7 +1,7 @@
 <template>
   <div class="user-settings-page">
     <div class="page-header-bar">
-      <h2 class="page-heading">个人设置</h2>
+      <h2 class="page-heading">{{ t('userSettings.title', langMode) }}</h2>
     </div>
 
     <div class="settings-card">
@@ -15,56 +15,56 @@
           <div class="avatar-badge">📷</div>
         </div>
         <div class="avatar-info">
-          <div class="avatar-name">{{ auth.user?.display_name || '未设置' }}</div>
+          <div class="avatar-name">{{ auth.user?.display_name || t('userSettings.notSet', langMode) }}</div>
           <div class="avatar-role">{{ roleLabel }}</div>
-          <div class="avatar-hint">点击更换头像</div>
+          <div class="avatar-hint">{{ t('userSettings.changeAvatarHint', langMode) }}</div>
         </div>
       </div>
 
       <!-- 基本信息 -->
       <el-divider />
-      <h3 class="section-title">基本信息</h3>
+      <h3 class="section-title">{{ t('userSettings.basicInfo', langMode) }}</h3>
       <el-form :model="form" label-width="80px" class="settings-form">
-        <el-form-item label="账号">
+        <el-form-item :label="t('userSettings.label.account', langMode)">
           <el-input :value="auth.user?.username" disabled />
         </el-form-item>
-        <el-form-item label="姓名">
-          <el-input v-model="form.display_name" placeholder="请输入姓名" />
+        <el-form-item :label="t('userSettings.label.name', langMode)">
+          <el-input v-model="form.display_name" :placeholder="t('userSettings.ph.name', langMode)" />
         </el-form-item>
-        <el-form-item label="车间" v-if="auth.user?.workshop">
+        <el-form-item :label="t('userSettings.label.workshop', langMode)" v-if="auth.user?.workshop">
           <el-input :value="workshopLabel" disabled />
         </el-form-item>
-        <el-form-item label="角色">
+        <el-form-item :label="t('userSettings.label.role', langMode)">
           <el-input :value="roleLabel" disabled />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="saveProfile" :loading="saving">保存信息</el-button>
+          <el-button type="primary" @click="saveProfile" :loading="saving">{{ t('userSettings.btn.saveProfile', langMode) }}</el-button>
         </el-form-item>
       </el-form>
 
       <!-- 修改密码 -->
       <el-divider />
-      <h3 class="section-title">修改密码</h3>
+      <h3 class="section-title">{{ t('userSettings.changePwdSection', langMode) }}</h3>
       <el-form :model="pwdForm" label-width="80px" class="settings-form">
-        <el-form-item label="旧密码">
-          <el-input v-model="pwdForm.old_password" type="password" show-password placeholder="请输入旧密码" />
+        <el-form-item :label="t('userSettings.label.oldPwd', langMode)">
+          <el-input v-model="pwdForm.old_password" type="password" show-password :placeholder="t('userSettings.ph.oldPwd', langMode)" />
         </el-form-item>
-        <el-form-item label="新密码">
-          <el-input v-model="pwdForm.new_password" type="password" show-password placeholder="至少 6 位" />
+        <el-form-item :label="t('userSettings.label.newPwd', langMode)">
+          <el-input v-model="pwdForm.new_password" type="password" show-password :placeholder="t('userSettings.ph.newPwd', langMode)" />
         </el-form-item>
-        <el-form-item label="确认密码">
-          <el-input v-model="pwdForm.confirm_password" type="password" show-password placeholder="再次输入新密码" />
+        <el-form-item :label="t('userSettings.label.confirmPwd', langMode)">
+          <el-input v-model="pwdForm.confirm_password" type="password" show-password :placeholder="t('userSettings.ph.confirmPwd', langMode)" />
         </el-form-item>
         <el-form-item>
-          <el-button type="warning" @click="changePassword" :loading="changingPwd">修改密码</el-button>
+          <el-button type="warning" @click="changePassword" :loading="changingPwd">{{ t('userSettings.btn.changePwd', langMode) }}</el-button>
         </el-form-item>
       </el-form>
     </div>
 
     <!-- 头像选择弹窗 -->
-    <el-dialog v-model="showAvatarDialog" title="更换头像" width="500px" destroy-on-close>
+    <el-dialog v-model="showAvatarDialog" :title="t('userSettings.avatarDialog.title', langMode)" width="500px" destroy-on-close>
       <div class="avatar-options">
-        <h4 class="avatar-section-title">选择默认头像</h4>
+        <h4 class="avatar-section-title">{{ t('userSettings.avatarDialog.defaultTitle', langMode) }}</h4>
         <div class="default-avatars">
           <div
             v-for="(av, i) in defaultAvatars"
@@ -81,7 +81,7 @@
 
         <el-divider />
 
-        <h4 class="avatar-section-title">上传自定义头像</h4>
+        <h4 class="avatar-section-title">{{ t('userSettings.avatarDialog.uploadTitle', langMode) }}</h4>
         <div class="upload-area">
           <input
             ref="fileInput"
@@ -90,8 +90,8 @@
             style="display: none"
             @change="handleFileSelect"
           />
-          <el-button @click="$refs.fileInput.click()">选择图片</el-button>
-          <span class="upload-hint">支持 JPG/PNG，自动裁剪压缩</span>
+          <el-button @click="$refs.fileInput.click()">{{ t('userSettings.avatarDialog.chooseFile', langMode) }}</el-button>
+          <span class="upload-hint">{{ t('userSettings.avatarDialog.uploadHint', langMode) }}</span>
         </div>
 
         <!-- 裁剪预览 -->
@@ -100,15 +100,15 @@
             <canvas ref="cropCanvas" width="200" height="200" class="crop-canvas"></canvas>
           </div>
           <div class="crop-actions">
-            <el-button size="small" @click="cropSrc = null">取消</el-button>
-            <el-button size="small" type="primary" @click="applyCrop">使用此图</el-button>
+            <el-button size="small" @click="cropSrc = null">{{ t('userSettings.avatarDialog.cropCancel', langMode) }}</el-button>
+            <el-button size="small" type="primary" @click="applyCrop">{{ t('userSettings.avatarDialog.useThis', langMode) }}</el-button>
           </div>
         </div>
       </div>
 
       <template #footer>
-        <el-button @click="showAvatarDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveAvatar">确定</el-button>
+        <el-button @click="showAvatarDialog = false">{{ t('userSettings.avatarDialog.footer.cancel', langMode) }}</el-button>
+        <el-button type="primary" @click="saveAvatar">{{ t('userSettings.avatarDialog.footer.confirm', langMode) }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -118,9 +118,14 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { useLangStore } from '../stores/lang'
+import { t } from '../i18n'
 import api from '../api'
 
 const auth = useAuthStore()
+const langStore = useLangStore()
+const langMode = computed(() => langStore.mode)
+
 const saving = ref(false)
 const changingPwd = ref(false)
 const showAvatarDialog = ref(false)
@@ -156,20 +161,33 @@ const defaultAvatars = [
   { emoji: '⭐', bg: 'linear-gradient(135deg, #eab308, #facc15)' },
 ]
 
-const roleMap = {
-  admin: '系统管理员',
-  planning_manager: '计划主管',
-  planner: '计划员',
-  dispatcher: '报工员',
-  supervisor: '车间主任',
+// 角色:复用 i18n.js 已有的 role.* 翻译 (而不是再写一遍)
+const roleI18nKey = {
+  admin: 'role.admin',
+  planning_manager: 'role.planning_manager',
+  planner: 'role.planner',
+  dispatcher: 'role.dispatcher',
+  supervisor: 'role.supervisor',
 }
-const roleLabel = computed(() => roleMap[auth.user?.role] || '用户')
+const roleLabel = computed(() => {
+  const k = roleI18nKey[auth.user?.role]
+  return k ? t(k, langMode.value) : t('userSettings.roleFallback', langMode.value)
+})
 
-const workshopMap = {
-  cutting: '裁剪', printing: '印花', embroidery: '刺绣',
-  template: '模板', ironing: '烫标', sewing: '缝制',
+// 车间:复用 i18n.js 已有的 user.workshop.* 翻译
+const workshopI18nKey = {
+  cutting: 'user.workshop.cutting',
+  printing: 'user.workshop.printing',
+  embroidery: 'user.workshop.embroidery',
+  template: 'user.workshop.template',
+  ironing: 'user.workshop.ironing',
+  sewing: 'user.workshop.sewing',
 }
-const workshopLabel = computed(() => workshopMap[auth.user?.workshop] || auth.user?.workshop || '')
+const workshopLabel = computed(() => {
+  const k = workshopI18nKey[auth.user?.workshop]
+  if (k) return t(k, langMode.value)
+  return auth.user?.workshop || ''
+})
 
 const avatarLetter = computed(() => {
   const name = auth.user?.display_name || ''
@@ -211,7 +229,7 @@ function handleFileSelect(e) {
   const file = e.target.files[0]
   if (!file) return
   if (file.size > 5 * 1024 * 1024) {
-    ElMessage.error('图片不能超过 5MB')
+    ElMessage.error(t('userSettings.toast.imageTooLarge', langMode.value))
     return
   }
   selectedDefault.value = -1
@@ -250,7 +268,7 @@ function applyCrop() {
   ctx.drawImage(cropCanvas.value, 0, 0, 128, 128)
   pendingAvatarUrl.value = tmpCanvas.toDataURL('image/jpeg', 0.7)
   cropSrc.value = null
-  ElMessage.success('头像已裁剪')
+  ElMessage.success(t('userSettings.toast.cropped', langMode.value))
 }
 
 async function saveAvatar() {
@@ -262,49 +280,49 @@ async function saveAvatar() {
     await api.put(`/users/${auth.user.id}`, { avatar_url: pendingAvatarUrl.value })
     form.value.avatar_url = pendingAvatarUrl.value
     auth.user.avatar_url = pendingAvatarUrl.value
-    ElMessage.success('头像已更新')
+    ElMessage.success(t('userSettings.toast.avatarUpdated', langMode.value))
     showAvatarDialog.value = false
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+    ElMessage.error(e.response?.data?.error || t('userSettings.toast.saveFail', langMode.value))
   }
 }
 
 async function saveProfile() {
   if (!form.value.display_name) {
-    ElMessage.error('请输入姓名')
+    ElMessage.error(t('userSettings.toast.nameRequired', langMode.value))
     return
   }
   saving.value = true
   try {
     await api.put(`/users/${auth.user.id}`, { display_name: form.value.display_name })
     auth.user.display_name = form.value.display_name
-    ElMessage.success('保存成功')
+    ElMessage.success(t('userSettings.toast.saveOk', langMode.value))
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+    ElMessage.error(e.response?.data?.error || t('userSettings.toast.saveFail', langMode.value))
   }
   saving.value = false
 }
 
 async function changePassword() {
   if (!pwdForm.value.old_password || !pwdForm.value.new_password) {
-    ElMessage.error('请填写旧密码和新密码')
+    ElMessage.error(t('userSettings.toast.pwdRequired', langMode.value))
     return
   }
   if (pwdForm.value.new_password.length < 6) {
-    ElMessage.error('新密码至少 6 位')
+    ElMessage.error(t('userSettings.toast.pwdTooShort', langMode.value))
     return
   }
   if (pwdForm.value.new_password !== pwdForm.value.confirm_password) {
-    ElMessage.error('两次输入的密码不一致')
+    ElMessage.error(t('userSettings.toast.pwdMismatch', langMode.value))
     return
   }
   changingPwd.value = true
   try {
     await auth.changePassword(pwdForm.value.old_password, pwdForm.value.new_password)
-    ElMessage.success('密码修改成功')
+    ElMessage.success(t('userSettings.toast.pwdOk', langMode.value))
     pwdForm.value = { old_password: '', new_password: '', confirm_password: '' }
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '修改失败')
+    ElMessage.error(e.response?.data?.error || t('userSettings.toast.pwdFail', langMode.value))
   }
   changingPwd.value = false
 }

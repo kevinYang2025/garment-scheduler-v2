@@ -1,18 +1,16 @@
 <template>
   <div class="actual-review">
     <div class="page-header-bar">
-      <h2 class="page-heading">实际产量复核</h2>
-      <p class="page-desc">
-        车间:<b>{{ workshopNames[auth.workshop] || auth.workshop }}</b>
-        · 操作员:<b>{{ auth.user?.display_name }}</b>
-        · 改完会锁定,dispatcher 当天不能再报;要重新报工可点"解锁"
+      <h2 class="page-heading" style="white-space:pre-line">{{ t('actualReview.title') }}</h2>
+      <p class="page-desc" style="white-space:pre-line">
+        <span v-html="t('actualReview.desc', null, { workshop: workshopNames[scheduleType] || scheduleType || auth.workshop, operator: auth.user?.display_name || '' })"></span>
       </p>
     </div>
 
     <div class="toolbar">
       <el-select
         v-model="scheduleType"
-        placeholder="选择车间"
+        :placeholder="t('actualReview.filter.wsPh')"
         style="width: 160px"
         :disabled="auth.role === 'supervisor'"
         @change="load"
@@ -24,16 +22,16 @@
           :value="key"
         />
       </el-select>
-      <el-input v-model="filterStyle" placeholder="按款号过滤" clearable style="width: 240px" />
-      <el-button @click="load" type="primary" :loading="loading">刷新</el-button>
+      <el-input v-model="filterStyle" :placeholder="t('actualReview.filter.stylePh')" clearable style="width: 240px" />
+      <el-button @click="load" type="primary" :loading="loading"><span style="white-space:pre-line">{{ t('actualReview.btn.refresh') }}</span></el-button>
     </div>
 
     <el-table :data="filteredRows" v-loading="loading" border style="width: 100%; margin-top: 12px;">
-      <el-table-column prop="schedule_date" label="日期" width="120" sortable />
-      <el-table-column prop="style_no" label="款号" min-width="180" />
-      <el-table-column prop="color" label="颜色" width="100" />
-      <el-table-column prop="size_spec" label="尺码" width="100" />
-      <el-table-column label="实际数" width="160">
+      <el-table-column prop="schedule_date" :label="t('actualReview.cols.date')" width="120" sortable />
+      <el-table-column prop="style_no" :label="t('actualReview.cols.styleNo')" min-width="180" />
+      <el-table-column prop="color" :label="t('actualReview.cols.color')" width="100" />
+      <el-table-column prop="size_spec" :label="t('actualReview.cols.size')" width="100" />
+      <el-table-column :label="t('actualReview.cols.actual')" width="160">
         <template #default="{ row }">
           <el-input-number
             v-model="row.qty"
@@ -43,36 +41,36 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="锁定状态" width="160">
+      <el-table-column :label="t('actualReview.cols.lockStatus')" width="160">
         <template #default="{ row }">
-          <el-tag v-if="!row.locked_by_user_id" type="info">未锁</el-tag>
-          <el-tag v-else-if="row.locked_by_user_id === auth.user?.id" type="success">你锁的</el-tag>
-          <el-tag v-else type="warning" effect="dark">他人锁定</el-tag>
+          <el-tag v-if="!row.locked_by_user_id" type="info" style="white-space:pre-line">{{ t('actualReview.lock.unlocked') }}</el-tag>
+          <el-tag v-else-if="row.locked_by_user_id === auth.user?.id" type="success" style="white-space:pre-line">{{ t('actualReview.lock.mine') }}</el-tag>
+          <el-tag v-else type="warning" effect="dark" style="white-space:pre-line">{{ t('actualReview.lock.others') }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="修改记录" min-width="200">
+      <el-table-column :label="t('actualReview.cols.modRecord')" min-width="200">
         <template #default="{ row }">
           <div v-if="row.locked_by_name" class="mod-info">
-            <div class="mod-by">{{ row.locked_by_name }} 修改于 {{ formatLockedAt(row.locked_at) }}</div>
+            <div class="mod-by" style="white-space:pre-line">{{ t('actualReview.modRecord', null, { name: row.locked_by_name, time: formatLockedAt(row.locked_at) }) }}</div>
           </div>
           <span v-else class="mod-empty">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column :label="t('actualReview.cols.action')" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button @click="save(row)" type="primary" size="small" :disabled="isLockedByOther(row)">保存</el-button>
+          <el-button @click="save(row)" type="primary" size="small" :disabled="isLockedByOther(row)"><span style="white-space:pre-line">{{ t('actualReview.btn.save') }}</span></el-button>
           <el-button
             v-if="row.locked_by_user_id === auth.user?.id"
             @click="unlock(row)"
             size="small"
-          >解锁</el-button>
+          ><span style="white-space:pre-line">{{ t('actualReview.btn.unlock') }}</span></el-button>
         </template>
       </el-table-column>
     </el-table>
 
     <div v-if="!loading && filteredRows.length === 0" class="empty-state">
       <div class="empty-icon">📭</div>
-      <p>暂无 ACTUAL 记录(可能 dispatcher 还没报工)</p>
+      <p style="white-space:pre-line">{{ t('actualReview.empty') }}</p>
     </div>
   </div>
 </template>
@@ -81,18 +79,25 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { useI18n } from '../composables/useI18n'
 import api from '../api'
 
 const auth = useAuthStore()
+const { t } = useI18n()
 const rows = ref([])
 const loading = ref(false)
 const filterStyle = ref('')
 const scheduleType = ref(auth.workshop || '')
 
-const workshopNames = {
-  cutting: '裁剪车间', printing: '印花车间', embroidery: '刺绣车间',
-  template: '模板车间', ironing: '烫标车间', sewing: '缝制车间'
-}
+// 车间名 (从 i18n 字典读, both 模式自动双语)
+const workshopNames = computed(() => ({
+  cutting: t('actualReview.workshop.cutting'),
+  printing: t('actualReview.workshop.printing'),
+  embroidery: t('actualReview.workshop.embroidery'),
+  template: t('actualReview.workshop.template'),
+  ironing: t('actualReview.workshop.ironing'),
+  sewing: t('actualReview.workshop.sewing'),
+}))
 
 const filteredRows = computed(() => {
   if (!filterStyle.value) return rows.value
@@ -112,7 +117,7 @@ function formatLockedAt(v) {
 
 async function load() {
   if (!scheduleType.value) {
-    ElMessage.warning('请先选择车间')
+    ElMessage.warning(t('actualReview.toast.chooseWs'))
     rows.value = []
     return
   }
@@ -123,7 +128,7 @@ async function load() {
     })
     rows.value = r.data
   } catch (e) {
-    ElMessage.error('加载失败: ' + (e.response?.data?.error || e.message))
+    ElMessage.error(t('actualReview.toast.loadFail', null, { err: e.response?.data?.error || e.message }))
   } finally {
     loading.value = false
   }
@@ -134,22 +139,22 @@ async function save(row) {
     await api.put(`/schedule/daily/actual/${row.id}`, { qty: row.qty })
     row.locked_by_user_id = auth.user?.id
     row.locked_at = new Date().toISOString()
-    ElMessage.success('已保存并锁定')
+    ElMessage.success(t('actualReview.toast.saveOk'))
   } catch (e) {
-    ElMessage.error('保存失败: ' + (e.response?.data?.error || e.message))
+    ElMessage.error(t('actualReview.toast.saveFail', null, { err: e.response?.data?.error || e.message }))
   }
 }
 
 async function unlock(row) {
   try {
-    await ElMessageBox.confirm('解锁后 dispatcher 可以覆盖该行实际数,确认解锁?', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(t('actualReview.toast.confirmUnlock'), t('actualReview.toast.confirmTitle'), { type: 'warning' })
     await api.post(`/schedule/daily/actual/${row.id}/unlock`)
     row.locked_by_user_id = null
     row.locked_at = null
-    ElMessage.success('已解锁')
+    ElMessage.success(t('actualReview.toast.unlockOk'))
   } catch (e) {
     if (e === 'cancel') return
-    ElMessage.error('解锁失败: ' + (e.response?.data?.error || e.message))
+    ElMessage.error(t('actualReview.toast.unlockFail', null, { err: e.response?.data?.error || e.message }))
   }
 }
 

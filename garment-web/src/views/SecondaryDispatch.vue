@@ -1,6 +1,6 @@
 <script setup>
-// 通用二次加工报工（印花/刺绣/模板/烫标）
-// 录入后存入 actual_production，关联回排程页面
+// 通用二次加工报工(印花/刺绣/模板/烫标)
+// 录入后存入 actual_production,关联回排程页面
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -75,7 +75,7 @@ async function loadScheduleStyles() {
     }))
   } catch (e) {
     console.error('加载排程数据失败:', e)
-    ElMessage.error('加载排程数据失败')
+    ElMessage.error(t('secondaryDispatch.toast.loadSchFail'))
   }
 }
 
@@ -88,7 +88,7 @@ async function loadRecords() {
       .sort((a, b) => (b.production_date || '').localeCompare(a.production_date || ''))
   } catch (e) {
     console.error('加载报工记录失败:', e)
-    ElMessage.error('加载报工记录失败')
+    ElMessage.error(t('secondaryDispatch.toast.loadListFail'))
   }
   loading.value = false
 }
@@ -104,27 +104,29 @@ function openAdd(prefill) {
 }
 
 async function saveEntry() {
-  if (!form.value.style_no) { ElMessage.warning('请选择款号'); return }
-  if (!form.value.completed_qty || form.value.completed_qty <= 0) { ElMessage.warning('完成数量必须大于0'); return }
+  if (!form.value.style_no) { ElMessage.warning(t('secondaryDispatch.toast.noStyle')); return }
+  if (!form.value.completed_qty || form.value.completed_qty <= 0) { ElMessage.warning(t('secondaryDispatch.toast.qtyZero')); return }
   saving.value = true
   try {
     form.value.secondary_type = config.value.name  // 后端用短名
     await api.saveActual(form.value)
-    ElMessage.success('报工成功')
+    ElMessage.success(t('secondaryDispatch.toast.saveOk'))
     showEntry.value = false
     await loadRecords()
-  } catch (e) { ElMessage.error('报工失败: ' + (e.response?.data?.error || e.message)) }
+  } catch (e) {
+    ElMessage.error(t('secondaryDispatch.toast.saveFail', null, { err: e.response?.data?.error || e.message }))
+  }
   saving.value = false
 }
 
 async function deleteRecord(row) {
   try {
-    await ElMessageBox.confirm('确定删除这条报工记录？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(t('secondaryDispatch.toast.confirmDel'), t('secondaryDispatch.toast.confirmTitle'), { type: 'warning' })
     await api.deleteActual(row.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('secondaryDispatch.toast.deleteOk'))
     await loadRecords()
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('删除失败: ' + (e.response?.data?.error || e.message))
+    if (e !== 'cancel') ElMessage.error(t('secondaryDispatch.toast.deleteFail', null, { err: e.response?.data?.error || e.message }))
   }
 }
 
@@ -154,44 +156,44 @@ onMounted(async () => {
   <div class="dispatch-page">
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> 返回</el-button>
-        <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700">{{ config.icon }} {{ config.title }}</h2>
+        <el-button text @click="router.back()"><span style="margin-right:4px">←</span> <span style="white-space:pre-line">{{ t('cuttingDispatch.back') }}</span></el-button>
+        <h2 style="margin:0 0 0 12px;font-size:18px;font-weight:700;white-space:pre-line">{{ config.icon }} {{ config.title }}</h2>
       </div>
       <div class="header-actions">
-        <el-button type="primary" size="large" @click="openAdd()">+ 录入报工</el-button>
+        <el-button type="primary" size="large" @click="openAdd()"><span style="white-space:pre-line">{{ t('cuttingDispatch.addBtn') }}</span></el-button>
       </div>
     </div>
 
     <div class="summary-bar" v-if="records.length">
       <div class="summary-item">
         <span class="summary-value">{{ records.length }}</span>
-        <span class="summary-label">报工记录</span>
+        <span class="summary-label" style="white-space:pre-line">{{ t('cuttingDispatch.summary.records') }}</span>
       </div>
       <div class="summary-item">
         <span class="summary-value">{{ records.reduce((s, r) => s + (r.completed_qty || 0), 0).toLocaleString() }}</span>
-        <span class="summary-label">总完成数量</span>
+        <span class="summary-label" style="white-space:pre-line">{{ t('cuttingDispatch.summary.total') }}</span>
       </div>
       <div class="summary-item">
         <span class="summary-value">{{ summaryRows.length }}</span>
-        <span class="summary-label">涉及款式</span>
+        <span class="summary-label" style="white-space:pre-line">{{ t('cuttingDispatch.summary.styles') }}</span>
       </div>
     </div>
 
-    <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary)">加载中...</div>
+    <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary);white-space:pre-line">{{ t('common.loading') }}</div>
 
     <div v-else-if="records.length" class="excel-wrap">
       <table class="excel-table">
         <thead>
           <tr>
-            <th style="min-width:110px">款号</th>
-            <th style="min-width:70px">颜色</th>
-            <th style="min-width:60px">尺码</th>
-            <th style="min-width:80px">完成数量</th>
-            <th style="min-width:70px">不良数量</th>
-            <th style="min-width:100px">报工日期</th>
-            <th style="min-width:140px">录入时间</th>
-            <th style="min-width:80px">备注</th>
-            <th style="min-width:70px">操作</th>
+            <th style="min-width:110px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.styleNo') }}</span></th>
+            <th style="min-width:70px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.color') }}</span></th>
+            <th style="min-width:60px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.size') }}</span></th>
+            <th style="min-width:80px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.completed') }}</span></th>
+            <th style="min-width:70px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.defect') }}</span></th>
+            <th style="min-width:100px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.date') }}</span></th>
+            <th style="min-width:140px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.recordedAt') }}</span></th>
+            <th style="min-width:80px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.remark') }}</span></th>
+            <th style="min-width:70px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.action') }}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -204,14 +206,14 @@ onMounted(async () => {
             <td>{{ r.production_date || '' }}</td>
             <td style="font-size:11px;color:var(--text-tertiary)">{{ r.recorded_at || '' }}</td>
             <td>{{ r.remark || '' }}</td>
-            <td><el-button size="small" text type="danger" @click="deleteRecord(r)">删除</el-button></td>
+            <td><el-button size="small" text type="danger" @click="deleteRecord(r)"><span style="white-space:pre-line">{{ t('cuttingDispatch.delete') }}</span></el-button></td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div v-else style="text-align:center;padding:60px;color:var(--text-tertiary)">
-      暂无{{ config.name }}报工记录，点击"录入报工"开始
+    <div v-else style="text-align:center;padding:60px;color:var(--text-tertiary);white-space:pre-line">
+      {{ t('secondaryDispatch.empty') }}
     </div>
 
     <!-- 回到顶部 -->
@@ -221,47 +223,47 @@ onMounted(async () => {
 
     <el-dialog v-model="showEntry" :title="config.title" width="520px">
       <el-form :model="form" label-width="90px" size="default">
-        <el-form-item label="款号" required>
-          <el-select v-model="form.style_no" filterable placeholder="选择款号" style="width:100%"
+        <el-form-item :label="t('cuttingDispatch.form.styleNo')" required>
+          <el-select v-model="form.style_no" filterable :placeholder="t('cuttingDispatch.form.stylePh')" style="width:100%"
             @change="() => { form.color = ''; form.size_spec = '' }">
             <el-option v-for="s in [...new Set(scheduleStyles.map(s => s.style_no))]" :key="s" :label="s" :value="s" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="selectedProductName" label="品名">
+        <el-form-item v-if="selectedProductName" :label="t('cuttingDispatch.cols.product')">
           <span style="color:var(--primary)">{{ selectedProductName }}</span>
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12">
-            <el-form-item label="颜色">
-              <el-select v-model="form.color" filterable placeholder="选择颜色" style="width:100%" :disabled="!form.style_no">
+            <el-form-item :label="t('cuttingDispatch.form.color')">
+              <el-select v-model="form.color" filterable :placeholder="t('cuttingDispatch.form.colorPh')" style="width:100%" :disabled="!form.style_no">
                 <el-option v-for="c in colorsForStyle" :key="c" :label="c" :value="c" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="尺码">
-              <el-select v-model="form.size_spec" filterable placeholder="选择尺码" style="width:100%" :disabled="!form.style_no">
+            <el-form-item :label="t('cuttingDispatch.form.size')">
+              <el-select v-model="form.size_spec" filterable :placeholder="t('cuttingDispatch.form.sizePh')" style="width:100%" :disabled="!form.style_no">
                 <el-option v-for="s in sizesForStyleColor" :key="s" :label="s" :value="s" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="报工日期" required>
+        <el-form-item :label="t('cuttingDispatch.form.date')" required>
           <el-input v-model="form.production_date" type="date" />
         </el-form-item>
-        <el-form-item label="完成数量" required>
+        <el-form-item :label="t('cuttingDispatch.form.completed')" required>
           <el-input-number v-model="form.completed_qty" :min="0" :step="100" style="width:100%" />
         </el-form-item>
-        <el-form-item label="不良数量">
+        <el-form-item :label="t('cuttingDispatch.form.defect')">
           <el-input-number v-model="form.defect_qty" :min="0" :step="10" style="width:100%" />
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" placeholder="可选" />
+        <el-form-item :label="t('cuttingDispatch.form.remark')">
+          <el-input v-model="form.remark" :placeholder="t('cuttingDispatch.form.remarkPh')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showEntry = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveEntry">保存</el-button>
+        <el-button @click="showEntry = false"><span style="white-space:pre-line">{{ t('common.cancel') }}</span></el-button>
+        <el-button type="primary" :loading="saving" @click="saveEntry"><span style="white-space:pre-line">{{ t('cuttingDispatch.save') }}</span></el-button>
       </template>
     </el-dialog>
   </div>

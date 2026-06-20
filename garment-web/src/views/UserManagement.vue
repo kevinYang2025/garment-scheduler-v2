@@ -2,68 +2,68 @@
   <div class="user-mgmt-page">
     <!-- 页面标题 -->
     <div class="page-header-bar">
-      <h2 class="page-heading" style="white-space:pre-line">{{ t('user.title') }}</h2>
-      <el-button type="primary" @click="openAdd" :icon="Plus"><span style="white-space:pre-line">{{ t('user.addBtn') }}</span></el-button>
+      <h2 class="page-heading" style="white-space:pre-line">{{ t('user.title', 'zh') }}</h2>
+      <el-button type="primary" @click="openAdd" :icon="Plus"><span style="white-space:pre-line">{{ t('user.addBtn', 'zh') }}</span></el-button>
     </div>
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
-      <el-select v-model="filterRole" :placeholder="t('user.filterRole')" clearable style="width: 150px">
-        <el-option :label="t('user.role.admin')" value="admin" />
-        <el-option :label="t('user.role.planning_manager')" value="planning_manager" />
-        <el-option :label="t('user.role.planner')" value="planner" />
-        <el-option :label="t('user.role.dispatcher')" value="dispatcher" />
-        <el-option :label="t('user.role.supervisor')" value="supervisor" />
+      <el-select v-model="filterRole" :placeholder="t('user.filterRole', 'zh')" clearable style="width: 150px">
+        <el-option :label="t('user.role.admin', 'zh')" value="admin" />
+        <el-option :label="t('user.role.planning_manager', 'zh')" value="planning_manager" />
+        <el-option :label="t('user.role.planner', 'zh')" value="planner" />
+        <el-option :label="t('user.role.dispatcher', 'zh')" value="dispatcher" />
+        <el-option :label="t('user.role.supervisor', 'zh')" value="supervisor" />
       </el-select>
-      <el-select v-model="filterWorkshop" :placeholder="t('user.filterWorkshop')" clearable style="width: 150px">
-        <el-option :label="t('user.workshop.cutting')" value="cutting" />
-        <el-option :label="t('user.workshop.printing')" value="printing" />
-        <el-option :label="t('user.workshop.embroidery')" value="embroidery" />
-        <el-option :label="t('user.workshop.template')" value="template" />
-        <el-option :label="t('user.workshop.ironing')" value="ironing" />
-        <el-option :label="t('user.workshop.sewing')" value="sewing" />
+      <el-select v-model="filterWorkshop" :placeholder="t('user.filterWorkshop', 'zh')" clearable style="width: 150px">
+        <el-option :label="t('user.workshop.cutting', 'zh')" value="cutting" />
+        <el-option :label="t('user.workshop.printing', 'zh')" value="printing" />
+        <el-option :label="t('user.workshop.embroidery', 'zh')" value="embroidery" />
+        <el-option :label="t('user.workshop.template', 'zh')" value="template" />
+        <el-option :label="t('user.workshop.ironing', 'zh')" value="ironing" />
+        <el-option :label="t('user.workshop.sewing', 'zh')" value="sewing" />
       </el-select>
-      <el-input v-model="filterName" :placeholder="t('user.searchPh')" clearable style="width: 200px" :prefix-icon="Search" />
+      <el-input v-model="filterName" :placeholder="t('user.searchPh', 'zh')" clearable style="width: 200px" :prefix-icon="Search" />
     </div>
 
     <!-- 用户表格 -->
     <el-table :data="filteredUsers" border stripe style="width: 100%" v-loading="loading">
       <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column :label="t('user.username')" width="140">
+      <el-table-column :label="t('user.username', 'zh')" width="140">
         <template #default="{ row }">
           <div style="white-space:pre-line;line-height:1.3">{{ row.username || '-' }}{{ row.username_km ? '\n' + row.username_km : '' }}</div>
         </template>
       </el-table-column>
-      <el-table-column :label="t('user.full_name')" min-width="120">
+      <el-table-column :label="t('user.full_name', 'zh')" min-width="120">
         <template #default="{ row }">
           <div style="white-space:pre-line;line-height:1.3">{{ row.display_name || '-' }}{{ row.display_name_km ? '\n' + row.display_name_km : '' }}</div>
         </template>
       </el-table-column>
-      <el-table-column :label="t('user.role')" width="130">
+      <el-table-column :label="t('user.role', 'zh')" width="130">
         <template #default="{ row }">
           <el-tag :type="roleTagType(row.role)" size="small"><span style="white-space:pre-line">{{ roleLabel(row.role) }}</span></el-tag>
         </template>
       </el-table-column>
-      <el-table-column :label="t('user.workshop')" width="100">
+      <el-table-column :label="t('user.workshop', 'zh')" width="100">
         <template #default="{ row }">
           <span style="white-space:pre-line">{{ row.workshop ? workshopLabel(row.workshop) : '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column :label="t('user.status')" width="100" align="center">
+      <el-table-column :label="t('user.status', 'zh')" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="row.active ? 'success' : 'info'" size="small">
-            <span style="white-space:pre-line">{{ row.active ? t('user.active') : t('user.inactive') }}</span>
+            <span style="white-space:pre-line">{{ row.active ? t('user.active', 'zh') : t('user.inactive', 'zh') }}</span>
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="created_at" :label="t('user.createdAt')" width="160" />
-      <el-table-column :label="t('user.cols.action')" min-width="260" fixed="right">
+      <el-table-column prop="created_at" :label="t('user.createdAt', 'zh')" width="160" />
+      <el-table-column :label="t('user.cols.action', 'zh')" min-width="260" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openEdit(row)"><span style="white-space:pre-line">{{ t('common.edit') }}</span></el-button>
-          <el-button size="small" type="warning" @click="openResetPwd(row)"><span style="white-space:pre-line">{{ t('user.resetPwd') }}</span></el-button>
-          <el-button v-if="row.role === 'dispatcher'" size="small" type="warning" @click="openResetPin(row)"><span style="white-space:pre-line">{{ t('user.resetPin') }}</span></el-button>
+          <el-button size="small" @click="openEdit(row)"><span style="white-space:pre-line">{{ t('common.edit', 'zh') }}</span></el-button>
+          <el-button size="small" type="warning" @click="openResetPwd(row)"><span style="white-space:pre-line">{{ t('user.resetPwd', 'zh') }}</span></el-button>
+          <el-button v-if="row.role === 'dispatcher'" size="small" type="warning" @click="openResetPin(row)"><span style="white-space:pre-line">{{ t('user.resetPin', 'zh') }}</span></el-button>
           <el-button size="small" :type="row.active ? 'danger' : 'success'" @click="toggleActive(row)">
-            <span style="white-space:pre-line">{{ row.active ? t('user.inactive') : t('user.active') }}</span>
+            <span style="white-space:pre-line">{{ row.active ? t('user.inactive', 'zh') : t('user.active', 'zh') }}</span>
           </el-button>
         </template>
       </el-table-column>
@@ -71,75 +71,75 @@
 
     <!-- 新增/编辑弹窗 -->
     <el-dialog v-model="dialogVisible" width="520px" destroy-on-close>
-      <template #title><span style="white-space:pre-line">{{ isEdit ? t('user.editTitle') : t('user.addTitle') }}</span></template>
+      <template #title><span style="white-space:pre-line">{{ isEdit ? t('user.editTitle', 'zh') : t('user.addTitle', 'zh') }}</span></template>
       <el-form :model="form" label-width="100px" :rules="formRules" ref="formRef">
-        <el-form-item :label="t('user.username')" prop="username">
-          <el-input v-model="form.username" :disabled="isEdit" :placeholder="t('user.usernamePh')" />
+        <el-form-item :label="t('user.username', 'zh')" prop="username">
+          <el-input v-model="form.username" :disabled="isEdit" :placeholder="t('user.usernamePh', 'zh')" />
         </el-form-item>
-        <el-form-item :label="t('user.username_km')">
-          <el-input v-model="form.username_km" :placeholder="t('user.username_kmPh')" />
+        <el-form-item :label="t('user.username_km', 'zh')">
+          <el-input v-model="form.username_km" :placeholder="t('user.username_kmPh', 'zh')" />
         </el-form-item>
-        <el-form-item :label="t('user.full_name')" prop="display_name">
-          <el-input v-model="form.display_name" :placeholder="t('user.displayNamePh')" />
+        <el-form-item :label="t('user.full_name', 'zh')" prop="display_name">
+          <el-input v-model="form.display_name" :placeholder="t('user.displayNamePh', 'zh')" />
         </el-form-item>
-        <el-form-item :label="t('user.display_name_km')">
-          <el-input v-model="form.display_name_km" :placeholder="t('user.displayNameKmPh')" />
+        <el-form-item :label="t('user.display_name_km', 'zh')">
+          <el-input v-model="form.display_name_km" :placeholder="t('user.displayNameKmPh', 'zh')" />
         </el-form-item>
-        <el-form-item :label="t('user.role')" prop="role">
+        <el-form-item :label="t('user.role', 'zh')" prop="role">
           <el-select v-model="form.role" style="width: 100%">
-            <el-option :label="t('user.role.admin')" value="admin" />
-            <el-option :label="t('user.role.planning_manager')" value="planning_manager" />
-            <el-option :label="t('user.role.planner')" value="planner" />
-            <el-option :label="t('user.role.dispatcher')" value="dispatcher" />
-            <el-option :label="t('user.role.supervisor')" value="supervisor" />
+            <el-option :label="t('user.role.admin', 'zh')" value="admin" />
+            <el-option :label="t('user.role.planning_manager', 'zh')" value="planning_manager" />
+            <el-option :label="t('user.role.planner', 'zh')" value="planner" />
+            <el-option :label="t('user.role.dispatcher', 'zh')" value="dispatcher" />
+            <el-option :label="t('user.role.supervisor', 'zh')" value="supervisor" />
           </el-select>
         </el-form-item>
-        <el-form-item :label="t('user.workshop')" prop="workshop" v-if="needsWorkshop">
-          <el-select v-model="form.workshop" style="width: 100%" :placeholder="t('user.workshopPh')">
-            <el-option :label="t('user.workshop.cutting')" value="cutting" />
-            <el-option :label="t('user.workshop.printing')" value="printing" />
-            <el-option :label="t('user.workshop.embroidery')" value="embroidery" />
-            <el-option :label="t('user.workshop.template')" value="template" />
-            <el-option :label="t('user.workshop.ironing')" value="ironing" />
-            <el-option :label="t('user.workshop.sewing')" value="sewing" />
+        <el-form-item :label="t('user.workshop', 'zh')" prop="workshop" v-if="needsWorkshop">
+          <el-select v-model="form.workshop" style="width: 100%" :placeholder="t('user.workshopPh', 'zh')">
+            <el-option :label="t('user.workshop.cutting', 'zh')" value="cutting" />
+            <el-option :label="t('user.workshop.printing', 'zh')" value="printing" />
+            <el-option :label="t('user.workshop.embroidery', 'zh')" value="embroidery" />
+            <el-option :label="t('user.workshop.template', 'zh')" value="template" />
+            <el-option :label="t('user.workshop.ironing', 'zh')" value="ironing" />
+            <el-option :label="t('user.workshop.sewing', 'zh')" value="sewing" />
           </el-select>
         </el-form-item>
-        <el-form-item :label="t('user.password')" prop="password" v-if="form.role !== 'dispatcher'">
-          <el-input v-model="form.password" type="password" show-password :placeholder="isEdit ? t('user.passwordKeep') : t('user.passwordNew')" />
+        <el-form-item :label="t('user.password', 'zh')" prop="password" v-if="form.role !== 'dispatcher'">
+          <el-input v-model="form.password" type="password" show-password :placeholder="isEdit ? t('user.passwordKeep', 'zh') : t('user.passwordNew', 'zh')" />
         </el-form-item>
-        <el-form-item :label="t('user.pin')" prop="pin" v-if="form.role === 'dispatcher'">
-          <el-input v-model="form.pin" maxlength="4" :placeholder="isEdit ? t('user.passwordKeep') : t('user.pinNew')" />
+        <el-form-item :label="t('user.pin', 'zh')" prop="pin" v-if="form.role === 'dispatcher'">
+          <el-input v-model="form.pin" maxlength="4" :placeholder="isEdit ? t('user.passwordKeep', 'zh') : t('user.pinNew', 'zh')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false"><span style="white-space:pre-line">{{ t('common.cancel') }}</span></el-button>
-        <el-button type="primary" :loading="saving" @click="submitForm"><span style="white-space:pre-line">{{ t('common.confirm') }}</span></el-button>
+        <el-button @click="dialogVisible = false"><span style="white-space:pre-line">{{ t('common.cancel', 'zh') }}</span></el-button>
+        <el-button type="primary" :loading="saving" @click="submitForm"><span style="white-space:pre-line">{{ t('common.confirm', 'zh') }}</span></el-button>
       </template>
     </el-dialog>
 
     <!-- 重置密码弹窗 -->
     <el-dialog v-model="resetPwdVisible" width="400px" destroy-on-close>
-      <template #title><span style="white-space:pre-line">{{ t('user.resetPwd') }}</span></template>
-      <p style="margin-bottom: 12px;white-space:pre-line">{{ t('user.resetPwdDesc', { name: resetTarget?.display_name, user: resetTarget?.username }) }}</p>
-      <el-form-item :label="t('user.password')">
-        <el-input v-model="resetNewPwd" type="password" show-password :placeholder="t('user.passwordNew')" />
+      <template #title><span style="white-space:pre-line">{{ t('user.resetPwd', 'zh') }}</span></template>
+      <p style="margin-bottom: 12px;white-space:pre-line">{{ t('user.resetPwdDesc', 'zh', { name: resetTarget?.display_name, user: resetTarget?.username }) }}</p>
+      <el-form-item :label="t('user.password', 'zh')">
+        <el-input v-model="resetNewPwd" type="password" show-password :placeholder="t('user.passwordNew', 'zh')" />
       </el-form-item>
       <template #footer>
-        <el-button @click="resetPwdVisible = false"><span style="white-space:pre-line">{{ t('common.cancel') }}</span></el-button>
-        <el-button type="primary" :loading="resetting" @click="doResetPwd"><span style="white-space:pre-line">{{ t('common.confirm') }}</span></el-button>
+        <el-button @click="resetPwdVisible = false"><span style="white-space:pre-line">{{ t('common.cancel', 'zh') }}</span></el-button>
+        <el-button type="primary" :loading="resetting" @click="doResetPwd"><span style="white-space:pre-line">{{ t('common.confirm', 'zh') }}</span></el-button>
       </template>
     </el-dialog>
 
     <!-- 重置 PIN 弹窗 -->
     <el-dialog v-model="resetPinVisible" width="400px" destroy-on-close>
-      <template #title><span style="white-space:pre-line">{{ t('user.resetPin') }}</span></template>
-      <p style="margin-bottom: 12px;white-space:pre-line">{{ t('user.resetPinDesc', { name: resetTarget?.display_name, user: resetTarget?.username }) }}</p>
-      <el-form-item :label="t('user.pin')">
-        <el-input v-model="resetNewPin" maxlength="4" :placeholder="t('user.pinNew')" />
+      <template #title><span style="white-space:pre-line">{{ t('user.resetPin', 'zh') }}</span></template>
+      <p style="margin-bottom: 12px;white-space:pre-line">{{ t('user.resetPinDesc', 'zh', { name: resetTarget?.display_name, user: resetTarget?.username }) }}</p>
+      <el-form-item :label="t('user.pin', 'zh')">
+        <el-input v-model="resetNewPin" maxlength="4" :placeholder="t('user.pinNew', 'zh')" />
       </el-form-item>
       <template #footer>
-        <el-button @click="resetPinVisible = false"><span style="white-space:pre-line">{{ t('common.cancel') }}</span></el-button>
-        <el-button type="primary" :loading="resetting" @click="doResetPin"><span style="white-space:pre-line">{{ t('common.confirm') }}</span></el-button>
+        <el-button @click="resetPinVisible = false"><span style="white-space:pre-line">{{ t('common.cancel', 'zh') }}</span></el-button>
+        <el-button type="primary" :loading="resetting" @click="doResetPin"><span style="white-space:pre-line">{{ t('common.confirm', 'zh') }}</span></el-button>
       </template>
     </el-dialog>
   </div>

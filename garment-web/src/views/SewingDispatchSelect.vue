@@ -7,12 +7,12 @@
     <div class="sdh-grid">
       <div
         v-for="ws in workshops"
-        :key="ws"
+        :key="ws.key"
         class="sdh-card"
-        @click="$router.push({ name: 'sewing-dispatch-detail', query: { workshop: ws } })"
+        @click="$router.push({ name: 'sewing-dispatch-detail', query: { workshop: ws.key } })"
       >
         <div class="sdh-card-icon">🏭</div>
-        <div class="sdh-card-name">{{ ws }}</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ ws.label }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
     </div>
@@ -20,10 +20,20 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useI18n } from '../composables/useI18n'
+
 const { t } = useI18n()
 // 缝制报工选车间页(Step 6 再按角色过滤)
-const workshops = ['一车间', '二车间', '三车间', '四车间', '五车间']
+// 5 个缝制车间: key 是后端实际存的值('一车间'..'五车间'), label 走 i18n 字典双语显示
+// 不能改 key 为 ws1 — SewingDispatch.vue 第 35/49 行直接用 props.workshop 跟后端 m.workshop 字段比对
+const workshops = computed(() => [
+  { key: '一车间', label: t('workshopNames.ws1') },
+  { key: '二车间', label: t('workshopNames.ws2') },
+  { key: '三车间', label: t('workshopNames.ws3') },
+  { key: '四车间', label: t('workshopNames.ws4') },
+  { key: '五车间', label: t('workshopNames.ws5') },
+])
 </script>
 
 <style scoped>
