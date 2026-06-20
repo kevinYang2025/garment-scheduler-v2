@@ -1515,6 +1515,19 @@ function capacityPrecheck() {
 }
 
 // ============================================================
+// 单号生成器 (ASN/DN 等通用)
+// ============================================================
+// [2026-06-20 fix#业务-P3-4] 抽出到 db 层便于单元测试
+// 用法: genCode('ASN', 'asn_list', 'asn_code', 3)
+//   → 'ASN20260620001' (按当天日期+当日序号)
+function genCode(prefix, tableName, codeColumn, padLen = 3) {
+  const now = new Date();
+  const d = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const row = db.prepare(`SELECT COUNT(*) as c FROM ${tableName} WHERE ${codeColumn} LIKE ?`).get(`${prefix}${d}%`);
+  return `${prefix}${d}${String(row.c + 1).padStart(padLen, '0')}`;
+}
+
+// ============================================================
 // 工作日历辅助函数
 // ============================================================
 function isWorkday(dateStr) {
@@ -1672,6 +1685,7 @@ module.exports = {
   getSystemParam, setSystemParam, listSystemParams,
   recordCutPiecesInbound, rollbackCutPiecesInbound, checkActualDeletable,
   fmtLocal,  // [2026-06-20 fix#业务-P3-4] 暴露 fmtLocal 便于单元测试
+  genCode,    // [2026-06-20 fix#业务-P3-4] 单号生成器 (从 server.js 抽出)
   _setDbForTest,  // 测试用注入 :memory: db
 };
 

@@ -4731,13 +4731,8 @@ app.post('/api/warehouse/:type/import', warehouseTypeGuard, (req, res) => {
 // ============================================================
 // ASN 到货通知单（入库流程）
 // ============================================================
-// 生成 ASN 单号
-function genAsnCode() {
-  const now = new Date();
-  const d = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-  const count = db.get("SELECT COUNT(*) as c FROM asn_list WHERE asn_code LIKE ?", [`ASN${d}%`]).c;
-  return `ASN${d}${String(count + 1).padStart(3, '0')}`;
-}
+// [2026-06-20 fix#业务-P3-4] genAsnCode 移到 db.js (db.genCode),便于单元测试
+const genAsnCode = () => db.genCode('ASN', 'asn_list', 'asn_code', 3);
 
 app.get('/api/asn', (req, res) => {
   try {
