@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { formatLocal as fmtLocal } from '../utils/date'
 
 const plans = ref([])
 const loading = ref(true)
@@ -56,13 +57,6 @@ async function updateStatus(id, status) {
     await api.updateShippingPlan(id, { ...plan, status })
     await loadPlans()
   } catch {}
-}
-
-function fmtLocal(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
 }
 
 function openCreate() {
