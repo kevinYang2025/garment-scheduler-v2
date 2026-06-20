@@ -5539,6 +5539,9 @@ if (AUTH_ENABLED) {
 }
 
 // [fix#13] Safe broadcast
+// [2026-06-20 fix#后端-P2-8] 在线用户 Map,O(1) 查询代替 io.sockets.sockets 全扫
+const __onlineUsers = new Map();
+
 // [2026-06-20 fix#后端-P2-3] section 名白名单 + 字符限制,防 req.params 污染 broadcast section
 const ALLOWED_BROADCAST_SECTIONS = new Set([
   'styles', 'productionLines', 'mainPlan', 'actual', 'warehouse', 'capacityConfig',
@@ -5563,14 +5566,17 @@ io.on('connection', (socket) => {
 
   socket.emit('initData', db.getFullData());
 
+  // [2026-06-20 fix#后端-P2-8] 维护 userName Map,避免 Array.from 全扫(高并发下 O(N))
   socket.on('join', (userName) => {
     socket.userName = userName || '匿名';
-    io.emit('userList', Array.from(io.sockets.sockets.values()).map(s => s.userName).filter(Boolean));
+    __onlineUsers.set(socket.id, socket.userName);
+    io.emit('userList', Array.from(__onlineUsers.values()));
   });
 
   socket.on('disconnect', () => {
     console.log(`🔌 用户断开: ${socket.id}`);
-    io.emit('userList', Array.from(io.sockets.sockets.values()).map(s => s.userName).filter(Boolean));
+    __onlineUsers.delete(socket.id);
+    io.emit('userList', Array.from(__onlineUsers.values()));
   });
 });
 
