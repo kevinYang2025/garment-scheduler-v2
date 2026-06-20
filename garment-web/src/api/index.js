@@ -3,9 +3,11 @@ import router from '@/router'
 import { useAuthStore } from '@/stores/auth'
 
 // [2026-06-18] 用户系统:加 withCredentials 让 session cookie 跨请求保持
+// [2026-06-20 fix#前端-P3-2] 加 timeout 30s,避免请求 hang 死锁页面
 const api = axios.create({
   baseURL: '/api',
   withCredentials: true,
+  timeout: 30000,
 })
 
 api.interceptors.response.use(
