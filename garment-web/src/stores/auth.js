@@ -7,6 +7,7 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,           // 当前登录用户
     initialized: false,   // 是否已尝试过 /me 拉取
+    lastFetchedAt: 0,     // [2026-06-20 fix#前端-P1-6] 上次 fetchMe 时间戳,路由守卫 5 分钟轮询
     loading: false,       // 登录中
   }),
 
@@ -30,6 +31,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = null
       } finally {
         this.initialized = true
+        this.lastFetchedAt = Date.now()
       }
     },
 

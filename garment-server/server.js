@@ -15,6 +15,14 @@ const PORT = process.env.PORT || 3001;
 const AUTH_ENABLED = process.env.AUTH_ENABLED === 'true';
 const API_TOKEN = process.env.API_TOKEN || 'garment-dev-token';
 
+// [2026-06-20 fix#后端-P1-7] 启动期安全检查:开启鉴权时禁止 CORS_ORIGINS=*
+// 防止开发期调试用 * + 关 AUTH → 整个 API 裸奔
+if (AUTH_ENABLED && (!process.env.CORS_ORIGINS || process.env.CORS_ORIGINS.split(',').includes('*'))) {
+  console.error('[FATAL] AUTH_ENABLED=true 时 CORS_ORIGINS 不能是 * 或未设置,会与 withCredentials 冲突导致鉴权失效。');
+  console.error('  请设置 CORS_ORIGINS=http://your-frontend-domain 之类具体值。');
+  process.exit(1);
+}
+
 function fmtLocal(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

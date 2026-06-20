@@ -5,6 +5,11 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 
+// [2026-06-20 fix#前端-P1-6] 路由守卫刷新:5 分钟内已拉取过 /me 则不重拉
+// 防御:admin 停用某 supervisor → session 7 天内仍可访问(后端鉴权还在但前端不感知)
+// 5 分钟轮询一次,代价低,响应 401 时由 api/index.js 拦截器主动 logout
+const ME_REFRESH_INTERVAL_MS = 5 * 60 * 1000
+
 // 静态路由(不按需加载,首次全加载,工厂场景页面不多)
 import Login from '../views/Login.vue'
 import Forbidden from '../views/Forbidden.vue'
@@ -148,7 +153,9 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
   // 首次启动拉取 me(session cookie 自动带)
-  if (!auth.initialized) {
+  // [2026-06-20 fix#前端-P1-6] 每 5 分钟刷新一次,防已停用账号在前端缓存中仍能访问
+  const now = Date.now()
+  if (!auth.initialized || (auth.lastFetchedAt && now - auth.lastFetchedAt > ME_REFRESH_INTERVAL_MS)) {
     await auth.fetchMe()
   }
 
