@@ -264,4 +264,46 @@ export default {
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(blobUrl); a.remove(); }, 0);
   },
+
+  // [2026-06-20 fix#业务-P2-4] ETag/If-Match 乐观锁 helper
+  // 用法:
+  //   await api.etagPut('/production-lines/123', { status: '生产中' })
+  // 自动:
+  //   1. 先 GET 拿 ETag
+  //   2. PUT 时发 If-Match
+  //   3. 收到 412 → 自动重试一次 (重新 GET 拿新 ETag 后再 PUT)
+  //   4. 第二次 412 → 抛出冲突错误让 UI 处理
+  etagPut: async (url, data, opts = {}) => {
+    const maxRetries = opts.maxRetries ?? 1;
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      let etag;
+      try {
+        const getRes = await api.get(url);
+        etag = getRes.headers?.etag;
+      } catch (e) {
+        // GET 失败 (如 404),不强制要求 If-Match,直接 PUT
+        etag = null;
+      }
+      try {
+        const config = etag ? { headers: { 'If-Match': etag } } : {};
+        return await api.put(url, data, config);
+      } catch (err) {
+        const status = err.response?.status;
+        if (status === 412 && attempt <= maxRetries) {
+          // 冲突,重试一次 (重新 GET 拿最新 ETag)
+          continue;
+        }
+        if (status === 412) {
+          // 重试后仍冲突,抛出语义化错误
+          const e = new Error('资源已被其他用户修改,请刷新页面后重试');
+          e.code = 'ETAG_CONFLICT';
+          e.attempts = attempt;
+          throw e;
+        }
+        throw err;
+      }
+    }
+  },
 }
