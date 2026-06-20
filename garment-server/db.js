@@ -1511,9 +1511,11 @@ function logOperation(module, action, targetId, targetName, detail, userId) {
 //   - 款式有 印花/刺绣 → 入库源 = 裁剪二检 A品 (is_second_inspection=1)
 //   - 款式有 模板      → 入库源 = 模板报工
 //   - 两者都没有        → 入库源 = 裁剪一检 A品 (is_second_inspection=0)
-function recordCutPiecesInbound(actual) {
+// [2026-06-20 fix#后端-P1-4/5] 接 rawDb 参数(可选),transaction 内调用时传 rawDb 让 SQL 走同一事务
+function recordCutPiecesInbound(actual, rawDb = null) {
+  const conn = rawDb || db;
   if (!actual || !actual.style_no) return;
-  const st = db.prepare('SELECT printing, embroidery, template FROM styles WHERE style_no = ?').get(actual.style_no);
+  const st = conn.prepare('SELECT printing, embroidery, template FROM styles WHERE style_no = ?').get(actual.style_no);
   const hasSecondary = !!(st && ((st.printing || '').trim() || (st.embroidery || '').trim()));
   const hasTemplate  = !!(st && (st.template || '').trim());
 
@@ -1536,7 +1538,7 @@ function recordCutPiecesInbound(actual) {
   if (qty <= 0) return;
 
   // 1) 写 audit log
-  db.prepare(`INSERT INTO warehouse_inbound
+  conn.prepare(`INSERT INTO warehouse_inbound
     (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator, remark)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     'cutting_piece', inboundType, actual.id,
@@ -1545,18 +1547,20 @@ function recordCutPiecesInbound(actual) {
     actual.worker_name || '', `报工 #${actual.id} 自动入库 (${inboundType})`);
 
   // 2) UPSERT 库存
-  upsertInventoryDelta('cutting_piece', actual.style_no, actual.color || '', actual.size_spec || '', qty);
+  upsertInventoryDelta('cutting_piece', actual.style_no, actual.color || '', actual.size_spec || '', qty, rawDb);
 }
 
-function upsertInventoryDelta(warehouseType, styleNo, color, sizeSpec, deltaQty) {
-  const exist = db.prepare(`SELECT id FROM warehouse_inventory
+function upsertInventoryDelta(warehouseType, styleNo, color, sizeSpec, deltaQty, rawDb = null) {
+  // [2026-06-20 fix#后端-P1-5] 接 rawDb 让外层 transaction 上下文生效
+  const conn = rawDb || db;
+  const exist = conn.prepare(`SELECT id FROM warehouse_inventory
     WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ''`).get(
     warehouseType, styleNo, color, sizeSpec);
   if (exist) {
-    db.prepare(`UPDATE warehouse_inventory SET current_qty = current_qty + ?, updated_at = datetime('now','localtime') WHERE id = ?`)
+    conn.prepare(`UPDATE warehouse_inventory SET current_qty = current_qty + ?, updated_at = datetime('now','localtime') WHERE id = ?`)
       .run(deltaQty, exist.id);
   } else {
-    db.prepare(`INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, pot_no, current_qty)
+    conn.prepare(`INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, pot_no, current_qty)
       VALUES (?, ?, ?, ?, '', ?)`).run(warehouseType, styleNo, color, sizeSpec, deltaQty);
   }
 }
@@ -1579,12 +1583,14 @@ function checkActualDeletable(actual) {
 }
 
 // 报工删除回滚：冲账 + 删 audit log
-function rollbackCutPiecesInbound(actual) {
-  const inbounds = db.prepare(`SELECT * FROM warehouse_inbound
+function rollbackCutPiecesInbound(actual, rawDb = null) {
+  // [2026-06-20 fix#后端-P1-4] 接 rawDb 让 transaction 内调用时 SQL 走同一事务
+  const conn = rawDb || db;
+  const inbounds = conn.prepare(`SELECT * FROM warehouse_inbound
     WHERE warehouse_type = 'cutting_piece' AND ref_id = ?`).all(actual.id);
   for (const ib of inbounds) {
-    upsertInventoryDelta('cutting_piece', actual.style_no, actual.color || '', actual.size_spec || '', -(parseInt(ib.qty) || 0));
-    db.prepare('DELETE FROM warehouse_inbound WHERE id = ?').run(ib.id);
+    upsertInventoryDelta('cutting_piece', actual.style_no, actual.color || '', actual.size_spec || '', -(parseInt(ib.qty) || 0), rawDb);
+    conn.prepare('DELETE FROM warehouse_inbound WHERE id = ?').run(ib.id);
   }
 }
 

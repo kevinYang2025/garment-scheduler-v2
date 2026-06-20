@@ -3802,10 +3802,12 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
          newIsSecond, newSourceType, req.params.id]);
 
       // [2026-06-19] 如果二检标记/数量变了 → 回滚旧入库并按新值重入
+      // [2026-06-20 fix#后端-P1-4] 传 rawDb 让 recordCutPiecesInbound SQL 走当前 transaction
+      const rawDb = db.getDb();
       if (oldIsSecond !== newIsSecond || oldQty !== newQty) {
-        db.rollbackCutPiecesInbound(existing);
+        db.rollbackCutPiecesInbound(existing, rawDb);
         const updated = { ...existing, ...r, is_second_inspection: newIsSecond, source_type: newSourceType, completed_qty: newQty };
-        db.recordCutPiecesInbound(updated);
+        db.recordCutPiecesInbound(updated, rawDb);
       }
 
       // syncActualToDaily 内部自带事务(SQLite SAVEPOINT 兼容嵌套)
@@ -3835,7 +3837,9 @@ app.delete('/api/actual/:id', requireRole('supervisor', 'admin'), (req, res) => 
     // P0 安全: 整个删除流程包事务,任一步骤失败回滚
     const delTxn = db.getDb().transaction(() => {
       // [2026-06-19] 回滚裁片库入库
-      db.rollbackCutPiecesInbound(existing);
+      // [2026-06-20 fix#后端-P1-4] 传 rawDb 让 SQL 走当前 transaction
+      const rawDb = db.getDb();
+      db.rollbackCutPiecesInbound(existing, rawDb);
 
       db.run('DELETE FROM actual_production WHERE id = ?', [req.params.id]);
 
@@ -3882,7 +3886,8 @@ app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), 
            r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '',
            parseInt(r.is_second_inspection) || 0, r.source_type || '']);
         // [2026-06-19] 报工完成 → 自动入裁片库
-        db.recordCutPiecesInbound({ id: result.lastInsertRowid, ...r });
+        // [2026-06-20 fix#后端-P1-4] 传 rawDb 让 SQL 走当前 transaction
+        db.recordCutPiecesInbound({ id: result.lastInsertRowid, ...r }, db.getDb());
         syncActualToDaily(r);
         if (r.style_id) styleIds.add(r.style_id);
         inserted++;
