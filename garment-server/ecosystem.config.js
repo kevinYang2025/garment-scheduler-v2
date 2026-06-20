@@ -3,6 +3,12 @@
 //                  跑在不同 cwd 会让 DB 写到错地方)
 // env_file 指向 /opt/garment/env/garment.env (不在 git 里, chmod 600)
 // 仅用于云端生产部署,本地 dev 仍用 `node server.js` 或 start-dev.bat
+// [2026-06-20 fix#后端-P3-8] log rotation: 部署后运行
+//   pm2 install pm2-logrotate
+//   pm2 set pm2-logrotate:max_size 50M
+//   pm2 set pm2-logrotate:retain 14
+//   pm2 set pm2-logrotate:compress true
+//   (pm2-logrotate 自动接管 error_file/out_file,按 size/天数切割 + gzip)
 
 module.exports = {
   apps: [
