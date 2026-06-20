@@ -238,9 +238,6 @@ function isFirstOfGroup(row) {
 
 // Re-sync column widths when body rows change
 watch(filteredPlans, () => { setTimeout(syncColWidths, 0) })
-// [2026-06-20 fix#前端-P3-3] 监听 form.plan_qty + form.due_date 自动触发 autoCalcDates (debounced)
-// 替代手动 @change + onStyleSelect 双调用,统一由 watch 触发
-watch([() => form.value.plan_qty, () => form.value.due_date], () => scheduleAutoCalc())
 
 async function load() {
   loading.value = true
@@ -295,9 +292,45 @@ const form = ref({})
 
 const configCache = ref({ shippingBuffer: 5, pickingDays: 3, lineChangeDays: 0.5, sewingCapacity: 800, cuttingCapacity: 30000 })
 
+// 工作日历数据（loadConfig 时加载）
+const workCalendar = { work_days: '1111100', exceptions: {} }
+
+function isWorkday(dateStr) {
+  // 例外日期优先
+  if (workCalendar.exceptions[dateStr] !== undefined) {
+    return workCalendar.exceptions[dateStr] === 1
+  }
+  const d = new Date(dateStr + 'T00:00:00')
+  const dayOfWeek = d.getDay() // 0=周日, 1=周一, ..., 6=周六
+  const idx = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // 转为 0=周一, ..., 6=周日
+  return workCalendar.work_days[idx] === '1'
+}
+
+// 从 endDate 倒推 N 个工作日（不含 endDate 自身），返回起始工作日
+function subtractWorkdays(endDateStr, workdayCount) {
+  if (workdayCount <= 0) return endDateStr
+  let remaining = workdayCount
+  let current = new Date(endDateStr + 'T00:00:00')
+  let guard = 0
+  while (remaining > 0 && guard < 1000) {
+    current.setDate(current.getDate() - 1)
+    const y = current.getFullYear()
+    const m = String(current.getMonth() + 1).padStart(2, '0')
+    const d = String(current.getDate()).padStart(2, '0')
+    const ds = `${y}-${m}-${d}`
+    if (isWorkday(ds)) remaining--
+    guard++
+  }
+  return fmtLocal(current)
+}
+
 async function loadConfig() {
   try {
-    const [sysRes, capRes] = await Promise.all([api.getSystemConfig(), api.getCapacityConfig()])
+    const [sysRes, capRes, calRes] = await Promise.all([
+      api.getSystemConfig(),
+      api.getCapacityConfig(),
+      api.getCurrentWorkCalendar().catch(() => ({ data: { work_days: '1111100', exceptions: [] } })),
+    ])
     const sys = sysRes.data
     const cap = capRes.data
     configCache.value.shippingBuffer = parseInt(sys.find(c => c.config_key === 'shipping_buffer_days')?.config_value || '5')
@@ -305,6 +338,13 @@ async function loadConfig() {
     configCache.value.lineChangeDays = parseFloat(sys.find(c => c.config_key === 'line_change_days')?.config_value || '0.5')
     configCache.value.sewingCapacity = parseInt(cap.find(c => c.process_type === 'sewing')?.daily_capacity || '800')
     configCache.value.cuttingCapacity = parseInt(cap.find(c => c.process_type === 'cutting')?.daily_capacity || '30000')
+    // 工作日历
+    const cal = calRes.data
+    workCalendar.work_days = cal.work_days || '1111100'
+    workCalendar.exceptions = {}
+    for (const e of (cal.exceptions || [])) {
+      workCalendar.exceptions[e.date] = e.is_workday
+    }
   } catch (e) { /* use defaults */ }
 }
 
@@ -316,45 +356,53 @@ function scheduleAutoCalc() {
   if (_autoCalcTimer) clearTimeout(_autoCalcTimer)
   _autoCalcTimer = setTimeout(() => { _autoCalcTimer = null; autoCalcDates() }, 100)
 }
+// 监听 form.plan_qty + form.due_date 自动触发 autoCalcDates
+watch([() => form.value.plan_qty, () => form.value.due_date], () => scheduleAutoCalc())
 
 async function autoCalcDates() {
   if (!form.value.due_date) return
   await loadConfig()
   const c = configCache.value
-  const due = new Date(form.value.due_date + 'T00:00:00')
+  const due = form.value.due_date
   const qty = form.value.plan_qty || 0
 
-  const sewingEnd = new Date(due)
-  sewingEnd.setDate(sewingEnd.getDate() - c.shippingBuffer)
+  // 出货缓冲：自然日
+  const sewingEnd = subtractDays(due, c.shippingBuffer)
+  // 缝制：工作日
   const sewingDays = Math.ceil(qty / c.sewingCapacity) || 1
-  const sewingStart = new Date(sewingEnd)
-  sewingStart.setDate(sewingStart.getDate() - sewingDays - Math.ceil(c.lineChangeDays))
-  const sewingRemind = new Date(sewingStart)
-  sewingRemind.setDate(sewingRemind.getDate() - 2)
+  const totalSewingDays = sewingDays + Math.ceil(c.lineChangeDays)
+  const sewingStart = subtractWorkdays(sewingEnd, totalSewingDays)
+  const sewingRemind = subtractWorkdays(sewingStart, 2)
 
-  const secondaryEnd = new Date(sewingStart)
-  secondaryEnd.setDate(secondaryEnd.getDate() - 1)
-  const secondaryStart = new Date(secondaryEnd)
-  secondaryStart.setDate(secondaryStart.getDate() - 3)
+  // 二次加工：工作日（固定 4 天 = 1 天间隔 + 3 天加工）
+  const secondaryEnd = subtractWorkdays(sewingStart, 1)
+  const secondaryStart = subtractWorkdays(secondaryEnd, 3)
 
-  const cuttingEnd = new Date(secondaryStart)
-  cuttingEnd.setDate(cuttingEnd.getDate() - c.pickingDays)
+  // 裁剪：工作日
+  const cuttingEnd = subtractWorkdays(secondaryStart, c.pickingDays)
   const cuttingDays = Math.ceil(qty / c.cuttingCapacity) || 1
-  const cuttingStart = new Date(cuttingEnd)
-  cuttingStart.setDate(cuttingStart.getDate() - cuttingDays)
-  form.value.cutting_start = fmtLocal(cuttingStart)
-  form.value.cutting_end = fmtLocal(cuttingEnd)
-  form.value.secondary_start = fmtLocal(secondaryStart)
-  form.value.secondary_end = fmtLocal(secondaryEnd)
+  const cuttingStart = subtractWorkdays(cuttingEnd, cuttingDays)
+
+  form.value.cutting_start = cuttingStart
+  form.value.cutting_end = cuttingEnd
+  form.value.secondary_start = secondaryStart
+  form.value.secondary_end = secondaryEnd
   form.value.printing_start = ''
   form.value.printing_end = ''
   form.value.embroidery_start = ''
   form.value.embroidery_end = ''
   form.value.template_start = ''
   form.value.template_end = ''
-  form.value.sewing_remind_date = fmtLocal(sewingRemind)
-  form.value.sewing_start = fmtLocal(sewingStart)
-  form.value.sewing_end = fmtLocal(sewingEnd)
+  form.value.sewing_remind_date = sewingRemind
+  form.value.sewing_start = sewingStart
+  form.value.sewing_end = sewingEnd
+}
+
+// 自然日倒推（用于出货缓冲等不考虑工作日历的场景）
+function subtractDays(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() - days)
+  return fmtLocal(d)
 }
 
 function openAdd() {

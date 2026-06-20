@@ -1,6 +1,5 @@
 import axios from 'axios'
 import router from '@/router'
-import { useAuthStore } from '@/stores/auth'
 
 // [2026-06-18] 用户系统:加 withCredentials 让 session cookie 跨请求保持
 // [2026-06-20 fix#前端-P3-2] 加 timeout 30s,避免请求 hang 死锁页面
@@ -12,16 +11,14 @@ const api = axios.create({
 
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
+  (error) => {
     if (error.response && error.response.status === 401) {
-      // [fix 2026-06-20 P1-1] session 失效时先清 auth store / localStorage 再跳 login,
-      // 防止 UI 瞬间拿到旧 user 显示"已登录"但所有 API 持续 401
-      try {
-        const auth = useAuthStore()
-        await auth.logout()
-      } catch { /* store 还没初始化时忽略 */ }
-      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-        // [fix Y-06] 用 router.push 替代 window.location.href,保留 Pinia 状态和 KeepAlive 缓存
+      // 排除 auth 相关请求，避免重定向循环
+      const url = error.config?.url || ''
+      if (url.includes('/auth/login') || url.includes('/auth/logout') || url.includes('/auth/me')) {
+        return Promise.reject(error)
+      }
+      if (typeof window !== 'undefined' && !window.location.hash.includes('/login')) {
         router.push('/login').catch(() => {})
       }
     }
@@ -127,28 +124,20 @@ export default {
   updateActual: (id, data) => api.put(`/actual/${id}`, data),
   deleteActual: (id) => api.delete(`/actual/${id}`),
   batchImportActual: (records) => api.post('/actual/batch', { records }),
-  // [#32] Missing sewing API methods
   saveSewing: (data) => api.post('/schedule/sewing', data),
   deleteSewing: (id) => api.delete(`/schedule/sewing/${id}`),
-  // Missing cutting API methods
   saveCutting: (data) => api.post('/schedule/cutting', data),
   deleteCutting: (id) => api.delete(`/schedule/cutting/${id}`),
-  // 裁剪排程（基于 fabric_loading_list ∩ style_color_size + main_plan.cutting_start/cutting_end）
   getCuttingSchedule: () => api.get('/schedule/cutting'),
   exportCuttingSchedule: () => api.get('/schedule/cutting/export', { responseType: 'blob' }),
   getCuttingDailyActual: (params) => api.get('/schedule/cutting/daily', { params }),
   updateMainPlanCutting: (id, data) => api.put(`/main-plan/${id}/cutting`, data),
-  // Missing secondary API methods
   saveSecondary: (data) => api.post('/schedule/secondary', data),
   deleteSecondary: (id) => api.delete(`/schedule/secondary/${id}`),
-  // Missing daily report API
   getDaily: () => api.get('/daily'),
   saveDaily: (data) => api.post('/daily', data),
-  // Missing inventory API
   getInventory: () => api.get('/inventory'),
   saveInventory: (data) => api.post('/inventory', data),
-  // Missing line update API
-  // (updateLine removed — use updateProductionLine instead)
 
   // 排程汇总
   getSecondarySummary: () => api.get('/schedule/secondary/summary'),
@@ -195,6 +184,7 @@ export default {
   addCalendarException: (calId, data) => api.post(`/work-calendars/${calId}/exceptions`, data),
   deleteCalendarException: (calId, exId) => api.delete(`/work-calendars/${calId}/exceptions/${exId}`),
   checkWorkday: (date) => api.get('/workday-check', { params: { date } }),
+  getCurrentWorkCalendar: () => api.get('/work-calendar/current'),
 
   // 报工汇总
   getDispatchSummary: (params) => api.get('/dispatch-summary', { params }),
