@@ -38,6 +38,7 @@ export default {
   getDistinctStyles: () => api.get('/styles/distinct'),
   getStyle: (id) => api.get(`/styles/${id}`),
   saveStyle: (style) => api.post('/styles', style),
+  updateStyle: (id, style) => api.put(`/styles/${id}`, style),
   deleteStyle: (id) => api.delete(`/styles/${id}`),
   exportStyles: () => api.get('/styles/export', { responseType: 'blob' }),
   importStyles: (file) => {

@@ -111,10 +111,51 @@ app.use(session({
   }
 }));
 
+// ============================================================
+// [2026-06-20 fix#S-06] 全局鉴权(必须在所有 /api 路由注册之前)
+// 之前位置错(在 routes 后),导致 token 中间件对早期 routes 不生效
+// ============================================================
+// Simple token auth [fix#2]
+// P0 安全: token 通过后必须设 req.user,否则下游 requireAuth 仍 401,token 形同虚设
+if (AUTH_ENABLED) {
+  app.use('/api', (req, res, next) => {
+    if (req.path === '/health') return next();
+    if (req.path === '/auth/login') return next();
+    if (req.path === '/auth/me') return next();  // 自身判断登录态
+    if (req.path.startsWith('/socket.io')) return next();
+    if (req.session && req.session.user) return next();
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.query.token;
+    if (token !== API_TOKEN) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    // 注入 API token 身份,让下游 requireAuth/requireRole 也能识别
+    req.user = { id: null, username: 'api-token', role: 'admin', workshop: null };
+    if (!req.session) req.session = {};
+    req.session.user = req.user;
+    next();
+  });
+}
+
+// [2026-06-18] 用户系统:全局 session 鉴权
+// 拦截所有 /api/* 请求,要求已登录(session.user 存在)
+// 排除 /api/auth/login /auth/me 和 /api/socket.io/(WebSocket 升级不能拦截)
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (req.path === '/auth/login') return next();
+  if (req.path === '/auth/me') return next();  // 自身判断登录态
+  if (req.path.startsWith('/socket.io')) return next();
+  return requireAuth(req, res, next);
+});
+
 // 检查已登录
 function requireAuth(req, res, next) {
+  // 优先看 session(浏览器登录)
   if (req.session && req.session.user) {
-    req.user = req.session.user;  // 复制到 req.user 方便后续中间件使用
+    req.user = req.session.user;
+    return next();
+  }
+  // 兼容 token 中间件已注入的 req.user(API token/CLI)
+  if (req.user && req.user.role) {
     return next();
   }
   return res.status(401).json({ error: '未登录' });
@@ -123,10 +164,8 @@ function requireAuth(req, res, next) {
 // 检查角色(admin 自动有所有角色权限,kevin 2026-06-18 决定)
 function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.session || !req.session.user) {
-      return res.status(401).json({ error: '未登录' });
-    }
-    const u = req.session.user;
+    const u = (req.session && req.session.user) || req.user;
+    if (!u) return res.status(401).json({ error: '未登录' });
     if (u.role === 'admin') return next();  // admin bypass
     if (roles.includes(u.role)) return next();
     return res.status(403).json({ error: '权限不足' });
@@ -145,7 +184,7 @@ const SCHEDULE_TYPE_WORKSHOP = {
 
 function requireWorkshopMatch(scheduleType) {
   return (req, res, next) => {
-    const u = req.session && req.session.user;
+    const u = (req.session && req.session.user) || req.user;
     if (!u) return res.status(401).json({ error: '未登录' });
     if (u.role === 'admin') return next();  // admin bypass
     if (u.role !== 'supervisor') {
@@ -541,35 +580,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Simple token auth [fix#2]
-// [2026-06-18] 与下方 requireAuth 保持一致: 排除 /auth/login 和 /socket.io/
-// 有 session 直接放行(Bearer 只作为外部工具/CLI 的备选)
-// 否则 session 登录后所有 /api 请求被 Bearer 拦截 → 401
-if (AUTH_ENABLED) {
-  app.use('/api', (req, res, next) => {
-    if (req.path === '/health') return next();
-    if (req.path === '/auth/login') return next();
-    if (req.path.startsWith('/socket.io')) return next();
-    if (req.session && req.session.user) return next();
-    const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
-    if (token !== API_TOKEN) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    next();
-  });
-}
-
-// [2026-06-18] 用户系统:全局 session 鉴权
-// 拦截所有 /api/* 请求,要求已登录(session.user 存在)
-// 排除 /api/auth/login 和 /api/socket.io/(WebSocket 升级不能拦截)
-// 注意:app.use('/api') 之后,req.path 是去掉 /api 前缀的相对路径
-app.use('/api', (req, res, next) => {
-  if (req.path === '/health') return next();
-  if (req.path === '/auth/login') return next();
-  if (req.path.startsWith('/socket.io')) return next();
-  return requireAuth(req, res, next);
-});
-
 // Request logging [fix#14]
 app.use((req, res, next) => {
   if (req.method !== 'OPTIONS') {
@@ -827,21 +837,14 @@ app.get('/api/styles/:id', (req, res) => {
   }
 });
 
+// P0 安全: POST /styles 仅用于创建,id 由服务端生成,客户端不可篡改
 app.post('/api/styles', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const s = req.body;
     const errors = validateStyle(s);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
+    if (s.id) return res.status(400).json({ error: '创建时不能携带 id,请使用 PUT /api/styles/:id 更新' });
 
-    if (s.id) {
-      const existing = db.get('SELECT id FROM styles WHERE id = ?', [s.id]);
-      if (!existing) return res.status(404).json({ error: '款式不存在' });
-      db.run(`UPDATE styles SET style_no=?,product_name=?,style_category=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,has_special_wash=?,remarks=? WHERE id=?`,
-        [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, parseInt(s.has_special_wash) || 0, s.remarks||'', s.id]);
-      broadcastSection('styles', db.searchStyles(''));
-      logOp(req, 'styles', 'update', s.id, s.style_no);
-      return res.json({ ok: true, id: s.id });
-    }
     const result = db.run(`INSERT INTO styles (style_no, product_name, style_category, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, has_special_wash, remarks)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, parseInt(s.has_special_wash) || 0, s.remarks||'']);
@@ -850,6 +853,27 @@ app.post('/api/styles', requireRole('admin', 'planning_manager', 'planner'), (re
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
     console.error('POST /api/styles error:', e);
+    handleUniqueError(e, res);
+  }
+});
+
+// P0 安全: 更新走 PUT,id 来自 URL 不可被 body 篡改
+app.put('/api/styles/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id 不合法' });
+    const s = req.body;
+    const errors = validateStyle(s);
+    if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
+    const existing = db.get('SELECT id FROM styles WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ error: '款式不存在' });
+    db.run(`UPDATE styles SET style_no=?,product_name=?,style_category=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,has_special_wash=?,remarks=? WHERE id=?`,
+      [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, parseInt(s.has_special_wash) || 0, s.remarks||'', id]);
+    broadcastSection('styles', db.searchStyles(''));
+    logOp(req, 'styles', 'update', id, s.style_no);
+    res.json({ ok: true, id });
+  } catch (e) {
+    console.error('PUT /api/styles/:id error:', e);
     handleUniqueError(e, res);
   }
 });
@@ -2918,7 +2942,7 @@ app.get('/api/actual', (req, res) => {
   }
 });
 
-app.post('/api/actual', (req, res) => {
+app.post('/api/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
   try {
     const r = req.body;
     if (!r.style_no) return res.status(400).json({ error: '款号不能为空' });
@@ -3059,7 +3083,7 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
   }
 });
 
-app.delete('/api/actual/:id', (req, res) => {
+app.delete('/api/actual/:id', requireRole('supervisor', 'admin'), (req, res) => {
   try {
     const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: '记录不存在' });
@@ -3068,19 +3092,23 @@ app.delete('/api/actual/:id', (req, res) => {
     const check = db.checkActualDeletable(existing);
     if (!check.ok) return res.status(400).json({ error: check.error });
 
-    // [2026-06-19] 回滚裁片库入库
-    db.rollbackCutPiecesInbound(existing);
+    // P0 安全: 整个删除流程包事务,任一步骤失败回滚
+    const delTxn = db.getDb().transaction(() => {
+      // [2026-06-19] 回滚裁片库入库
+      db.rollbackCutPiecesInbound(existing);
 
-    db.run('DELETE FROM actual_production WHERE id = ?', [req.params.id]);
+      db.run('DELETE FROM actual_production WHERE id = ?', [req.params.id]);
 
-    const masters = db.all('SELECT id FROM schedule_master WHERE style_no = ? AND schedule_type = ?',
-      [existing.style_no, existing.schedule_type]);
-    for (const m of masters) {
-      db.run("DELETE FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = 'ACTUAL'",
-        [m.id, existing.production_date]);
-    }
+      const masters = db.all('SELECT id FROM schedule_master WHERE style_no = ? AND schedule_type = ?',
+        [existing.style_no, existing.schedule_type]);
+      for (const m of masters) {
+        db.run("DELETE FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = 'ACTUAL'",
+          [m.id, existing.production_date]);
+      }
 
-    if (existing.style_id) db.recalcTaskStatus(existing.style_id);
+      if (existing.style_id) db.recalcTaskStatus(existing.style_id);
+    });
+    delTxn();
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true });
   } catch (e) {
@@ -3090,7 +3118,7 @@ app.delete('/api/actual/:id', (req, res) => {
 });
 
 // ---------- 批量导入报工 ----------
-app.post('/api/actual/batch', (req, res) => {
+app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
   try {
     const { records } = req.body;
     if (!Array.isArray(records) || records.length === 0) {
@@ -3098,21 +3126,25 @@ app.post('/api/actual/batch', (req, res) => {
     }
     let inserted = 0;
     const styleIds = new Set();
-    for (const r of records) {
-      if (!r.style_no || !r.production_date) continue;
-      const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time, is_second_inspection, source_type)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [r.schedule_type || '', r.secondary_type || '', r.style_id || 0, r.style_no, r.color || '', r.size_spec || '',
-         r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '',
-         r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '',
-         parseInt(r.is_second_inspection) || 0, r.source_type || '']);
-      // [2026-06-19] 报工完成 → 自动入裁片库
-      db.recordCutPiecesInbound({ id: result.lastInsertRowid, ...r });
-      syncActualToDaily(r);
-      if (r.style_id) styleIds.add(r.style_id);
-      inserted++;
-    }
-    for (const sid of styleIds) db.recalcTaskStatus(sid);
+    // P0 安全: 整批 INSERT+副作用 放进事务,部分失败可回滚
+    const batchTxn = db.getDb().transaction(() => {
+      for (const r of records) {
+        if (!r.style_no || !r.production_date) continue;
+        const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time, is_second_inspection, source_type)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [r.schedule_type || '', r.secondary_type || '', r.style_id || 0, r.style_no, r.color || '', r.size_spec || '',
+           r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '',
+           r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '',
+           parseInt(r.is_second_inspection) || 0, r.source_type || '']);
+        // [2026-06-19] 报工完成 → 自动入裁片库
+        db.recordCutPiecesInbound({ id: result.lastInsertRowid, ...r });
+        syncActualToDaily(r);
+        if (r.style_id) styleIds.add(r.style_id);
+        inserted++;
+      }
+      for (const sid of styleIds) db.recalcTaskStatus(sid);
+    });
+    batchTxn();
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true, inserted });
   } catch (e) {
@@ -4870,8 +4902,6 @@ app.post('/api/visual-schedule/move', (req, res) => {
     const sm = db.get('SELECT * FROM schedule_master WHERE id = ?', [scheduleId]);
     if (!sm) return res.status(404).json({ error: '排程记录不存在' });
     const newLineNum = stripLineSuffix(newLineTeam);  // [B-12 fix]
-    // 删除旧 schedule_master
-    db.run('DELETE FROM schedule_master WHERE id = ?', [scheduleId]);
     // 查新产线日产量(优先用完整 line_name,fallback 拼"班"后缀)
     const lineId = db.get(
       'SELECT id FROM production_lines WHERE line_name IN (?, ?)',
@@ -4886,7 +4916,6 @@ app.post('/api/visual-schedule/move', (req, res) => {
     const lastTask = db.get(`SELECT plan_end FROM schedule_master
       WHERE schedule_type = 'sewing' AND workshop = ? AND line_team = ?
       ORDER BY plan_end DESC LIMIT 1`, [newWorkshop, newLineNum]);
-    const today = fmtLocal(new Date());
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = fmtLocal(tomorrow);
@@ -4903,17 +4932,20 @@ app.post('/api/visual-schedule/move', (req, res) => {
       const daysNeeded = Math.ceil(sm.plan_qty / dailyTarget);
       sewingEnd = db.addWorkdays(sewingStart, daysNeeded - 1);
     }
-    // 插入新 schedule_master
-    if (sewingStart <= sewingEnd) {
-      db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
-        plan_qty, plan_start, plan_end, workshop, line_team, daily_target, cutting_plan_qty, due_date)
-        VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [sm.style_id, sm.style_no, sm.product_name, sm.color || '', sm.size_spec || '',
-         sm.plan_qty, sewingStart, sewingEnd, newWorkshop, newLineNum, dailyTarget, sm.plan_qty, sm.due_date || '']);
-    }
-    // 更新 main_plan
-    db.run('UPDATE main_plan SET workshop = ?, line_team = ?, sewing_start = ?, sewing_end = ? WHERE style_id = ?',
-      [newWorkshop, newLineNum, sewingStart, sewingEnd, sm.style_id]);
+    // P0 安全: DELETE+INSERT+UPDATE 包事务,失败回滚避免丢数据
+    const moveTxn = db.getDb().transaction(() => {
+      db.run('DELETE FROM schedule_master WHERE id = ?', [scheduleId]);
+      if (sewingStart <= sewingEnd) {
+        db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
+          plan_qty, plan_start, plan_end, workshop, line_team, daily_target, cutting_plan_qty, due_date)
+          VALUES ('sewing', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [sm.style_id, sm.style_no, sm.product_name, sm.color || '', sm.size_spec || '',
+           sm.plan_qty, sewingStart, sewingEnd, newWorkshop, newLineNum, dailyTarget, sm.plan_qty, sm.due_date || '']);
+      }
+      db.run('UPDATE main_plan SET workshop = ?, line_team = ?, sewing_start = ?, sewing_end = ? WHERE style_id = ?',
+        [newWorkshop, newLineNum, sewingStart, sewingEnd, sm.style_id]);
+    });
+    moveTxn();
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     res.json({ ok: true, sewingStart, sewingEnd, dailyTarget });
   } catch (e) {

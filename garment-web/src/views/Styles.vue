@@ -234,7 +234,7 @@ function cancelEdit() {
 }
 async function saveEdit() {
   try {
-    await api.saveStyle(editForm.value)
+    await api.updateStyle(editForm.value.id, editForm.value)
     ElMessage.success('保存成功')
     editingId.value = null
     loadStyles()

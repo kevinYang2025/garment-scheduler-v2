@@ -1160,9 +1160,13 @@ function autoSchedule(strategyId, userId) {
     const config = JSON.parse(strategy.config || '{}');
     const sortField = config.sortField || 'due_date';
 
-    let orderBy = sortField === 'priority' ? 'priority ASC, due_date ASC' :
-                  sortField === 'plan_qty' ? 'plan_qty DESC' :
-                  'due_date ASC';
+    // P0 安全: orderBy 白名单,防止 SQL 注入
+    const ORDER_BY_WHITELIST = {
+      priority: 'priority ASC, due_date ASC',
+      plan_qty: 'plan_qty DESC',
+      due_date: 'due_date ASC',
+    };
+    const orderBy = ORDER_BY_WHITELIST[sortField] || ORDER_BY_WHITELIST.due_date;
 
     // 1. 获取未排产的计划
     const unplanned = db.prepare(`SELECT * FROM main_plan WHERE is_scheduled = 0 OR is_scheduled IS NULL ORDER BY ${orderBy}`).all();
