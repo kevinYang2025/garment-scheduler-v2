@@ -3755,7 +3755,11 @@ app.get('/api/dispatch-summary', (req, res) => {
     if (style_no) { sql += ` AND style_no LIKE ? ESCAPE '\\\\'`; params.push(`%${escapeLike(style_no)}%`); }
     if (date_from) { sql += ' AND production_date >= ?'; params.push(date_from); }
     if (date_to) { sql += ' AND production_date <= ?'; params.push(date_to); }
-    sql += ` GROUP BY ${groupExpr} ORDER BY ${groupExpr.split(',')[0]} DESC LIMIT 500`;
+    // [2026-06-20 fix#后端-P3-4] 支持 ?limit (1..2000,默认500) + ?offset 分页
+    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit) || 500));
+    const offset = Math.max(0, parseInt(req.query.offset) || 0);
+    sql += ` GROUP BY ${groupExpr} ORDER BY ${groupExpr.split(',')[0]} DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
     res.json(db.all(sql, params));
   } catch (e) {
     console.error('GET /api/dispatch-summary error:', e);
