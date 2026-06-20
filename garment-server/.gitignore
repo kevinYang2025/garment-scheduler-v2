@@ -5,6 +5,14 @@ node_modules/
 data.sqlite
 data.sqlite-shm
 data.sqlite-wal
+# [2026-06-20 fix#后端-P3-3] 老备份文件: data.sqlite.bak-*.sqlite (+ -shm/-wal)
+data.sqlite.bak-*.sqlite
+data.sqlite.bak-*.sqlite-shm
+data.sqlite.bak-*.sqlite-wal
+# sessions.db (SQLite session store)
+sessions.db
+sessions.db-shm
+sessions.db-wal
 
 # Logs
 *.log
