@@ -4686,13 +4686,32 @@ app.post('/api/asn', (req, res) => {
   try {
     const { warehouse_type, supplier, expected_date, details, remark } = req.body;
     if (!warehouse_type) return res.status(400).json({ error: '仓库类型不能为空' });
-    const asn_code = genAsnCode();
     let total_qty = 0;
     if (details) details.forEach(d => total_qty += d.plan_qty || 0);
 
-    const result = db.run('INSERT INTO asn_list (asn_code, warehouse_type, supplier, status, expected_date, total_qty, remark, operator) VALUES (?,?,?,?,?,?,?,?)',
-      [asn_code, warehouse_type, supplier || '', 'PENDING', expected_date || '', total_qty, remark || '', req.body.operator || 'YC']);
-    const asnId = result.lastInsertRowid;
+    // [2026-06-20 fix#后端-P2-1] genAsnCode + INSERT 整段包 transaction + UNIQUE 冲突重试,
+    // better-sqlite3 同步但 handler 之间会交错;事务保证 SELECT COUNT 和 INSERT 在同一临界区
+    let asnCodeFinal = null;
+    let asnId = null;
+    const insertAsnTxn = db.getDb().transaction(() => {
+      let lastErr;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const code = genAsnCode();
+        try {
+          const r = db.run('INSERT INTO asn_list (asn_code, warehouse_type, supplier, status, expected_date, total_qty, remark, operator) VALUES (?,?,?,?,?,?,?,?)',
+            [code, warehouse_type, supplier || '', 'PENDING', expected_date || '', total_qty, remark || '', req.body.operator || 'YC']);
+          asnCodeFinal = code;
+          asnId = r.lastInsertRowid;
+          return;
+        } catch (e) {
+          // UNIQUE 冲突:asn_code 已被另一并发 handler 占用,重试
+          if (e.message && e.message.includes('UNIQUE constraint failed')) { lastErr = e; continue; }
+          throw e;
+        }
+      }
+      throw lastErr || new Error('genAsnCode 重试 3 次仍冲突');
+    });
+    insertAsnTxn();
 
     if (details && details.length > 0) {
       const insDetail = db.prepare('INSERT INTO asn_detail (asn_id, style_no, fabric_name, color, size_spec, pot_no, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?,?,?)');
@@ -4701,8 +4720,8 @@ app.post('/api/asn', (req, res) => {
       }
     }
 
-    logOp(req, 'asn', 'create', asnId, asn_code);
-    res.json({ ok: true, id: asnId, asn_code });
+    logOp(req, 'asn', 'create', asnId, asnCodeFinal);
+    res.json({ ok: true, id: asnId, asn_code: asnCodeFinal });
   } catch (e) { console.error('POST /api/asn error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
