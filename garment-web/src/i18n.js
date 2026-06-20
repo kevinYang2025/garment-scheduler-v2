@@ -469,6 +469,7 @@ const dict = {
   'actualReview.toast.loadFail':{ zh: '加载失败: {err}', km: 'ផ្ទុកបរាជ័យ: {err}' },
   'actualReview.toast.saveOk':  { zh: '已保存并锁定', km: 'បានរក្សាទុកនិងចាក់សោ' },
   'actualReview.toast.saveFail':{ zh: '保存失败: {err}', km: 'រក្សាទុកបរាជ័យ: {err}' },
+  'actualReview.toast.saveConflict':{ zh: '数据冲突已自动刷新: {err}', km: 'ទិន្នន័យមានជម្លោះបានផ្ទុកឡើងវិញ: {err}' },
   'actualReview.toast.unlockOk':{ zh: '已解锁', km: 'បានដោះសោ' },
   'actualReview.toast.unlockFail':{ zh: '解锁失败: {err}', km: 'ដោះសោបរាជ័យ: {err}' },
   'actualReview.toast.confirmTitle':{ zh: '提示', km: 'ជំនួយ' },

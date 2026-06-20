@@ -4339,8 +4339,11 @@ app.put('/api/schedule/daily/actual/:id', requireRole('admin', 'supervisor'), (r
       } else {
         return { status: 403, body: { error: '该操作仅限车间主任或管理员' } };
       }
-      } else {
-        return { status: 403, body: { error: '该操作仅限车间主任或管理员' } };
+
+      // [2026-06-20 fix#业务-P1-5] 多 tab 锁冲突:客户端传 expected_qty(看到行时的 qty)
+      // 不匹配则 409,前端收到后重新 load
+      if (req.body?.expected_qty != null && Number(req.body.expected_qty) !== Number(row.qty)) {
+        return { status: 409, body: { error: '数据已被其他会话修改,请刷新后重试', current_qty: row.qty } };
       }
 
       // 锁检查:已被其他主任锁定?admin 可覆盖任何锁

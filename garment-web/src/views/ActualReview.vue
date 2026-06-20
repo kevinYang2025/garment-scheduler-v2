@@ -136,6 +136,8 @@ async function load() {
       }
     })
     rows.value = r.data
+    // [2026-06-20 fix#业务-P1-5] 多 tab 锁冲突:记录加载时的 qty,save 时传给后端校验
+    for (const r of rows.value) r._originalQty = r.qty
   } catch (e) {
     ElMessage.error(t('actualReview.toast.loadFail', null, { err: e.response?.data?.error || e.message }))
   } finally {
@@ -145,12 +147,24 @@ async function load() {
 
 async function save(row) {
   try {
-    const { data } = await api.put(`/schedule/daily/actual/${row.id}`, { qty: row.qty })
+    // [2026-06-20 fix#业务-P1-5] expected_qty 是加载行时的 qty,如果其他 tab/会话已改则后端 409
+    const { data } = await api.put(`/schedule/daily/actual/${row.id}`, {
+      qty: row.qty,
+      expected_qty: row._originalQty,
+    })
     // [2026-06-20 段15 BUG 3] 用后端返回的锁持有者(admin 改不抢锁,保持原锁)
     row.locked_by_user_id = data?.locked_by_user_id ?? auth.user?.id
     row.locked_at = data?.locked_at || new Date().toISOString()
+    // 保存成功后 _originalQty 更新为最新值
+    row._originalQty = row.qty
     ElMessage.success(t('actualReview.toast.saveOk'))
   } catch (e) {
+    if (e.response?.status === 409) {
+      // [fix#业务-P1-5] 数据冲突,提示用户并刷新
+      ElMessage.warning(t('actualReview.toast.saveConflict', null, { err: e.response?.data?.error || '数据已过期' }))
+      await load()
+      return
+    }
     ElMessage.error(t('actualReview.toast.saveFail', null, { err: e.response?.data?.error || e.message }))
   }
 }
