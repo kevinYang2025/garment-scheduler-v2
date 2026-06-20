@@ -74,10 +74,9 @@ async function loadCuttingStyles() {
 async function loadRecords() {
   loading.value = true
   try {
-    const { data } = await api.getActual('cutting')
-    // 只显示二检记录
+    // [2026-06-20 段11 M-2] is_second_inspection=1 后端 SQL 过滤(替代 .filter)
+    const { data } = await api.getActual('cutting', '', 1)
     records.value = (data || [])
-      .filter(r => parseInt(r.is_second_inspection) === 1)
       .sort((a, b) => (b.production_date || '').localeCompare(a.production_date || ''))
   } catch (e) {
     console.error('加载二检报工记录失败:', e)

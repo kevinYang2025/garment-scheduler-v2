@@ -3100,13 +3100,18 @@ function generatePlanRows(masterId, start, end, totalQty) {
 // ---------- 实际生产数据 ----------
 app.get('/api/actual', (req, res) => {
   try {
-    const { scheduleType, keyword } = req.query;
+    const { scheduleType, keyword, is_second_inspection } = req.query;
     let sql = 'SELECT * FROM actual_production';
     const wheres = [];
     const params = [];
     if (scheduleType) { wheres.push('schedule_type = ?'); params.push(scheduleType); }
     // [2026-06-20 段8 M-2] 款号模糊,后端 SQL LIKE(替代前端 .filter())
     if (keyword) { wheres.push(`style_no LIKE ? ESCAPE '\\'`); params.push(`%${escapeLike(keyword)}%`); }
+    // [2026-06-20 段11 M-2] 二检过滤,后端 SQL(替代 CuttingSecondDispatch .filter)
+    if (is_second_inspection !== undefined && is_second_inspection !== '') {
+      wheres.push('is_second_inspection = ?');
+      params.push(parseInt(is_second_inspection) ? 1 : 0);
+    }
     if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
     sql += ' ORDER BY production_date DESC';
     res.json(db.all(sql, params));

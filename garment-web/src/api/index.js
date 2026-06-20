@@ -112,7 +112,7 @@ export default {
   confirmTemplatePlan: (data) => api.post('/template-plan-data/confirm', data),
 
   // 实际生产数据
-  getActual: (scheduleType, keyword) => api.get('/actual', { params: { scheduleType, keyword: keyword || '' } }),
+  getActual: (scheduleType, keyword, is_second_inspection) => api.get('/actual', { params: { scheduleType, keyword: keyword || '', is_second_inspection } }),
   getActualById: (id) => api.get(`/actual/${id}`),
   saveActual: (data) => api.post('/actual', data),
   updateActual: (id, data) => api.put(`/actual/${id}`, data),
