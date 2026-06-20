@@ -1183,7 +1183,7 @@ function getFullData() {
 function recalcTaskStatus(masterId) {
   try {
     const master = db.prepare('SELECT * FROM schedule_master WHERE id = ?').get(masterId);
-    if (!master) return;
+    if (!master) return { ok: false, error: 'master not found' };
 
     // 计算实际总完成量
     const actual = db.prepare(
@@ -1226,7 +1226,14 @@ function recalcTaskStatus(masterId) {
 
     db.prepare('UPDATE schedule_master SET task_status = ?, progress_pct = ?, first_inspection_completed_at = COALESCE(NULLIF(?, \'\'), first_inspection_completed_at), second_inspection_completed_at = COALESCE(NULLIF(?, \'\'), second_inspection_completed_at) WHERE id = ?')
       .run(taskStatus, progressPct, firstAt, secondAt, masterId);
-  } catch (e) { console.error('recalcTaskStatus error:', e.message); }
+    return { ok: true };
+  } catch (e) {
+    // [2026-06-20 fix#业务-P1-11] 返回失败状态而非只 log,调用方可在 transaction 外
+    // 显式记入操作日志(operation_logs),便于事故复盘
+    // 注:这里不抛错以避免回滚外层 transaction,调用方接住返回值后自行 logOp
+    console.error('recalcTaskStatus error:', e.message);
+    return { ok: false, error: e.message };
+  }
 }
 
 // ============================================================

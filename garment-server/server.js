@@ -276,12 +276,14 @@ const _cleanedCount = sessionStore.cleanup();
 if (_cleanedCount > 0) console.log(`✅ 清理 ${_cleanedCount} 个过期 session`);
 
 // 每小时清一次过期 session,防内存增长
+// [2026-06-20 fix#后端-P1-1] .unref() 防止阻塞 Node 优雅退出
 setInterval(() => {
   const n = sessionStore.cleanup();
   if (n > 0) console.log(`🧹 定时清理 ${n} 个过期 session`);
-}, 3600 * 1000);
+}, 3600 * 1000).unref();
 
 // 每 5 分钟清理 loginAttempts 中超过 1 分钟窗口的空闲 IP,防内存无限增长
+// [2026-06-20 fix#后端-P1-1] .unref()
 setInterval(() => {
   const now = Date.now();
   const windowMs = 60 * 1000;
@@ -292,7 +294,7 @@ setInterval(() => {
     else loginAttempts.set(ip, recent);
   }
   if (removed > 0) console.log(`🧹 清理 ${removed} 个空闲 IP 的登录计数`);
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // ============================================================
 // [2026-06-18] 用户系统:auth 路由
@@ -5792,6 +5794,7 @@ process.on('uncaughtException', (err) => {
 // supervisor 锁了 schedule_daily 行后,如果浏览器崩溃 / 离职 / 忘解锁 → dispatcher 永远报不进去
 // 方案:每 5 分钟扫描一次,锁定时间 > 2 小时的锁自动释放
 // 注:locked_at 是 'YYYY-MM-DD HH:mm:ss' 字符串,SQLite 字符串比较能正确工作
+// [2026-06-20 fix#后端-P1-1] .unref() 防止阻塞 Node 优雅退出
 const LOCK_TIMEOUT_HOURS = 2;
 const LOCK_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 setInterval(() => {
