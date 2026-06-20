@@ -8,6 +8,8 @@ import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
 import { useSecPlanDetail } from '../composables/useSecPlanDetail'
 import { todayLocal } from '../utils/date'
+import { useAuthStore } from '../stores/auth'
+import { canEditActual } from '../utils/permissions'
 
 const router = useRouter()
 
@@ -23,6 +25,12 @@ const {
   shiftWeek, scrollToTop, dateLabel,
   onImportFileChange, doImport, confirmImport, doExport,
 } = useSecPlanDetail('ironing')
+
+// [2026-06-20] supervisor 跨车间拦截:只能编辑本车间的 actual
+const auth = useAuthStore()
+function canEditActualCell(row) {
+  return canEditActual({ ...row, secondary_type: 'ironing', workshop: 'ironing' }, auth.user)
+}
 
 // 新增排程
 const createDialogVisible = ref(false)
@@ -193,13 +201,14 @@ async function customConfirmImport() {
               <td class="fix num sum-cell">{{ row.totalActual?.toLocaleString() }}</td>
               <td class="fix type-label actual-label">实际</td>
               <td v-for="d in visibleDates" :key="'a'+d" class="cell-num editable-cell" :class="{ 'today-col': d === today }">
-                <input class="cell-inp" type="number" min="0"
+                <input v-if="canEditActualCell(row)" class="cell-inp" type="number" min="0"
                   :value="(row.dateMap[d] || {}).actual || ''"
                   @change="e => {
                     const dd = row.dateMap[d]
                     if (dd) { dd.actual = parseInt(e.target.value) || 0 }
                     saveActual(row, d)
                   }" />
+                <span v-else>{{ (row.dateMap[d] || {}).actual || '' }}</span>
               </td>
               <td class="fix"></td>
             </tr>

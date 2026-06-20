@@ -7,6 +7,8 @@ import api from '../api'
 import { useVirtualScroll } from './useVirtualScroll'
 import { todayLocal } from '../utils/date'
 import { getSecondaryTypeConfig } from '../constants/secondaryTypes'
+import { useAuthStore } from '../stores/auth'
+import { canEditActual } from '../utils/permissions'
 
 /**
  * @param {string} secType - 'printing' / 'embroidery' / 'ironing' / 'template'
@@ -272,6 +274,13 @@ export function useSecPlanDetail(secType, options = {}) {
   async function saveActual(row, date) {
     const dd = row.dateMap?.[date]
     if (!dd) return
+    // [2026-06-20] 权限检查:supervisor 必须匹配车间,planner/planning_manager 拒绝
+    const auth = useAuthStore()
+    const editableRow = { ...row, secondary_type: cfg.name, workshop: cfg.name }
+    if (!canEditActual(editableRow, auth.user)) {
+      ElMessage.warning('无权编辑该车间数据')
+      return
+    }
     const prevActual = dd.actual
     const prevDiff = dd.diff
     const prevTotalActual = row.totalActual
@@ -286,8 +295,6 @@ export function useSecPlanDetail(secType, options = {}) {
         size_spec: row.size_spec,
         production_date: date,
         completed_qty: dd.actual,
-        // [F-02 fix] schedule_type=secondary,后端 syncActualToDaily 现在按 (style, color, size, schedule_type, secondary_type) 精匹配
-        schedule_type: 'secondary',
         secondary_type: cfg.name,
       })
     } catch (e) {

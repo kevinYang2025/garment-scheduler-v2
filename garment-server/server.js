@@ -2103,18 +2103,32 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
 });
 
 // 保存某个颜色+尺码某日的实际产量
-app.post('/api/schedule/sewing-daily-plan/actual', (req, res) => {
+app.post('/api/schedule/sewing-daily-plan/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
   try {
-    const { style_no, color, size_spec, production_date, completed_qty } = req.body;
+    const { style_no, color, size_spec, production_date, completed_qty, secondary_type } = req.body;
     if (!style_no || !production_date) {
       return res.status(400).json({ error: '款号和日期不能为空' });
     }
 
+    // [2026-06-20] 跨车间拦截:supervisor / dispatcher 必须匹配 secondary_type 对应的车间
+    // secondary_type 形如 'printing' / 'embroidery' / 'template' / 'ironing'
+    const u = req.user;
+    if (u.role !== 'admin') {
+      const needWorkshop = secondary_type ? SCHEDULE_TYPE_WORKSHOP[secondary_type] : null;
+      if (needWorkshop && u.workshop !== needWorkshop) {
+        return res.status(403).json({ error: '无权操作其他车间的数据' });
+      }
+    }
+
+    // [2026-06-20] schedule_type 派生:secondary_type 决定 schedule_type(secondary)
+    // 原代码硬编码 'sewing' 导致 secondary 详情页写入污染 sewing 数据,修复为 secondary
+    const scheduleType = secondary_type ? 'secondary' : 'sewing';
+
     // 检查是否已存在
     const existing = db.get(
       `SELECT id FROM actual_production
-       WHERE style_no = ? AND color = ? AND size_spec = ? AND production_date = ?`,
-      [style_no, color || '', size_spec || '', production_date]
+       WHERE style_no = ? AND color = ? AND size_spec = ? AND production_date = ? AND schedule_type = ?`,
+      [style_no, color || '', size_spec || '', production_date, scheduleType]
     );
 
     if (existing) {
@@ -2126,10 +2140,11 @@ app.post('/api/schedule/sewing-daily-plan/actual', (req, res) => {
     } else {
       db.run(
         `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty)
-         VALUES ('sewing', 0, ?, ?, ?, ?, ?)`,
-        [style_no, color || '', size_spec || '', production_date, completed_qty || 0]
+         VALUES (?, 0, ?, ?, ?, ?, ?)`,
+        [scheduleType, style_no, color || '', size_spec || '', production_date, completed_qty || 0]
       );
     }
+    logOp(req, 'actual_production', 'upsert', null, style_no, `qty=${completed_qty || 0} ${scheduleType}`);
     res.json({ ok: true });
   } catch (e) {
     console.error('POST /api/schedule/sewing-daily-plan/actual error:', e);
