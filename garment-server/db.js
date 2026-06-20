@@ -37,6 +37,25 @@ function getDb() {
   return db;
 }
 
+// [2026-06-20 fix#后端-P1-2] per-Database prepared statement 缓存
+// better-sqlite3 的 .prepare() 每次都新建 Statement,SQL 不变时复用更快
+// 用 WeakMap 绑到 rawDb 实例,事务/多连接不会互相干扰
+const __stmtCache = new WeakMap();
+function cachedPrepare(conn, sql) {
+  let cache = __stmtCache.get(conn);
+  if (!cache) { cache = new Map(); __stmtCache.set(conn, cache); }
+  let stmt = cache.get(sql);
+  if (!stmt) { stmt = conn.prepare(sql); cache.set(sql, stmt); }
+  return stmt;
+}
+function getStmtCacheStats() {
+  const out = [];
+  for (const [k, v] of (db ? [[db, __stmtCache.get(db) || new Map()]] : [])) {
+    out.push({ size: v.size });
+  }
+  return out;
+}
+
 function createTables() {
   db.exec(`
     -- 款式主数据（订单一览表）
@@ -1135,15 +1154,15 @@ function seedMainPlan() {
 // Generic CRUD [fix#18] with error handling
 // ============================================================
 function all(sql, params = []) {
-  try { return db.prepare(sql).all(...params); }
+  try { return cachedPrepare(db, sql).all(...params); }
   catch (e) { console.error('DB all error:', sql, e.message); throw e; }
 }
 function get(sql, params = []) {
-  try { return db.prepare(sql).get(...params); }
+  try { return cachedPrepare(db, sql).get(...params); }
   catch (e) { console.error('DB get error:', sql, e.message); throw e; }
 }
 function run(sql, params = []) {
-  try { return db.prepare(sql).run(...params); }
+  try { return cachedPrepare(db, sql).run(...params); }
   catch (e) { console.error('DB run error:', sql, e.message); throw e; }
 }
 
