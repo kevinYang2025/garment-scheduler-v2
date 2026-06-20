@@ -1,4 +1,4 @@
-const express = require('express');
+ï»¿const express = require('express');
 const { createServer } = require('http');
 const { Server: SocketIO } = require('socket.io');
 const path = require('path');
@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const db = require('./db');
 const ExcelJS = require('exceljs');
 
-// [2026-06-18] ÓÃ»§ÏµÍ³ÒÀÀµ
+// [2026-06-18] ç”¨æˆ·ç³»ç»Ÿä¾èµ–
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const SqliteStore = require('./session-store');
@@ -15,11 +15,11 @@ const PORT = process.env.PORT || 3001;
 const AUTH_ENABLED = process.env.AUTH_ENABLED === 'true';
 const API_TOKEN = process.env.API_TOKEN || 'garment-dev-token';
 
-// [2026-06-20 fix#ºó¶Ë-P1-7] Æô¶¯ÆÚ°²È«¼ì²é:¿ªÆô¼øÈ¨Ê±½ûÖ¹ CORS_ORIGINS=*
-// ·ÀÖ¹¿ª·¢ÆÚµ÷ÊÔÓÃ * + ¹Ø AUTH ¡ú Õû¸ö API Âã±¼
+// [2026-06-20 fix#åç«¯-P1-7] å¯åŠ¨æœŸå®‰å…¨æ£€æŸ¥:å¼€å¯é‰´æƒæ—¶ç¦æ­¢ CORS_ORIGINS=*
+// é˜²æ­¢å¼€å‘æœŸè°ƒè¯•ç”¨ * + å…³ AUTH â†’ æ•´ä¸ª API è£¸å¥”
 if (AUTH_ENABLED && (!process.env.CORS_ORIGINS || process.env.CORS_ORIGINS.split(',').includes('*'))) {
-  console.error('[FATAL] AUTH_ENABLED=true Ê± CORS_ORIGINS ²»ÄÜÊÇ * »òÎ´ÉèÖÃ,»áÓë withCredentials ³åÍ»µ¼ÖÂ¼øÈ¨Ê§Ğ§¡£');
-  console.error('  ÇëÉèÖÃ CORS_ORIGINS=http://your-frontend-domain Ö®Àà¾ßÌåÖµ¡£');
+  console.error('[FATAL] AUTH_ENABLED=true æ—¶ CORS_ORIGINS ä¸èƒ½æ˜¯ * æˆ–æœªè®¾ç½®,ä¼šä¸ withCredentials å†²çªå¯¼è‡´é‰´æƒå¤±æ•ˆã€‚');
+  console.error('  è¯·è®¾ç½® CORS_ORIGINS=http://your-frontend-domain ä¹‹ç±»å…·ä½“å€¼ã€‚');
   process.exit(1);
 }
 
@@ -30,36 +30,36 @@ function fmtLocal(d) {
   return `${y}-${m}-${day}`;
 }
 
-// [fix#NS-04] Í³Ò»´íÎóÏìÓ¦:²»·µ»Ø e.message(±ÜÃâĞ¹Â¶Êı¾İ¿â½á¹¹/ÎÄ¼şÂ·¾¶),ÏêÇé½ö¼ÇÂ¼µ½·şÎñ¶Ë
+// [fix#NS-04] ç»Ÿä¸€é”™è¯¯å“åº”:ä¸è¿”å› e.message(é¿å…æ³„éœ²æ•°æ®åº“ç»“æ„/æ–‡ä»¶è·¯å¾„),è¯¦æƒ…ä»…è®°å½•åˆ°æœåŠ¡ç«¯
 function sendError(res, endpoint, err) {
   console.error(`[${endpoint}] error:`, err);
   if (!res.headersSent) {
-    res.status(500).json({ error: '·şÎñÆ÷ÄÚ²¿´íÎó' });
+    res.status(500).json({ error: 'æœåŠ¡å™¨å†…éƒ¨é”™è¯¯' });
   }
 }
 
-// [2026-06-20 fix#ÒµÎñ-P1-9] dashboard Êı¾İ°´ÓÃ»§ workshop ¸ôÀë
-// admin ¿´È«²¿,ÆäËû½ÇÉ«(req.user.workshop)Ö»¿´±¾³µ¼äÊı¾İ
-// ÓÃÓÚ dashboard Â·ÓÉ(±ÜÃâ supervisor Ô½È¨¿´È«¹«Ë¾)
+// [2026-06-20 fix#ä¸šåŠ¡-P1-9] dashboard æ•°æ®æŒ‰ç”¨æˆ· workshop éš”ç¦»
+// admin çœ‹å…¨éƒ¨,å…¶ä»–è§’è‰²(req.user.workshop)åªçœ‹æœ¬è½¦é—´æ•°æ®
+// ç”¨äº dashboard è·¯ç”±(é¿å… supervisor è¶Šæƒçœ‹å…¨å…¬å¸)
 function dashboardWorkshopScope(req) {
   if (!req.user) return null;
   if (req.user.role === 'admin') return null;
   return req.user.workshop || null;
 }
 
-// [2026-06-20 Åú´Î1-ÒµÎñ-P0-6] ±¨¹¤Êı¾İºÏÀíĞÔĞ£Ñé
-// ·ÀÓù:¸ºÊı / NaN / ³¬ plan_qty*2 / Î´À´ÈÕÆÚ
-// ÓÃÓÚ POST/PUT /api/actual(/batch),·µ»Ø null ±íÊ¾Í¨¹ı,·ñÔò·µ»Ø {status, body}
+// [2026-06-20 æ‰¹æ¬¡1-ä¸šåŠ¡-P0-6] æŠ¥å·¥æ•°æ®åˆç†æ€§æ ¡éªŒ
+// é˜²å¾¡:è´Ÿæ•° / NaN / è¶… plan_qty*2 / æœªæ¥æ—¥æœŸ
+// ç”¨äº POST/PUT /api/actual(/batch),è¿”å› null è¡¨ç¤ºé€šè¿‡,å¦åˆ™è¿”å› {status, body}
 function validateActualPayload(r, existing = null) {
   const qty = r.completed_qty != null ? Number(r.completed_qty) : 0;
   if (Number.isNaN(qty) || qty < 0) {
-    return { status: 400, body: { error: 'completed_qty ±ØĞëÊÇ·Ç¸ºÊı' } };
+    return { status: 400, body: { error: 'completed_qty å¿…é¡»æ˜¯éè´Ÿæ•°' } };
   }
   const defect = r.defect_qty != null ? Number(r.defect_qty) : 0;
   if (Number.isNaN(defect) || defect < 0) {
-    return { status: 400, body: { error: 'defect_qty ±ØĞëÊÇ·Ç¸ºÊı' } };
+    return { status: 400, body: { error: 'defect_qty å¿…é¡»æ˜¯éè´Ÿæ•°' } };
   }
-  // ÈÕÆÚºÏÀíĞÔ:²»ÍíÓÚ½ñÌì
+  // æ—¥æœŸåˆç†æ€§:ä¸æ™šäºä»Šå¤©
   const date = r.production_date || (existing && existing.production_date);
   if (date) {
     const todayStr = (function () {
@@ -67,27 +67,27 @@ function validateActualPayload(r, existing = null) {
       return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
     })();
     if (date > todayStr) {
-      return { status: 400, body: { error: `production_date ${date} ²»ÄÜÍíÓÚ½ñÌì ${todayStr}` } };
+      return { status: 400, body: { error: `production_date ${date} ä¸èƒ½æ™šäºä»Šå¤© ${todayStr}` } };
     }
   }
-  // ³¬Á¿ÉÏÏŞ:completed_qty <= plan_qty * 2(·ÀÖ¹ inventory_delta ±©ÕÇ)
+  // è¶…é‡ä¸Šé™:completed_qty <= plan_qty * 2(é˜²æ­¢ inventory_delta æš´æ¶¨)
   if (r.style_no && qty > 0) {
     try {
       const plan = db.get('SELECT plan_qty FROM main_plan WHERE style_no = ? ORDER BY id DESC LIMIT 1', [r.style_no]);
       const planQty = (plan && plan.plan_qty) || 0;
       if (planQty > 0 && qty > planQty * 2) {
-        return { status: 400, body: { error: `completed_qty ${qty} ³¬¹ı plan_qty*2 (${planQty * 2})` } };
+        return { status: 400, body: { error: `completed_qty ${qty} è¶…è¿‡ plan_qty*2 (${planQty * 2})` } };
       }
     } catch (_) {
-      // ±í/ÁĞ²»´æÔÚ»ò db Î´³õÊ¼»¯Ê±¾²Ä¬·ÅĞĞ,²»Ó°ÏìÖ÷Â·¾¶
+      // è¡¨/åˆ—ä¸å­˜åœ¨æˆ– db æœªåˆå§‹åŒ–æ—¶é™é»˜æ”¾è¡Œ,ä¸å½±å“ä¸»è·¯å¾„
     }
   }
   return null;
 }
 
-// [2026-06-20 ¶Î7 C-1] system_config ÄÚ´æ»º´æ
-// ¼õÉÙ recalcMainPlanDates / auto-schedule µÈÈÈÂ·¾¶µÄÖØ¸´ SELECT
-// PUT /api/system-config/:key ºÍ /api/config/system/:key ºó invalidate
+// [2026-06-20 æ®µ7 C-1] system_config å†…å­˜ç¼“å­˜
+// å‡å°‘ recalcMainPlanDates / auto-schedule ç­‰çƒ­è·¯å¾„çš„é‡å¤ SELECT
+// PUT /api/system-config/:key å’Œ /api/config/system/:key å invalidate
 let _configCache = null;
 function getSystemConfig() {
   if (!_configCache) {
@@ -99,8 +99,8 @@ function getSystemConfig() {
 }
 function invalidateSystemConfig() { _configCache = null; }
 
-// [2026-06-18] ÈÕÖ¾ helper:´Ó req ×Ô¶¯È¡ user_id(Ìæ´úÖ±½Óµ÷ db.logOperation)
-// Ìæ»» server.js ÖĞËùÓĞ `db.logOperation(` ¡ú `logOp(req, ` ¼´¿É
+// [2026-06-18] æ—¥å¿— helper:ä» req è‡ªåŠ¨å– user_id(æ›¿ä»£ç›´æ¥è°ƒ db.logOperation)
+// æ›¿æ¢ server.js ä¸­æ‰€æœ‰ `db.logOperation(` â†’ `logOp(req, ` å³å¯
 function logOp(req, module, action, targetId, targetName, detail) {
   const userId = (req && req.user && req.user.id) || null;
   db.logOperation(module, action, targetId, targetName, detail, userId);
@@ -112,17 +112,17 @@ function logOp(req, module, action, targetId, targetName, detail) {
 db.init();
 
 if (!AUTH_ENABLED) {
-  console.warn('??  WARNING: Authentication is DISABLED. Set AUTH_ENABLED=true for production.');
-  // [B-06 fix] Éú²ú»·¾³Ç¿ÖÆÒªÇó¿ªÆô auth,±ÜÃâÂã±¼
+  console.warn('âš ï¸  WARNING: Authentication is DISABLED. Set AUTH_ENABLED=true for production.');
+  // [B-06 fix] ç”Ÿäº§ç¯å¢ƒå¼ºåˆ¶è¦æ±‚å¼€å¯ auth,é¿å…è£¸å¥”
   if (process.env.NODE_ENV === 'production') {
-    console.error('? FATAL: AUTH_ENABLED must be true in production. Exiting.');
+    console.error('âŒ FATAL: AUTH_ENABLED must be true in production. Exiting.');
     process.exit(1);
   }
 }
 if (API_TOKEN === 'garment-dev-token') {
-  console.warn('??  WARNING: Using default API_TOKEN. Set API_TOKEN env var for production.');
+  console.warn('âš ï¸  WARNING: Using default API_TOKEN. Set API_TOKEN env var for production.');
   if (process.env.NODE_ENV === 'production') {
-    console.error('? FATAL: API_TOKEN must be set in production. Exiting.');
+    console.error('âŒ FATAL: API_TOKEN must be set in production. Exiting.');
     process.exit(1);
   }
 }
@@ -134,7 +134,7 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Gzip È«¾ÖÑ¹Ëõ£¨Node ÄÚÖÃ zlib£©¡ª 896 ĞĞ JSON Ñ¹µ½ 1/5£¬HTTP ºÄÊ±Ö±½µ
+// Gzip å…¨å±€å‹ç¼©ï¼ˆNode å†…ç½® zlibï¼‰â€” 896 è¡Œ JSON å‹åˆ° 1/5ï¼ŒHTTP è€—æ—¶ç›´é™
 const zlib = require('zlib');
 app.use((req, res, next) => {
   const ae = req.headers['accept-encoding'] || '';
@@ -154,16 +154,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// LIKE Í¨Åä·û×ªÒå:ÓÃ»§ÊäÈë % _ \ ÔÚ LIKE ÖĞÊÇÍ¨Åä·û,Ö±½ÓÆ´»á±»µ±³ÉÍ¨ÅäÆ¥Åä
+// LIKE é€šé…ç¬¦è½¬ä¹‰:ç”¨æˆ·è¾“å…¥ % _ \ åœ¨ LIKE ä¸­æ˜¯é€šé…ç¬¦,ç›´æ¥æ‹¼ä¼šè¢«å½“æˆé€šé…åŒ¹é…
 function escapeLike(s) {
   return String(s || '').replace(/[\\%_]/g, '\\$&');
 }
 
-// dashboard ¾ÛºÏ½Ó¿ÚµÄÇáÁ¿ÄÚ´æ»º´æ(60s)
+// dashboard èšåˆæ¥å£çš„è½»é‡å†…å­˜ç¼“å­˜(60s)
 const achievementCache = new Map();
 
 // ============================================================
-// [2026-06-18] ÓÃ»§ÏµÍ³:session + ¼øÈ¨ÖĞ¼ä¼ş
+// [2026-06-18] ç”¨æˆ·ç³»ç»Ÿ:session + é‰´æƒä¸­é—´ä»¶
 // ============================================================
 const sessionStore = new SqliteStore(db.getDb());
 const SESSION_SECRET = process.env.SESSION_SECRET || 'garment-session-dev-secret';
@@ -172,36 +172,36 @@ app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  rolling: true,  // Ã¿´ÎÇëÇóË¢ĞÂ¹ıÆÚ(±£³Ö 7 Ìì»îÔ¾)
+  rolling: true,  // æ¯æ¬¡è¯·æ±‚åˆ·æ–°è¿‡æœŸ(ä¿æŒ 7 å¤©æ´»è·ƒ)
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    // [fix 2026-06-20 S-2] secure ±ØĞëÅäºÏ HTTPS,·ñÔò localhost HTTP ÏÂ²»·¢ Set-Cookie
-    // Ö®Ç° NODE_ENV=production Ç¿ÖÆ secure=true ¡ú ä¯ÀÀÆ÷/curl ¶¼ÄÃ²»µ½ cookie ¡ú API È« 401
-    // ¸ÄÓÃ HTTPS »·¾³±äÁ¿ÅĞ¶Ï(²¿ÊğÊ±Éè HTTPS=true ¼´¿É)
+    // [fix 2026-06-20 S-2] secure å¿…é¡»é…åˆ HTTPS,å¦åˆ™ localhost HTTP ä¸‹ä¸å‘ Set-Cookie
+    // ä¹‹å‰ NODE_ENV=production å¼ºåˆ¶ secure=true â†’ æµè§ˆå™¨/curl éƒ½æ‹¿ä¸åˆ° cookie â†’ API å…¨ 401
+    // æ”¹ç”¨ HTTPS ç¯å¢ƒå˜é‡åˆ¤æ–­(éƒ¨ç½²æ—¶è®¾ HTTPS=true å³å¯)
     secure: process.env.HTTPS === 'true',
-    maxAge: 7 * 24 * 60 * 60 * 1000  // 7 ÌìÃâµÇ
+    maxAge: 7 * 24 * 60 * 60 * 1000  // 7 å¤©å…ç™»
   }
 }));
 
 // ============================================================
-// [2026-06-20 fix#S-06] È«¾Ö¼øÈ¨(±ØĞëÔÚËùÓĞ /api Â·ÓÉ×¢²áÖ®Ç°)
-// Ö®Ç°Î»ÖÃ´í(ÔÚ routes ºó),µ¼ÖÂ token ÖĞ¼ä¼ş¶ÔÔçÆÚ routes ²»ÉúĞ§
+// [2026-06-20 fix#S-06] å…¨å±€é‰´æƒ(å¿…é¡»åœ¨æ‰€æœ‰ /api è·¯ç”±æ³¨å†Œä¹‹å‰)
+// ä¹‹å‰ä½ç½®é”™(åœ¨ routes å),å¯¼è‡´ token ä¸­é—´ä»¶å¯¹æ—©æœŸ routes ä¸ç”Ÿæ•ˆ
 // ============================================================
 // Simple token auth [fix#2]
-// P0 °²È«: token Í¨¹ıºó±ØĞëÉè req.user,·ñÔòÏÂÓÎ requireAuth ÈÔ 401,token ĞÎÍ¬ĞéÉè
+// P0 å®‰å…¨: token é€šè¿‡åå¿…é¡»è®¾ req.user,å¦åˆ™ä¸‹æ¸¸ requireAuth ä» 401,token å½¢åŒè™šè®¾
 if (AUTH_ENABLED) {
   app.use('/api', (req, res, next) => {
     if (req.path === '/health') return next();
     if (req.path === '/auth/login') return next();
-    if (req.path === '/auth/me') return next();  // ×ÔÉíÅĞ¶ÏµÇÂ¼Ì¬
+    if (req.path === '/auth/me') return next();  // è‡ªèº«åˆ¤æ–­ç™»å½•æ€
     if (req.path.startsWith('/socket.io')) return next();
     if (req.session && req.session.user) return next();
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.query.token;
     if (token !== API_TOKEN) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    // ×¢Èë API token Éí·İ,ÈÃÏÂÓÎ requireAuth/requireRole Ò²ÄÜÊ¶±ğ
+    // æ³¨å…¥ API token èº«ä»½,è®©ä¸‹æ¸¸ requireAuth/requireRole ä¹Ÿèƒ½è¯†åˆ«
     req.user = { id: null, username: 'api-token', role: 'admin', workshop: null };
     if (!req.session) req.session = {};
     req.session.user = req.user;
@@ -209,43 +209,43 @@ if (AUTH_ENABLED) {
   });
 }
 
-// [2026-06-18] ÓÃ»§ÏµÍ³:È«¾Ö session ¼øÈ¨
-// À¹½ØËùÓĞ /api/* ÇëÇó,ÒªÇóÒÑµÇÂ¼(session.user ´æÔÚ)
-// ÅÅ³ı /api/auth/login /auth/me ºÍ /api/socket.io/(WebSocket Éı¼¶²»ÄÜÀ¹½Ø)
+// [2026-06-18] ç”¨æˆ·ç³»ç»Ÿ:å…¨å±€ session é‰´æƒ
+// æ‹¦æˆªæ‰€æœ‰ /api/* è¯·æ±‚,è¦æ±‚å·²ç™»å½•(session.user å­˜åœ¨)
+// æ’é™¤ /api/auth/login /auth/me å’Œ /api/socket.io/(WebSocket å‡çº§ä¸èƒ½æ‹¦æˆª)
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
   if (req.path === '/auth/login') return next();
-  if (req.path === '/auth/me') return next();  // ×ÔÉíÅĞ¶ÏµÇÂ¼Ì¬
+  if (req.path === '/auth/me') return next();  // è‡ªèº«åˆ¤æ–­ç™»å½•æ€
   if (req.path.startsWith('/socket.io')) return next();
   return requireAuth(req, res, next);
 });
 
-// ¼ì²éÒÑµÇÂ¼
+// æ£€æŸ¥å·²ç™»å½•
 function requireAuth(req, res, next) {
-  // ÓÅÏÈ¿´ session(ä¯ÀÀÆ÷µÇÂ¼)
+  // ä¼˜å…ˆçœ‹ session(æµè§ˆå™¨ç™»å½•)
   if (req.session && req.session.user) {
     req.user = req.session.user;
     return next();
   }
-  // ¼æÈİ token ÖĞ¼ä¼şÒÑ×¢ÈëµÄ req.user(API token/CLI)
+  // å…¼å®¹ token ä¸­é—´ä»¶å·²æ³¨å…¥çš„ req.user(API token/CLI)
   if (req.user && req.user.role) {
     return next();
   }
-  return res.status(401).json({ error: 'Î´µÇÂ¼' });
+  return res.status(401).json({ error: 'æœªç™»å½•' });
 }
 
-// ¼ì²é½ÇÉ«(admin ×Ô¶¯ÓĞËùÓĞ½ÇÉ«È¨ÏŞ,kevin 2026-06-18 ¾ö¶¨)
+// æ£€æŸ¥è§’è‰²(admin è‡ªåŠ¨æœ‰æ‰€æœ‰è§’è‰²æƒé™,kevin 2026-06-18 å†³å®š)
 function requireRole(...roles) {
   return (req, res, next) => {
     const u = (req.session && req.session.user) || req.user;
-    if (!u) return res.status(401).json({ error: 'Î´µÇÂ¼' });
+    if (!u) return res.status(401).json({ error: 'æœªç™»å½•' });
     if (u.role === 'admin') return next();  // admin bypass
     if (roles.includes(u.role)) return next();
-    return res.status(403).json({ error: 'È¨ÏŞ²»×ã' });
+    return res.status(403).json({ error: 'æƒé™ä¸è¶³' });
   };
 }
 
-// supervisor ÏŞ¶¨±¾³µ¼ä(supervisor µ÷ÓÃÊ±,workshop ±ØĞëÓë scheduleType ¶ÔÓ¦)
+// supervisor é™å®šæœ¬è½¦é—´(supervisor è°ƒç”¨æ—¶,workshop å¿…é¡»ä¸ scheduleType å¯¹åº”)
 const SCHEDULE_TYPE_WORKSHOP = {
   cutting: 'cutting',
   printing: 'printing',
@@ -255,35 +255,35 @@ const SCHEDULE_TYPE_WORKSHOP = {
   sewing: 'sewing',
 };
 
-// [2026-06-20 fix#ÒµÎñ-P1-3] supervisor ¿ç³µ¼äÈ¨ÏŞ¼ì²é
-// ½â¾ö:Ò»Î» secondary Ö÷ÈÎ(workshop='secondary')¹Ü 3 ¸ö¶ş´Î¹¤ĞòÊ±,ÔÊĞí·ÃÎÊ printing/embroidery/template
-// Í¬Ê±±£³Ö:workshop Ö±½ÓÊÇ schedule_type µÄ supervisor ÈÔÈ»Ö»ÄÜ·ÃÎÊ±¾¹¤Ğò
+// [2026-06-20 fix#ä¸šåŠ¡-P1-3] supervisor è·¨è½¦é—´æƒé™æ£€æŸ¥
+// è§£å†³:ä¸€ä½ secondary ä¸»ä»»(workshop='secondary')ç®¡ 3 ä¸ªäºŒæ¬¡å·¥åºæ—¶,å…è®¸è®¿é—® printing/embroidery/template
+// åŒæ—¶ä¿æŒ:workshop ç›´æ¥æ˜¯ schedule_type çš„ supervisor ä»ç„¶åªèƒ½è®¿é—®æœ¬å·¥åº
 function userCanAccessWorkshop(user, targetWorkshop) {
   if (!user) return false;
   if (user.role === 'admin') return true;
   if (user.role !== 'supervisor') return false;
   if (!user.workshop) return false;
   if (user.workshop === targetWorkshop) return true;
-  // secondary Ö÷ÈÎ¹ÜÈı¸ö¶ş´Î¹¤Ğò(printing/embroidery/template),µ«²»¹Ü ironing(¶ÀÁ¢)
+  // secondary ä¸»ä»»ç®¡ä¸‰ä¸ªäºŒæ¬¡å·¥åº(printing/embroidery/template),ä½†ä¸ç®¡ ironing(ç‹¬ç«‹)
   if (user.workshop === 'secondary' && ['printing', 'embroidery', 'template'].includes(targetWorkshop)) return true;
   return false;
 }
 
-// [2026-06-20 ¶Î15 LOW ÇåÀí] requireWorkshopMatch ËÀ´úÂëÉ¾³ı(È«ÎÄ¼şÎŞÒıÓÃ,½ÇÉ«Ğ£ÑéÒÑ inline ÔÚ¸÷¶Ëµã)
+// [2026-06-20 æ®µ15 LOW æ¸…ç†] requireWorkshopMatch æ­»ä»£ç åˆ é™¤(å…¨æ–‡ä»¶æ— å¼•ç”¨,è§’è‰²æ ¡éªŒå·² inline åœ¨å„ç«¯ç‚¹)
 
-// Æô¶¯Ê±ÇåÒ»´Î¹ıÆÚ session
+// å¯åŠ¨æ—¶æ¸…ä¸€æ¬¡è¿‡æœŸ session
 const _cleanedCount = sessionStore.cleanup();
-if (_cleanedCount > 0) console.log(`? ÇåÀí ${_cleanedCount} ¸ö¹ıÆÚ session`);
+if (_cleanedCount > 0) console.log(`âœ… æ¸…ç† ${_cleanedCount} ä¸ªè¿‡æœŸ session`);
 
-// Ã¿Ğ¡Ê±ÇåÒ»´Î¹ıÆÚ session,·ÀÄÚ´æÔö³¤
-// [2026-06-20 fix#ºó¶Ë-P1-1] .unref() ·ÀÖ¹×èÈû Node ÓÅÑÅÍË³ö
+// æ¯å°æ—¶æ¸…ä¸€æ¬¡è¿‡æœŸ session,é˜²å†…å­˜å¢é•¿
+// [2026-06-20 fix#åç«¯-P1-1] .unref() é˜²æ­¢é˜»å¡ Node ä¼˜é›…é€€å‡º
 setInterval(() => {
   const n = sessionStore.cleanup();
-  if (n > 0) console.log(`?? ¶¨Ê±ÇåÀí ${n} ¸ö¹ıÆÚ session`);
+  if (n > 0) console.log(`ğŸ§¹ å®šæ—¶æ¸…ç† ${n} ä¸ªè¿‡æœŸ session`);
 }, 3600 * 1000).unref();
 
-// Ã¿ 5 ·ÖÖÓÇåÀí loginAttempts ÖĞ³¬¹ı 1 ·ÖÖÓ´°¿ÚµÄ¿ÕÏĞ IP,·ÀÄÚ´æÎŞÏŞÔö³¤
-// [2026-06-20 fix#ºó¶Ë-P1-1] .unref()
+// æ¯ 5 åˆ†é’Ÿæ¸…ç† loginAttempts ä¸­è¶…è¿‡ 1 åˆ†é’Ÿçª—å£çš„ç©ºé—² IP,é˜²å†…å­˜æ— é™å¢é•¿
+// [2026-06-20 fix#åç«¯-P1-1] .unref()
 setInterval(() => {
   const now = Date.now();
   const windowMs = 60 * 1000;
@@ -293,19 +293,19 @@ setInterval(() => {
     if (recent.length === 0) { loginAttempts.delete(ip); removed++; }
     else loginAttempts.set(ip, recent);
   }
-  if (removed > 0) console.log(`?? ÇåÀí ${removed} ¸ö¿ÕÏĞ IP µÄµÇÂ¼¼ÆÊı`);
+  if (removed > 0) console.log(`ğŸ§¹ æ¸…ç† ${removed} ä¸ªç©ºé—² IP çš„ç™»å½•è®¡æ•°`);
 }, 5 * 60 * 1000).unref();
 
 // ============================================================
-// [2026-06-18] ÓÃ»§ÏµÍ³:auth Â·ÓÉ
+// [2026-06-18] ç”¨æˆ·ç³»ç»Ÿ:auth è·¯ç”±
 // ============================================================
 
-// µÇÂ¼ËÙÂÊÏŞÖÆ(5 ´Î/·ÖÖÓ/IP£¬·À±©Á¦ÆÆ½â)
+// ç™»å½•é€Ÿç‡é™åˆ¶(5 æ¬¡/åˆ†é’Ÿ/IPï¼Œé˜²æš´åŠ›ç ´è§£)
 const loginAttempts = new Map();
 function rateLimit(req, res, next) {
   const ip = req.ip || req.connection.remoteAddress;
   const now = Date.now();
-  const windowMs = 60 * 1000; // 1 ·ÖÖÓ´°¿Ú
+  const windowMs = 60 * 1000; // 1 åˆ†é’Ÿçª—å£
   const maxAttempts = 5;
 
   if (!loginAttempts.has(ip)) {
@@ -315,16 +315,16 @@ function rateLimit(req, res, next) {
   loginAttempts.set(ip, attempts);
 
   if (attempts.length >= maxAttempts) {
-    return res.status(429).json({ error: 'µÇÂ¼³¢ÊÔ¹ıÓÚÆµ·±£¬Çë 1 ·ÖÖÓºóÔÙÊÔ' });
+    return res.status(429).json({ error: 'ç™»å½•å°è¯•è¿‡äºé¢‘ç¹ï¼Œè¯· 1 åˆ†é’Ÿåå†è¯•' });
   }
   attempts.push(now);
   next();
 }
 
 // POST /api/auth/login
-// Á½ÖÖµÇÂ¼·½Ê½:
-//   1. ÕËºÅ+ÃÜÂë:admin / planner / planning_manager / supervisor
-//   2. ¹¤ºÅ+PIN:dispatcher
+// ä¸¤ç§ç™»å½•æ–¹å¼:
+//   1. è´¦å·+å¯†ç :admin / planner / planning_manager / supervisor
+//   2. å·¥å·+PIN:dispatcher
 app.post('/api/auth/login', rateLimit, async (req, res) => {
   try {
     const { username, password, pin_no, pin } = req.body || {};
@@ -332,29 +332,29 @@ app.post('/api/auth/login', rateLimit, async (req, res) => {
     let user = null;
     if (username && password) {
       user = db.get('SELECT * FROM users WHERE username = ? AND active = 1', [username]);
-      if (!user) return res.status(401).json({ error: 'ÕËºÅ»òÃÜÂë´íÎó' });
-      if (!user.password_hash) return res.status(401).json({ error: '¸ÃÕËºÅÎ´ÉèÖÃÃÜÂë' });
-      // [2026-06-20 fix#ºó¶Ë-P1-3] bcrypt Òì²½,²»×èÈûÊÂ¼şÑ­»·
+      if (!user) return res.status(401).json({ error: 'è´¦å·æˆ–å¯†ç é”™è¯¯' });
+      if (!user.password_hash) return res.status(401).json({ error: 'è¯¥è´¦å·æœªè®¾ç½®å¯†ç ' });
+      // [2026-06-20 fix#åç«¯-P1-3] bcrypt å¼‚æ­¥,ä¸é˜»å¡äº‹ä»¶å¾ªç¯
       if (!(await bcrypt.compare(password, user.password_hash))) {
-        return res.status(401).json({ error: 'ÕËºÅ»òÃÜÂë´íÎó' });
+        return res.status(401).json({ error: 'è´¦å·æˆ–å¯†ç é”™è¯¯' });
       }
     } else if (pin_no && pin) {
       user = db.get('SELECT * FROM users WHERE username = ? AND active = 1', [pin_no]);
-      if (!user) return res.status(401).json({ error: '¹¤ºÅ»ò PIN ´íÎó' });
+      if (!user) return res.status(401).json({ error: 'å·¥å·æˆ– PIN é”™è¯¯' });
       if (user.role !== 'dispatcher') {
-        return res.status(401).json({ error: '¸Ã¹¤ºÅ²»¿ÉÓÃ PIN µÇÂ¼' });
+        return res.status(401).json({ error: 'è¯¥å·¥å·ä¸å¯ç”¨ PIN ç™»å½•' });
       }
       if (!user.pin || !(await bcrypt.compare(pin, user.pin))) {
-        return res.status(401).json({ error: '¹¤ºÅ»ò PIN ´íÎó' });
+        return res.status(401).json({ error: 'å·¥å·æˆ– PIN é”™è¯¯' });
       }
     } else {
-      return res.status(400).json({ error: 'ÇëÌá¹©ÕËºÅÃÜÂë »ò ¹¤ºÅ+PIN' });
+      return res.status(400).json({ error: 'è¯·æä¾›è´¦å·å¯†ç  æˆ– å·¥å·+PIN' });
     }
 
-    // Ğ´ session(²»´æ password_hash / pin)
-    // [fix 2026-06-20 S-1] regenerate »Øµ÷Àï±ØĞëÏÔÊ½ save,
-    // ·ñÔò res.json ´¥·¢µÄ end ²»»á×Ô¶¯³Ö¾Ã»¯ĞÂ session,
-    // ¿Í»§¶ËÄÃ²»µ½ set-cookie,ºóĞø API 401
+    // å†™ session(ä¸å­˜ password_hash / pin)
+    // [fix 2026-06-20 S-1] regenerate å›è°ƒé‡Œå¿…é¡»æ˜¾å¼ save,
+    // å¦åˆ™ res.json è§¦å‘çš„ end ä¸ä¼šè‡ªåŠ¨æŒä¹…åŒ–æ–° session,
+    // å®¢æˆ·ç«¯æ‹¿ä¸åˆ° set-cookie,åç»­ API 401
     req.session.regenerate((regenErr) => {
       if (regenErr) return sendError(res, 'session.regenerate', regenErr);
       req.session.user = {
@@ -392,7 +392,7 @@ app.get('/api/auth/me', (req, res) => {
   if (req.session && req.session.user) {
     res.json({ user: req.session.user });
   } else {
-    res.status(401).json({ error: 'Î´µÇÂ¼' });
+    res.status(401).json({ error: 'æœªç™»å½•' });
   }
 });
 
@@ -401,20 +401,20 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   try {
     const { old_password, new_password } = req.body || {};
     if (!old_password || !new_password) {
-      return res.status(400).json({ error: 'ÇëÌá¹©¾ÉÃÜÂëºÍĞÂÃÜÂë' });
+      return res.status(400).json({ error: 'è¯·æä¾›æ—§å¯†ç å’Œæ–°å¯†ç ' });
     }
     if (new_password.length < 6) {
-      return res.status(400).json({ error: 'ĞÂÃÜÂëÖÁÉÙ 6 Î»' });
+      return res.status(400).json({ error: 'æ–°å¯†ç è‡³å°‘ 6 ä½' });
     }
     const user = db.get('SELECT * FROM users WHERE id = ?', [req.session.user.id]);
     if (!user || !user.password_hash) {
-      return res.status(400).json({ error: '¸ÃÕËºÅÎ´ÉèÖÃÃÜÂë,ÎŞ·¨×ÔÖú¸ÄÃÜ' });
+      return res.status(400).json({ error: 'è¯¥è´¦å·æœªè®¾ç½®å¯†ç ,æ— æ³•è‡ªåŠ©æ”¹å¯†' });
     }
-    // [2026-06-20 fix#ºó¶Ë-P1-3] bcrypt Òì²½
+    // [2026-06-20 fix#åç«¯-P1-3] bcrypt å¼‚æ­¥
     if (!(await bcrypt.compare(old_password, user.password_hash))) {
-      return res.status(401).json({ error: '¾ÉÃÜÂë´íÎó' });
+      return res.status(401).json({ error: 'æ—§å¯†ç é”™è¯¯' });
     }
-    const newHash = await bcrypt.hash(new_password, 12);
+    const newHash = await bcrypt.hash(new_password, 10);
     db.run("UPDATE users SET password_hash = ?, updated_at = datetime('now','localtime') WHERE id = ?",
       [newHash, req.session.user.id]);
     logOp(req, 'users', 'change_password', req.session.user.id, user.username, '');
@@ -423,7 +423,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
 });
 
 // ============================================================
-// [2026-06-18] ÓÃ»§ÏµÍ³:users CRUD (admin only)
+// [2026-06-18] ç”¨æˆ·ç³»ç»Ÿ:users CRUD (admin only)
 // ============================================================
 
 app.get('/api/users', requireRole('admin'), (req, res) => {
@@ -433,7 +433,7 @@ app.get('/api/users', requireRole('admin'), (req, res) => {
     const params = [];
     if (role) { sql += ' AND role = ?'; params.push(role); }
     if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
-    // [2026-06-20 ¶Î12 M-2] ¹Ø¼ü×ÖÄ£ºı,ºó¶Ë SQL LIKE Ìæ´ú UserManagement .filter
+    // [2026-06-20 æ®µ12 M-2] å…³é”®å­—æ¨¡ç³Š,åç«¯ SQL LIKE æ›¿ä»£ UserManagement .filter
     if (keyword) {
       sql += ` AND (username LIKE ? ESCAPE '\\' OR username_km LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\' OR display_name_km LIKE ? ESCAPE '\\')`;
       const k = `%${escapeLike(keyword)}%`;
@@ -448,32 +448,32 @@ app.post('/api/users', requireRole('admin'), async (req, res) => {
   try {
     const { username, username_km, pin, password, display_name, display_name_km, role, workshop } = req.body || {};
     if (!username || !display_name || !role) {
-      return res.status(400).json({ error: 'username/display_name/role ±ØÌî' });
+      return res.status(400).json({ error: 'username/display_name/role å¿…å¡«' });
     }
     if (!['admin','planning_manager','planner','dispatcher','supervisor'].includes(role)) {
-      return res.status(400).json({ error: 'role ²»ºÏ·¨' });
+      return res.status(400).json({ error: 'role ä¸åˆæ³•' });
     }
     if (['dispatcher','supervisor'].includes(role) && !workshop) {
-      return res.status(400).json({ error: 'dispatcher/supervisor ±ØĞëÖ¸¶¨ workshop' });
+      return res.status(400).json({ error: 'dispatcher/supervisor å¿…é¡»æŒ‡å®š workshop' });
     }
     if (workshop && !['cutting','printing','embroidery','template','ironing','sewing'].includes(workshop)) {
-      return res.status(400).json({ error: 'workshop ²»ºÏ·¨' });
+      return res.status(400).json({ error: 'workshop ä¸åˆæ³•' });
     }
     if (role === 'dispatcher' && (!pin || !/^\d{4}$/.test(pin))) {
-      return res.status(400).json({ error: 'dispatcher ±ØĞëÉèÖÃ 4 Î»Êı×Ö PIN' });
+      return res.status(400).json({ error: 'dispatcher å¿…é¡»è®¾ç½® 4 ä½æ•°å­— PIN' });
     }
     if (role !== 'dispatcher' && !password) {
-      return res.status(400).json({ error: '·Ç dispatcher ÕËºÅ±ØĞëÉèÖÃÃÜÂë' });
+      return res.status(400).json({ error: 'é dispatcher è´¦å·å¿…é¡»è®¾ç½®å¯†ç ' });
     }
     if (password && password.length < 6) {
-      return res.status(400).json({ error: 'ÃÜÂëÖÁÉÙ 6 Î»' });
+      return res.status(400).json({ error: 'å¯†ç è‡³å°‘ 6 ä½' });
     }
     const existing = db.get('SELECT id FROM users WHERE username = ?', [username]);
-    if (existing) return res.status(400).json({ error: 'ÕËºÅÒÑ´æÔÚ' });
+    if (existing) return res.status(400).json({ error: 'è´¦å·å·²å­˜åœ¨' });
 
-    // [2026-06-20 fix#ºó¶Ë-P1-3] bcrypt Òì²½
-    const passwordHash = password ? await bcrypt.hash(password, 12) : null;
-    const pinHash = pin ? await bcrypt.hash(pin, 12) : null;
+    // [2026-06-20 fix#åç«¯-P1-3] bcrypt å¼‚æ­¥
+    const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+    const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
     const r = db.run(`INSERT INTO users (username, username_km, pin, password_hash, display_name, display_name_km, role, workshop, active)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [username, username_km || null, pinHash, passwordHash, display_name, display_name_km || null, role, workshop || null]);
@@ -489,72 +489,72 @@ app.put('/api/users/:id', requireAuth, async (req, res) => {
     const isSelf = req.session.user.id === Number(id);
     const isAdmin = req.session.user.role === 'admin';
 
-    // ·Ç admin Ö»ÄÜ¸Ä×Ô¼º
+    // é admin åªèƒ½æ”¹è‡ªå·±
     if (!isSelf && !isAdmin) {
-      return res.status(403).json({ error: 'È¨ÏŞ²»×ã' });
+      return res.status(403).json({ error: 'æƒé™ä¸è¶³' });
     }
 
     const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
-    if (!existing) return res.status(404).json({ error: 'ÓÃ»§²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'ç”¨æˆ·ä¸å­˜åœ¨' });
 
     const { display_name, display_name_km, username_km, role, workshop, active, password, pin, avatar_url } = req.body || {};
 
-    // ·Ç admin Ö»ÄÜ¸Ä×Ô¼ºµÄĞÕÃû¡¢Í·Ïñ¡¢ÃÜÂë
+    // é admin åªèƒ½æ”¹è‡ªå·±çš„å§“åã€å¤´åƒã€å¯†ç 
     if (!isAdmin) {
       const hasRestrictedField = role !== undefined || workshop !== undefined || active !== undefined || pin !== undefined;
       if (hasRestrictedField) {
-        return res.status(403).json({ error: 'ÎŞÈ¨ĞŞ¸Ä½ÇÉ«/³µ¼ä/×´Ì¬/PIN' });
+        return res.status(403).json({ error: 'æ— æƒä¿®æ”¹è§’è‰²/è½¦é—´/çŠ¶æ€/PIN' });
       }
     }
 
-    // [2026-06-20] ×Ô²ĞÊØÎÀ:admin ²»ÄÜÍ£ÓÃ×Ô¼º / ¸Ä×Ô¼º½ÇÉ«(±ÜÃâ confused deputy)
+    // [2026-06-20] è‡ªæ®‹å®ˆå«:admin ä¸èƒ½åœç”¨è‡ªå·± / æ”¹è‡ªå·±è§’è‰²(é¿å… confused deputy)
     if (isSelf && isAdmin) {
       if (active === 0 || active === false) {
-        return res.status(403).json({ error: '²»ÄÜÍ£ÓÃ×Ô¼º' });
+        return res.status(403).json({ error: 'ä¸èƒ½åœç”¨è‡ªå·±' });
       }
       if (role !== undefined && role !== 'admin') {
-        return res.status(403).json({ error: '²»ÄÜĞŞ¸Ä×Ô¼ºµÄ½ÇÉ«' });
+        return res.status(403).json({ error: 'ä¸èƒ½ä¿®æ”¹è‡ªå·±çš„è§’è‰²' });
       }
     }
 
-    // [2026-06-20] ×îºóÒ»ÈË admin ±£»¤:Í£ÓÃ×îºóÒ»¸ö active admin »áËøËÀÏµÍ³
+    // [2026-06-20] æœ€åä¸€äºº admin ä¿æŠ¤:åœç”¨æœ€åä¸€ä¸ª active admin ä¼šé”æ­»ç³»ç»Ÿ
     if (active === 0 || active === false) {
       if (existing.role === 'admin' && existing.active === 1) {
         const adminCount = db.get("SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND active = 1", []).c;
         if (adminCount <= 1) {
-          return res.status(403).json({ error: 'ÖÁÉÙ±£ÁôÒ»¸ö active admin' });
+          return res.status(403).json({ error: 'è‡³å°‘ä¿ç•™ä¸€ä¸ª active admin' });
         }
       }
     }
 
-    // È·¶¨×îÖÕ½ÇÉ«(ÓÃĞÂ½ÇÉ«»òÒÑÓĞ½ÇÉ«)
+    // ç¡®å®šæœ€ç»ˆè§’è‰²(ç”¨æ–°è§’è‰²æˆ–å·²æœ‰è§’è‰²)
     const finalRole = role || existing.role;
 
-    // ½ÇÉ«ºÏ·¨ĞÔĞ£Ñé
+    // è§’è‰²åˆæ³•æ€§æ ¡éªŒ
     if (role && !['admin','planning_manager','planner','dispatcher','supervisor'].includes(role)) {
-      return res.status(400).json({ error: 'role ²»ºÏ·¨' });
+      return res.status(400).json({ error: 'role ä¸åˆæ³•' });
     }
 
-    // workshop ºÏ·¨ĞÔĞ£Ñé
+    // workshop åˆæ³•æ€§æ ¡éªŒ
     if (workshop !== undefined && workshop !== null && workshop !== '' &&
         !['cutting','printing','embroidery','template','ironing','sewing'].includes(workshop)) {
-      return res.status(400).json({ error: 'workshop ²»ºÏ·¨' });
+      return res.status(400).json({ error: 'workshop ä¸åˆæ³•' });
     }
 
-    // dispatcher/supervisor ±ØĞëÓĞ workshop
+    // dispatcher/supervisor å¿…é¡»æœ‰ workshop
     const finalWorkshop = workshop !== undefined ? (workshop || null) : existing.workshop;
     if (['dispatcher','supervisor'].includes(finalRole) && !finalWorkshop) {
-      return res.status(400).json({ error: 'dispatcher/supervisor ±ØĞëÖ¸¶¨ workshop' });
+      return res.status(400).json({ error: 'dispatcher/supervisor å¿…é¡»æŒ‡å®š workshop' });
     }
 
-    // PIN Ö»ÄÜ¸ø dispatcher
+    // PIN åªèƒ½ç»™ dispatcher
     if (pin && finalRole !== 'dispatcher') {
-      return res.status(400).json({ error: 'Ö»ÓĞ dispatcher ½ÇÉ«¿ÉÒÔÉèÖÃ PIN' });
+      return res.status(400).json({ error: 'åªæœ‰ dispatcher è§’è‰²å¯ä»¥è®¾ç½® PIN' });
     }
 
-    // dispatcher ±ØĞëÓĞ PIN
+    // dispatcher å¿…é¡»æœ‰ PIN
     if (finalRole === 'dispatcher' && !existing.pin && !pin) {
-      return res.status(400).json({ error: 'dispatcher ±ØĞëÉèÖÃ PIN' });
+      return res.status(400).json({ error: 'dispatcher å¿…é¡»è®¾ç½® PIN' });
     }
 
     const fields = [];
@@ -563,28 +563,28 @@ app.put('/api/users/:id', requireAuth, async (req, res) => {
     if (role !== undefined) { fields.push('role = ?'); params.push(role); }
     if (workshop !== undefined) { fields.push('workshop = ?'); params.push(workshop || null); }
     if (active !== undefined) { fields.push('active = ?'); params.push(active ? 1 : 0); }
-    // [2026-06-20 fix#ºó¶Ë-P1-3] bcrypt Òì²½
+    // [2026-06-20 fix#åç«¯-P1-3] bcrypt å¼‚æ­¥
     if (password) {
-      if (password.length < 6) return res.status(400).json({ error: 'ÃÜÂëÖÁÉÙ 6 Î»' });
-      const passwordHash = await bcrypt.hash(password, 12);
+      if (password.length < 6) return res.status(400).json({ error: 'å¯†ç è‡³å°‘ 6 ä½' });
+      const passwordHash = await bcrypt.hash(password, 10);
       fields.push('password_hash = ?'); params.push(passwordHash);
     }
     if (pin) {
-      if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN ±ØĞë 4 Î»Êı×Ö' });
-      const pinHash = await bcrypt.hash(pin, 12);
+      if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN å¿…é¡» 4 ä½æ•°å­—' });
+      const pinHash = await bcrypt.hash(pin, 10);
       fields.push('pin = ?'); params.push(pinHash);
     }
     if (avatar_url !== undefined) {
-      // [fix M-09] avatar_url ÏŞÖÆ: ½öÔÊĞí data:image/(png|jpg|jpeg|webp) Ç°×º,³¤¶È ¡Ü 5KB,±ÜÃâ SVG XSS / base64 DoS
+      // [fix M-09] avatar_url é™åˆ¶: ä»…å…è®¸ data:image/(png|jpg|jpeg|webp) å‰ç¼€,é•¿åº¦ â‰¤ 5KB,é¿å… SVG XSS / base64 DoS
       const av = avatar_url || '';
       if (av && !/^data:image\/(png|jpeg|jpg|webp);base64,/.test(av)) {
-        return res.status(400).json({ error: 'Í·Ïñ¸ñÊ½½öÖ§³Ö png/jpg/webp base64' });
+        return res.status(400).json({ error: 'å¤´åƒæ ¼å¼ä»…æ”¯æŒ png/jpg/webp base64' });
       }
       if (av && av.length > 5120) {
-        return res.status(400).json({ error: 'Í·ÏñÎÄ¼ş¹ı´ó(>5KB)' });
+        return res.status(400).json({ error: 'å¤´åƒæ–‡ä»¶è¿‡å¤§(>5KB)' });
       }
       fields.push('avatar_url = ?'); params.push(av);
-      // ¸üĞÂ session ÖĞµÄÍ·Ïñ
+      // æ›´æ–° session ä¸­çš„å¤´åƒ
       if (req.session?.user && req.session.user.id === Number(id)) {
         req.session.user.avatar_url = av;
       }
@@ -594,8 +594,8 @@ app.put('/api/users/:id', requireAuth, async (req, res) => {
     fields.push("updated_at = datetime('now','localtime')");
     params.push(id);
     db.run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, params);
-    // [2026-06-20] Í¬²½ session(ÈôÊÇ¸Ä×Ô¼º)¡ª ÍêÕû×Ö¶Î,²»Ö»ÊÇ i18n ×Ö¶Î,
-    // ·ñÔòÏÂ´Î requireRole ÈÔ°´¾É role ÅĞ¶Ï(¶ÌÆÚ cookie ²»±ä¼´¿ÉÈÆ¹ı¸Õ×öµÄ½µ¼¶)
+    // [2026-06-20] åŒæ­¥ session(è‹¥æ˜¯æ”¹è‡ªå·±)â€” å®Œæ•´å­—æ®µ,ä¸åªæ˜¯ i18n å­—æ®µ,
+    // å¦åˆ™ä¸‹æ¬¡ requireRole ä»æŒ‰æ—§ role åˆ¤æ–­(çŸ­æœŸ cookie ä¸å˜å³å¯ç»•è¿‡åˆšåšçš„é™çº§)
     if (req.session?.user && req.session.user.id === Number(id)) {
       if (display_name !== undefined) req.session.user.display_name = display_name;
       if (username_km !== undefined) req.session.user.username_km = username_km || null;
@@ -613,9 +613,9 @@ app.delete('/api/users/:id', requireRole('admin'), (req, res) => {
   try {
     const { id } = req.params;
     const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
-    if (!existing) return res.status(404).json({ error: 'ÓÃ»§²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'ç”¨æˆ·ä¸å­˜åœ¨' });
     if (existing.username === 'admin') {
-      return res.status(400).json({ error: 'admin ÕËºÅ²»ÄÜÉ¾³ı' });
+      return res.status(400).json({ error: 'admin è´¦å·ä¸èƒ½åˆ é™¤' });
     }
     db.run("UPDATE users SET active = 0, updated_at = datetime('now','localtime') WHERE id = ?", [id]);
     logOp(req, 'users', 'delete', id, existing.username, 'soft delete');
@@ -628,33 +628,33 @@ app.post('/api/users/:id/reset-pin', requireRole('admin'), async (req, res) => {
     const { id } = req.params;
     const { new_pin } = req.body || {};
     if (!new_pin || !/^\d{4}$/.test(new_pin)) {
-      return res.status(400).json({ error: 'new_pin ±ØĞëÊÇ 4 Î»Êı×Ö' });
+      return res.status(400).json({ error: 'new_pin å¿…é¡»æ˜¯ 4 ä½æ•°å­—' });
     }
     const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
-    if (!existing) return res.status(404).json({ error: 'ÓÃ»§²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'ç”¨æˆ·ä¸å­˜åœ¨' });
     if (existing.role !== 'dispatcher') {
-      return res.status(400).json({ error: '¸Ã¹¦ÄÜ½öÓÃÓÚ dispatcher' });
+      return res.status(400).json({ error: 'è¯¥åŠŸèƒ½ä»…ç”¨äº dispatcher' });
     }
-    // [2026-06-20 fix#ºó¶Ë-P1-3] bcrypt Òì²½
-    const pinHash = await bcrypt.hash(new_pin, 12);
+    // [2026-06-20 fix#åç«¯-P1-3] bcrypt å¼‚æ­¥
+    const pinHash = await bcrypt.hash(new_pin, 10);
     db.run("UPDATE users SET pin = ?, updated_at = datetime('now','localtime') WHERE id = ?", [pinHash, id]);
     logOp(req, 'users', 'reset_pin', id, existing.username, '');
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/users/:id/reset-pin', e); }
 });
 
-// [M3] ¹ÜÀíÔ±ÖØÖÃÈÎÒâÓÃ»§ÃÜÂë
+// [M3] ç®¡ç†å‘˜é‡ç½®ä»»æ„ç”¨æˆ·å¯†ç 
 app.post('/api/users/:id/reset-password', requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const { new_password } = req.body || {};
     if (!new_password || new_password.length < 6) {
-      return res.status(400).json({ error: 'ĞÂÃÜÂëÖÁÉÙ 6 Î»' });
+      return res.status(400).json({ error: 'æ–°å¯†ç è‡³å°‘ 6 ä½' });
     }
     const existing = db.get('SELECT * FROM users WHERE id = ?', [id]);
-    if (!existing) return res.status(404).json({ error: 'ÓÃ»§²»´æÔÚ' });
-    // [2026-06-20 fix#ºó¶Ë-P1-3] bcrypt Òì²½
-    const passwordHash = await bcrypt.hash(new_password, 12);
+    if (!existing) return res.status(404).json({ error: 'ç”¨æˆ·ä¸å­˜åœ¨' });
+    // [2026-06-20 fix#åç«¯-P1-3] bcrypt å¼‚æ­¥
+    const passwordHash = await bcrypt.hash(new_password, 10);
     db.run("UPDATE users SET password_hash = ?, updated_at = datetime('now','localtime') WHERE id = ?",
       [passwordHash, id]);
     logOp(req, 'users', 'reset_password', id, existing.username, '');
@@ -696,18 +696,18 @@ app.use((req, res, next) => {
 // ============================================================
 function validateStyle(s) {
   const errors = [];
-  if (!s.style_no || !s.style_no.trim()) errors.push('¿îºÅ²»ÄÜÎª¿Õ');
-  if (s.style_no && s.style_no.length > 50) errors.push('¿îºÅ³¤¶È²»ÄÜ³¬¹ı50');
-  if (s.product_name && s.product_name.length > 100) errors.push('Æ·Ãû³¤¶È²»ÄÜ³¬¹ı100');
-  if (s.color && s.color.length > 30) errors.push('ÑÕÉ«³¤¶È²»ÄÜ³¬¹ı30');
-  if (s.size_spec && s.size_spec.length > 30) errors.push('¹æ¸ñ³¤¶È²»ÄÜ³¬¹ı30');
-  if (s.customer && s.customer.length > 100) errors.push('¿Í»§Ãû³¤¶È²»ÄÜ³¬¹ı100');
-  if (s.plan_qty !== undefined && (isNaN(s.plan_qty) || s.plan_qty < 0)) errors.push('¼Æ»®ÊıÁ¿±ØĞëÎª·Ç¸ºÊı');
-  // [B-09 fix] 4 ¸öÈÕ²úÁ¿×Ö¶ÎÒ²Ğ£Ñé
+  if (!s.style_no || !s.style_no.trim()) errors.push('æ¬¾å·ä¸èƒ½ä¸ºç©º');
+  if (s.style_no && s.style_no.length > 50) errors.push('æ¬¾å·é•¿åº¦ä¸èƒ½è¶…è¿‡50');
+  if (s.product_name && s.product_name.length > 100) errors.push('å“åé•¿åº¦ä¸èƒ½è¶…è¿‡100');
+  if (s.color && s.color.length > 30) errors.push('é¢œè‰²é•¿åº¦ä¸èƒ½è¶…è¿‡30');
+  if (s.size_spec && s.size_spec.length > 30) errors.push('è§„æ ¼é•¿åº¦ä¸èƒ½è¶…è¿‡30');
+  if (s.customer && s.customer.length > 100) errors.push('å®¢æˆ·åé•¿åº¦ä¸èƒ½è¶…è¿‡100');
+  if (s.plan_qty !== undefined && (isNaN(s.plan_qty) || s.plan_qty < 0)) errors.push('è®¡åˆ’æ•°é‡å¿…é¡»ä¸ºéè´Ÿæ•°');
+  // [B-09 fix] 4 ä¸ªæ—¥äº§é‡å­—æ®µä¹Ÿæ ¡éªŒ
   const dailyFields = ['embroidery_daily_output', 'printing_daily_output', 'ironing_daily_output', 'template_daily_output', 'target_daily_output'];
   for (const f of dailyFields) {
     if (s[f] !== undefined && s[f] !== '' && (isNaN(s[f]) || Number(s[f]) < 0)) {
-      errors.push(`${f} ±ØĞëÎª·Ç¸ºÊı`);
+      errors.push(`${f} å¿…é¡»ä¸ºéè´Ÿæ•°`);
     }
   }
   return errors;
@@ -715,21 +715,21 @@ function validateStyle(s) {
 
 function validateMainPlan(p) {
   const errors = [];
-  if (!p.style_no || !p.style_no.trim()) errors.push('¿îºÅ²»ÄÜÎª¿Õ');
-  if (p.style_no && p.style_no.length > 50) errors.push('¿îºÅ³¤¶È²»ÄÜ³¬¹ı50');
-  if (!p.due_date) errors.push('½»ÆÚ²»ÄÜÎª¿Õ');
-  if (p.plan_qty !== undefined && (isNaN(p.plan_qty) || p.plan_qty < 0)) errors.push('¼Æ»®ÊıÁ¿±ØĞëÎª·Ç¸ºÊı');
-  // [2026-06-20 S-4] ÈÕÆÚÂß¼­Ğ£Ñé:due_date ±ØĞëÊÇÓĞĞ§ÈÕÆÚ
+  if (!p.style_no || !p.style_no.trim()) errors.push('æ¬¾å·ä¸èƒ½ä¸ºç©º');
+  if (p.style_no && p.style_no.length > 50) errors.push('æ¬¾å·é•¿åº¦ä¸èƒ½è¶…è¿‡50');
+  if (!p.due_date) errors.push('äº¤æœŸä¸èƒ½ä¸ºç©º');
+  if (p.plan_qty !== undefined && (isNaN(p.plan_qty) || p.plan_qty < 0)) errors.push('è®¡åˆ’æ•°é‡å¿…é¡»ä¸ºéè´Ÿæ•°');
+  // [2026-06-20 S-4] æ—¥æœŸé€»è¾‘æ ¡éªŒ:due_date å¿…é¡»æ˜¯æœ‰æ•ˆæ—¥æœŸ
   if (p.due_date && !/^\d{4}-\d{2}-\d{2}/.test(String(p.due_date))) {
-    errors.push('½»ÆÚ¸ñÊ½±ØĞëÎª YYYY-MM-DD');
+    errors.push('äº¤æœŸæ ¼å¼å¿…é¡»ä¸º YYYY-MM-DD');
   }
   return errors;
 }
 
-// [2026-06-20 S-2] ºó¶ËÍ³Ò»ÈÕ²úÁ¿·ÖÅäËã·¨
-// ÊäÈë: ¿ªÊ¼/½áÊøÈÕÆÚ, ¼Æ»®ÊıÁ¿, ÈÕ²úÄÜ
-// Êä³ö: [{ date, plan, actual, diff }] Êı×é
-// Ëã·¨: È«ÌìÂúÔØ + ×îºóÒ»ÌìÓàÊı(Óë sewing-daily-plan ±£³ÖÒ»ÖÂ)
+// [2026-06-20 S-2] åç«¯ç»Ÿä¸€æ—¥äº§é‡åˆ†é…ç®—æ³•
+// è¾“å…¥: å¼€å§‹/ç»“æŸæ—¥æœŸ, è®¡åˆ’æ•°é‡, æ—¥äº§èƒ½
+// è¾“å‡º: [{ date, plan, actual, diff }] æ•°ç»„
+// ç®—æ³•: å…¨å¤©æ»¡è½½ + æœ€åä¸€å¤©ä½™æ•°(ä¸ sewing-daily-plan ä¿æŒä¸€è‡´)
 function computeDateData(start, end, planQty, dailyTarget) {
   if (!start || !end || !planQty || !dailyTarget) return [];
   const sd = new Date(start + 'T00:00:00');
@@ -751,9 +751,9 @@ function computeDateData(start, end, planQty, dailyTarget) {
   return result;
 }
 
-// [2026-06-20 S-1] ºó¶ËÍ³Ò»ÈÕÆÚµ¹ÍÆËã·¨,´Ó due_date µ¹ÍÆ
-// Ç°¶Ë autoCalcDates Í¬²½²ÉÓÃ´Ëº¯Êı,²»ÔÙ¸÷×ÔÊµÏÖ
-// Ëã·¨:
+// [2026-06-20 S-1] åç«¯ç»Ÿä¸€æ—¥æœŸå€’æ¨ç®—æ³•,ä» due_date å€’æ¨
+// å‰ç«¯ autoCalcDates åŒæ­¥é‡‡ç”¨æ­¤å‡½æ•°,ä¸å†å„è‡ªå®ç°
+// ç®—æ³•:
 //   sewing_end    = due_date - SEWING_BUFFER
 //   sewing_days   = ceil(plan_qty / sewing_capacity)
 //   sewing_start  = sewing_end - sewing_days - line_change_days
@@ -811,21 +811,21 @@ function recalcMainPlanDates(p) {
 
 function validateWarehouseRecord(r, type) {
   const errors = [];
-  if (!r.style_no || !r.style_no.trim()) errors.push('¿îºÅ²»ÄÜÎª¿Õ');
-  if (r.style_no && r.style_no.length > 50) errors.push('¿îºÅ³¤¶È²»ÄÜ³¬¹ı50');
-  if (r.color && r.color.length > 30) errors.push('ÑÕÉ«³¤¶È²»ÄÜ³¬¹ı30');
-  if (r.size_spec && r.size_spec.length > 30) errors.push('¹æ¸ñ³¤¶È²»ÄÜ³¬¹ı30');
-  if (r.operator && r.operator.length > 50) errors.push('²Ù×÷ÈË³¤¶È²»ÄÜ³¬¹ı50');
-  if (!r.qty || isNaN(r.qty) || r.qty <= 0) errors.push('ÊıÁ¿±ØĞëÎªÕıÊı');
-  if (!r.inbound_date && !r.outbound_date) errors.push('ÈÕÆÚ²»ÄÜÎª¿Õ');
+  if (!r.style_no || !r.style_no.trim()) errors.push('æ¬¾å·ä¸èƒ½ä¸ºç©º');
+  if (r.style_no && r.style_no.length > 50) errors.push('æ¬¾å·é•¿åº¦ä¸èƒ½è¶…è¿‡50');
+  if (r.color && r.color.length > 30) errors.push('é¢œè‰²é•¿åº¦ä¸èƒ½è¶…è¿‡30');
+  if (r.size_spec && r.size_spec.length > 30) errors.push('è§„æ ¼é•¿åº¦ä¸èƒ½è¶…è¿‡30');
+  if (r.operator && r.operator.length > 50) errors.push('æ“ä½œäººé•¿åº¦ä¸èƒ½è¶…è¿‡50');
+  if (!r.qty || isNaN(r.qty) || r.qty <= 0) errors.push('æ•°é‡å¿…é¡»ä¸ºæ­£æ•°');
+  if (!r.inbound_date && !r.outbound_date) errors.push('æ—¥æœŸä¸èƒ½ä¸ºç©º');
   return errors;
 }
 
-// [2026-06-20 fix#ºó¶Ë-P2-2] warehouse :type °×Ãûµ¥,±ÜÃâ SQL ×¢Èë + Î´ÖªÀàĞÍ²é±í
+// [2026-06-20 fix#åç«¯-P2-2] warehouse :type ç™½åå•,é¿å… SQL æ³¨å…¥ + æœªçŸ¥ç±»å‹æŸ¥è¡¨
 const ALLOWED_WAREHOUSE_TYPES = ['fabric', 'cutting_piece', 'accessory', 'finished'];
 function warehouseTypeGuard(req, res, next) {
   if (!ALLOWED_WAREHOUSE_TYPES.includes(req.params.type)) {
-    return res.status(400).json({ error: `warehouse_type ²»ºÏ·¨,ÔÊĞí: ${ALLOWED_WAREHOUSE_TYPES.join(', ')}` });
+    return res.status(400).json({ error: `warehouse_type ä¸åˆæ³•,å…è®¸: ${ALLOWED_WAREHOUSE_TYPES.join(', ')}` });
   }
   next();
 }
@@ -833,50 +833,50 @@ function warehouseTypeGuard(req, res, next) {
 // Handle unique constraint violations with 409
 function handleUniqueError(e, res) {
   if (e.message && e.message.includes('UNIQUE constraint failed')) {
-    return res.status(409).json({ error: '¼ÇÂ¼ÒÑ´æÔÚ£¨Î¨Ò»Ô¼Êø³åÍ»£©' });
+    return res.status(409).json({ error: 'è®°å½•å·²å­˜åœ¨ï¼ˆå”¯ä¸€çº¦æŸå†²çªï¼‰' });
   }
   return res.status(500).json({ error: 'Internal server error' });
 }
 
 // ============================================================
-// ¶ş´Î¼Ó¹¤ÀàĞÍÅäÖÃ [B-03/B-04 fix]
-// 4 ¸ö daily-plan ¶Ëµã¹²ÓÃÍ¬Ò»Ì××Ö¶ÎÓ³Éä
+// äºŒæ¬¡åŠ å·¥ç±»å‹é…ç½® [B-03/B-04 fix]
+// 4 ä¸ª daily-plan ç«¯ç‚¹å…±ç”¨åŒä¸€å¥—å­—æ®µæ˜ å°„
 // ============================================================
 const SECONDARY_TYPES = {
-  printing:   { sqlField: 'printing',   startField: 'printing_start',   endField: 'printing_end',   dailyField: 'printing_daily_output',   label: 'Ó¡»¨' },
-  embroidery: { sqlField: 'embroidery', startField: 'embroidery_start', endField: 'embroidery_end', dailyField: 'embroidery_daily_output', label: '´ÌĞå' },
-  ironing:    { sqlField: 'ironing_label', startField: 'ironing_start', endField: 'ironing_end', dailyField: 'ironing_daily_output', label: 'ÌÌ±ê' },
-  template:   { sqlField: 'template',   startField: 'template_start',   endField: 'template_end',   dailyField: 'template_daily_output',   label: 'Ä£°å' },
+  printing:   { sqlField: 'printing',   startField: 'printing_start',   endField: 'printing_end',   dailyField: 'printing_daily_output',   label: 'å°èŠ±' },
+  embroidery: { sqlField: 'embroidery', startField: 'embroidery_start', endField: 'embroidery_end', dailyField: 'embroidery_daily_output', label: 'åˆºç»£' },
+  ironing:    { sqlField: 'ironing_label', startField: 'ironing_start', endField: 'ironing_end', dailyField: 'ironing_daily_output', label: 'çƒ«æ ‡' },
+  template:   { sqlField: 'template',   startField: 'template_start',   endField: 'template_end',   dailyField: 'template_daily_output',   label: 'æ¨¡æ¿' },
 };
 
-// ÈÕÆÚ·¶Î§:½ñÌìÇ°ºó¹Ì¶¨ÌìÊı(ËùÓĞ secondary Í³Ò»´°¿Ú,½â¾ö B-04)
+// æ—¥æœŸèŒƒå›´:ä»Šå¤©å‰åå›ºå®šå¤©æ•°(æ‰€æœ‰ secondary ç»Ÿä¸€çª—å£,è§£å†³ B-04)
 const SEC_DAILY_PLAN_WINDOW = { beforeDays: 7, afterDays: 21 };
 
-// [B-10 fix] Í¨ÓÃ IN ²éÑ¯ helper
+// [B-10 fix] é€šç”¨ IN æŸ¥è¯¢ helper
 function inQuery(column, values) {
   if (!values || values.length === 0) return { sql: '1=0', params: [] };
   const placeholders = values.map(() => '?').join(',');
   return { sql: `${column} IN (${placeholders})`, params: values };
 }
 
-// [B-12 fix] ²úÏßÃûÔ¼¶¨: production_lines.line_name ĞÎÈç "20°à",
-//              main_plan/schedule_master.line_team ÊÇÂãÊı×Ö "20"
-//              ÓÃÕâ¸ö helper Ë«Ïò×ª»»,±ÜÃâ¸÷´¦É¢ÂäµÄ .replace(/°à$/, '')
+// [B-12 fix] äº§çº¿åçº¦å®š: production_lines.line_name å½¢å¦‚ "20ç­",
+//              main_plan/schedule_master.line_team æ˜¯è£¸æ•°å­— "20"
+//              ç”¨è¿™ä¸ª helper åŒå‘è½¬æ¢,é¿å…å„å¤„æ•£è½çš„ .replace(/ç­$/, '')
 function stripLineSuffix(name) {
   if (name == null) return '';
-  return String(name).replace(/°à$/, '').trim();
+  return String(name).replace(/ç­$/, '').trim();
 }
-// ·´Ïò:¸øÂãÊı×Ö¼Ó "°à" ºó×º,ÓÃÓÚ²é production_lines
+// åå‘:ç»™è£¸æ•°å­—åŠ  "ç­" åç¼€,ç”¨äºæŸ¥ production_lines
 function lineNameWithSuffix(num) {
   if (!num) return '';
-  return /°à$/.test(num) ? num : `${num}°à`;
+  return /ç­$/.test(num) ? num : `${num}ç­`;
 }
 
 // ============================================================
 // API ROUTES
 // ============================================================
 
-// ---------- ¿îÊ½¹ÜÀí ----------
+// ---------- æ¬¾å¼ç®¡ç† ----------
 app.get('/api/styles', (req, res) => {
   try {
     const { keyword } = req.query;
@@ -897,29 +897,29 @@ app.get('/api/styles/distinct', (req, res) => {
   }
 });
 
-// ---------- ¿îÊ½µ¼Èëµ¼³ö ----------
+// ---------- æ¬¾å¼å¯¼å…¥å¯¼å‡º ----------
 app.get('/api/styles/export', async (req, res) => {
   try {
     const styles = db.all('SELECT * FROM styles ORDER BY id');
     const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet('¿îÊ½¹ÜÀí');
+    const ws = workbook.addWorksheet('æ¬¾å¼ç®¡ç†');
     ws.columns = [
-      { header: '½Óµ¥ÈÕÆÚ', key: 'order_date', width: 14 },
-      { header: '¿îºÅ', key: 'style_no', width: 25 },
-      { header: 'Æ·Ãû', key: 'product_name', width: 16 },
-      { header: '¿îÊ½·ÖÀà', key: 'style_category', width: 12 },
-      { header: 'ÃæÁÏ´úºÅ', key: 'fabric_code', width: 28 },
-      { header: '³ÉÒÂ¼Æ»®ÊıÁ¿', key: 'plan_qty', width: 14 },
-      { header: '½»ÆÚ', key: 'due_date', width: 14 },
-      { header: 'ÊÇ·ñ´ÌĞå', key: 'embroidery', width: 10 },
-      { header: 'ÊÇ·ñÓ¡»¨', key: 'printing', width: 10 },
-      { header: 'ÊÇ·ñÌÌ±ê', key: 'ironing_label', width: 10 },
-      { header: 'ÊÇ·ñÓÃÄ£°å', key: 'template', width: 10 },
-      { header: 'TTÊ±¼ä', key: 'tt_time', width: 10 },
-      { header: 'Ä¿±êÈÕ²úÁ¿', key: 'target_daily_output', width: 12 },
-      { header: '¼¸ÌõÏßÉú²ú', key: 'production_lines', width: 12 },
-      { header: '±¸×¢', key: 'remarks', width: 20 },
-      { header: 'ÓÅÏÈ¼¶', key: 'priority', width: 10 },
+      { header: 'æ¥å•æ—¥æœŸ', key: 'order_date', width: 14 },
+      { header: 'æ¬¾å·', key: 'style_no', width: 25 },
+      { header: 'å“å', key: 'product_name', width: 16 },
+      { header: 'æ¬¾å¼åˆ†ç±»', key: 'style_category', width: 12 },
+      { header: 'é¢æ–™ä»£å·', key: 'fabric_code', width: 28 },
+      { header: 'æˆè¡£è®¡åˆ’æ•°é‡', key: 'plan_qty', width: 14 },
+      { header: 'äº¤æœŸ', key: 'due_date', width: 14 },
+      { header: 'æ˜¯å¦åˆºç»£', key: 'embroidery', width: 10 },
+      { header: 'æ˜¯å¦å°èŠ±', key: 'printing', width: 10 },
+      { header: 'æ˜¯å¦çƒ«æ ‡', key: 'ironing_label', width: 10 },
+      { header: 'æ˜¯å¦ç”¨æ¨¡æ¿', key: 'template', width: 10 },
+      { header: 'TTæ—¶é—´', key: 'tt_time', width: 10 },
+      { header: 'ç›®æ ‡æ—¥äº§é‡', key: 'target_daily_output', width: 12 },
+      { header: 'å‡ æ¡çº¿ç”Ÿäº§', key: 'production_lines', width: 12 },
+      { header: 'å¤‡æ³¨', key: 'remarks', width: 20 },
+      { header: 'ä¼˜å…ˆçº§', key: 'priority', width: 10 },
     ];
     ws.getRow(1).font = { bold: true };
     for (const s of styles) {
@@ -939,27 +939,27 @@ app.get('/api/styles/export', async (req, res) => {
     res.end();
   } catch (e) {
     console.error('GET /api/styles/export error:', e);
-    res.status(500).json({ error: 'µ¼³öÊ§°Ü' });
+    res.status(500).json({ error: 'å¯¼å‡ºå¤±è´¥' });
   }
 });
 
 app.post('/api/styles/import', async (req, res) => {
   try {
     const { file } = req.body;
-    if (!file) return res.status(400).json({ error: 'ÇëÉÏ´«ÎÄ¼ş' });
+    if (!file) return res.status(400).json({ error: 'è¯·ä¸Šä¼ æ–‡ä»¶' });
     const buffer = Buffer.from(file, 'base64');
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
     const ws = workbook.worksheets[0];
-    if (!ws || ws.rowCount < 2) return res.status(400).json({ error: 'ÎÄ¼şÎª¿Õ' });
+    if (!ws || ws.rowCount < 2) return res.status(400).json({ error: 'æ–‡ä»¶ä¸ºç©º' });
     const headerMap = {
-      '½Óµ¥ÈÕÆÚ': 'order_date', '¿îºÅ': 'style_no', 'Æ·Ãû': 'product_name', '¿îÊ½·ÖÀà': 'style_category',
-      'ÃæÁÏ´úºÅ': 'fabric_code', '³ÉÒÂ¼Æ»®ÊıÁ¿': 'plan_qty', '½»ÆÚ': 'due_date',
-      'ÊÇ·ñ´ÌĞå': 'embroidery', '´ÌĞåÈÕ²úÁ¿': 'embroidery_daily_output',
-      'ÊÇ·ñÓ¡»¨': 'printing', 'Ó¡»¨ÈÕ²úÁ¿': 'printing_daily_output',
-      'ÊÇ·ñÌÌ±ê': 'ironing_label', 'ÌÌ±êÈÕ²úÁ¿': 'ironing_daily_output',
-      'ÊÇ·ñÓÃÄ£°å': 'template', 'Ä£°åÈÕ²úÁ¿': 'template_daily_output',
-      'TTÊ±¼ä': 'tt_time', '·ìÖÆÄ¿±êÈÕ²úÁ¿': 'target_daily_output', '±¸×¢': 'remarks',
+      'æ¥å•æ—¥æœŸ': 'order_date', 'æ¬¾å·': 'style_no', 'å“å': 'product_name', 'æ¬¾å¼åˆ†ç±»': 'style_category',
+      'é¢æ–™ä»£å·': 'fabric_code', 'æˆè¡£è®¡åˆ’æ•°é‡': 'plan_qty', 'äº¤æœŸ': 'due_date',
+      'æ˜¯å¦åˆºç»£': 'embroidery', 'åˆºç»£æ—¥äº§é‡': 'embroidery_daily_output',
+      'æ˜¯å¦å°èŠ±': 'printing', 'å°èŠ±æ—¥äº§é‡': 'printing_daily_output',
+      'æ˜¯å¦çƒ«æ ‡': 'ironing_label', 'çƒ«æ ‡æ—¥äº§é‡': 'ironing_daily_output',
+      'æ˜¯å¦ç”¨æ¨¡æ¿': 'template', 'æ¨¡æ¿æ—¥äº§é‡': 'template_daily_output',
+      'TTæ—¶é—´': 'tt_time', 'ç¼åˆ¶ç›®æ ‡æ—¥äº§é‡': 'target_daily_output', 'å¤‡æ³¨': 'remarks',
     };
     const colMap = {};
     ws.getRow(1).eachCell((cell, colNumber) => {
@@ -991,7 +991,7 @@ app.post('/api/styles/import', async (req, res) => {
         data.printing_daily_output = parseInt(data.printing_daily_output) || 0;
         data.ironing_daily_output = parseInt(data.ironing_daily_output) || 0;
         data.template_daily_output = parseInt(data.template_daily_output) || 0;
-        // Handle Excel serial date for ½Óµ¥ÈÕÆÚ
+        // Handle Excel serial date for æ¥å•æ—¥æœŸ
         if (data.order_date && !isNaN(Number(data.order_date)) && Number(data.order_date) > 40000) {
           const serial = Number(data.order_date);
           const ms = (serial - 25569) * 86400000;
@@ -1012,7 +1012,7 @@ app.post('/api/styles/import', async (req, res) => {
     });
     txn();
     broadcastSection('styles', db.all('SELECT * FROM styles ORDER BY id'));
-    logOp(req, 'styles', 'import', null, `µ¼Èë${imported}Ìõ`);
+    logOp(req, 'styles', 'import', null, `å¯¼å…¥${imported}æ¡`);
     res.json({ ok: true, imported, skipped });
   } catch (e) {
     sendError(res, 'POST /api/styles/import', e);
@@ -1030,13 +1030,13 @@ app.get('/api/styles/:id', (req, res) => {
   }
 });
 
-// P0 °²È«: POST /styles ½öÓÃÓÚ´´½¨,id ÓÉ·şÎñ¶ËÉú³É,¿Í»§¶Ë²»¿É´Û¸Ä
+// P0 å®‰å…¨: POST /styles ä»…ç”¨äºåˆ›å»º,id ç”±æœåŠ¡ç«¯ç”Ÿæˆ,å®¢æˆ·ç«¯ä¸å¯ç¯¡æ”¹
 app.post('/api/styles', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const s = req.body;
     const errors = validateStyle(s);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
-    if (s.id) return res.status(400).json({ error: '´´½¨Ê±²»ÄÜĞ¯´ø id,ÇëÊ¹ÓÃ PUT /api/styles/:id ¸üĞÂ' });
+    if (s.id) return res.status(400).json({ error: 'åˆ›å»ºæ—¶ä¸èƒ½æºå¸¦ id,è¯·ä½¿ç”¨ PUT /api/styles/:id æ›´æ–°' });
 
     const result = db.run(`INSERT INTO styles (style_no, product_name, style_category, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, has_special_wash, remarks)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -1050,16 +1050,16 @@ app.post('/api/styles', requireRole('admin', 'planning_manager', 'planner'), (re
   }
 });
 
-// P0 °²È«: ¸üĞÂ×ß PUT,id À´×Ô URL ²»¿É±» body ´Û¸Ä
+// P0 å®‰å…¨: æ›´æ–°èµ° PUT,id æ¥è‡ª URL ä¸å¯è¢« body ç¯¡æ”¹
 app.put('/api/styles/:id', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id ²»ºÏ·¨' });
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id ä¸åˆæ³•' });
     const s = req.body;
     const errors = validateStyle(s);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
     const existing = db.get('SELECT id FROM styles WHERE id = ?', [id]);
-    if (!existing) return res.status(404).json({ error: '¿îÊ½²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'æ¬¾å¼ä¸å­˜åœ¨' });
     db.run(`UPDATE styles SET style_no=?,product_name=?,style_category=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,has_special_wash=?,remarks=? WHERE id=?`,
       [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, parseInt(s.has_special_wash) || 0, s.remarks||'', id]);
     broadcastSection('styles', db.searchStyles(''));
@@ -1085,7 +1085,7 @@ app.delete('/api/styles/:id', requireRole('admin', 'planning_manager', 'planner'
   }
 });
 
-// ---------- ³µ¼ä & ²úÏß ----------
+// ---------- è½¦é—´ & äº§çº¿ ----------
 app.get('/api/workshops', (req, res) => {
   try {
     res.json(db.all('SELECT * FROM workshops ORDER BY sort_order'));
@@ -1116,9 +1116,9 @@ app.get('/api/production-lines', (req, res) => {
 app.put('/api/production-lines/:id', (req, res) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['¿ÕÏĞ', 'Éú²úÖĞ', '»»ÏßÖĞ', '¹ÊÕÏ'];
+    const validStatuses = ['ç©ºé—²', 'ç”Ÿäº§ä¸­', 'æ¢çº¿ä¸­', 'æ•…éšœ'];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'ÎŞĞ§×´Ì¬' });
+      return res.status(400).json({ error: 'æ— æ•ˆçŠ¶æ€' });
     }
     const existing = db.get('SELECT * FROM production_lines WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -1127,7 +1127,7 @@ app.put('/api/production-lines/:id', (req, res) => {
       db.run('UPDATE production_lines SET status = ? WHERE id = ?', [status, req.params.id]);
       db.run('INSERT INTO production_line_events (line_id, event_type, old_status, new_status, remark) VALUES (?,?,?,?,?)',
         [req.params.id, 'status_change', oldStatus, status, req.body.remark || '']);
-      logOp(req, 'production_lines', 'status_change', req.params.id, existing.line_name, `${oldStatus}¡ú${status}`);
+      logOp(req, 'production_lines', 'status_change', req.params.id, existing.line_name, `${oldStatus}â†’${status}`);
     }
     broadcastSection('productionLines', db.all('SELECT * FROM production_lines ORDER BY sort_order'));
     res.json({ ok: true });
@@ -1137,7 +1137,7 @@ app.put('/api/production-lines/:id', (req, res) => {
   }
 });
 
-// ---------- ²úÏßÊÂ¼şÀúÊ· ----------
+// ---------- äº§çº¿äº‹ä»¶å†å² ----------
 app.get('/api/production-lines/:id/events', (req, res) => {
   try {
     res.json(db.all('SELECT * FROM production_line_events WHERE line_id = ? ORDER BY created_at DESC', [req.params.id]));
@@ -1147,7 +1147,7 @@ app.get('/api/production-lines/:id/events', (req, res) => {
   }
 });
 
-// ---------- ·ìÖÆ³µ¼ä¹ÜÀí£¨Èı²ãÊ÷£© ----------
+// ---------- ç¼åˆ¶è½¦é—´ç®¡ç†ï¼ˆä¸‰å±‚æ ‘ï¼‰ ----------
 app.get('/api/sewing-workshop-tree', (req, res) => {
   try {
     const workshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
@@ -1172,23 +1172,23 @@ app.get('/api/sewing-workshop-tree', (req, res) => {
 app.post('/api/sewing-workshop-tree', (req, res) => {
   try {
     const { type, name, parent_id } = req.body;
-    if (!type || !name) return res.status(400).json({ error: 'typeºÍname±ØÌî' });
+    if (!type || !name) return res.status(400).json({ error: 'typeå’Œnameå¿…å¡«' });
     if (type === 'workshop') {
       const max = db.get('SELECT MAX(sort_order) as m FROM workshops');
       const result = db.run('INSERT INTO workshops (name, sort_order) VALUES (?, ?)', [name, (max?.m || 0) + 1]);
       res.json({ id: result.lastInsertRowid });
     } else if (type === 'team') {
-      if (!parent_id) return res.status(400).json({ error: '°à×éĞèÒªworkshop_id' });
+      if (!parent_id) return res.status(400).json({ error: 'ç­ç»„éœ€è¦workshop_id' });
       const max = db.get('SELECT MAX(sort_order) as m FROM production_lines WHERE workshop_id = ?', [parent_id]);
       const result = db.run('INSERT INTO production_lines (workshop_id, line_name, sort_order) VALUES (?, ?, ?)', [parent_id, name, (max?.m || 0) + 1]);
       res.json({ id: result.lastInsertRowid });
     } else if (type === 'category') {
-      if (!parent_id) return res.status(400).json({ error: '¿îÊ½·ÖÀàĞèÒªline_id' });
+      if (!parent_id) return res.status(400).json({ error: 'æ¬¾å¼åˆ†ç±»éœ€è¦line_id' });
       const max = db.get('SELECT MAX(sort_order) as m FROM line_style_categories WHERE line_id = ?', [parent_id]);
       const result = db.run('INSERT INTO line_style_categories (line_id, name, sort_order) VALUES (?, ?, ?)', [parent_id, name, (max?.m || 0) + 1]);
       res.json({ id: result.lastInsertRowid });
     } else {
-      return res.status(400).json({ error: 'ÎŞĞ§type' });
+      return res.status(400).json({ error: 'æ— æ•ˆtype' });
     }
   } catch (e) {
     console.error('POST /api/sewing-workshop-tree error:', e);
@@ -1200,7 +1200,7 @@ app.put('/api/sewing-workshop-tree/batch', (req, res) => {
   try {
     const { items } = req.body; // [{id, type, name}]
     if (!Array.isArray(items) || !items.length) {
-      return res.status(400).json({ error: '²ÎÊı´íÎó' });
+      return res.status(400).json({ error: 'å‚æ•°é”™è¯¯' });
     }
     let updated = 0;
     const rawDb = db.getDb();
@@ -1228,7 +1228,7 @@ app.put('/api/sewing-workshop-tree/batch', (req, res) => {
 app.put('/api/sewing-workshop-tree/:id', (req, res) => {
   try {
     const { type, name, daily_output } = req.body;
-    if (!type || !name) return res.status(400).json({ error: 'typeºÍname±ØÌî' });
+    if (!type || !name) return res.status(400).json({ error: 'typeå’Œnameå¿…å¡«' });
     if (type === 'workshop') {
       db.run('UPDATE workshops SET name = ? WHERE id = ?', [name, req.params.id]);
     } else if (type === 'team') {
@@ -1236,7 +1236,7 @@ app.put('/api/sewing-workshop-tree/:id', (req, res) => {
     } else if (type === 'category') {
       db.run('UPDATE line_style_categories SET name = ? WHERE id = ?', [name, req.params.id]);
     } else {
-      return res.status(400).json({ error: 'ÎŞĞ§type' });
+      return res.status(400).json({ error: 'æ— æ•ˆtype' });
     }
     res.json({ ok: true });
   } catch (e) {
@@ -1248,7 +1248,7 @@ app.put('/api/sewing-workshop-tree/:id', (req, res) => {
 app.delete('/api/sewing-workshop-tree/:id', (req, res) => {
   try {
     const { type } = req.query;
-    if (!type) return res.status(400).json({ error: 'type±ØÌî' });
+    if (!type) return res.status(400).json({ error: 'typeå¿…å¡«' });
     if (type === 'workshop') {
       const lines = db.all('SELECT id FROM production_lines WHERE workshop_id = ?', [req.params.id]);
       for (const l of lines) {
@@ -1262,7 +1262,7 @@ app.delete('/api/sewing-workshop-tree/:id', (req, res) => {
     } else if (type === 'category') {
       db.run('DELETE FROM line_style_categories WHERE id = ?', [req.params.id]);
     } else {
-      return res.status(400).json({ error: 'ÎŞĞ§type' });
+      return res.status(400).json({ error: 'æ— æ•ˆtype' });
     }
     res.json({ ok: true });
   } catch (e) {
@@ -1271,12 +1271,12 @@ app.delete('/api/sewing-workshop-tree/:id', (req, res) => {
   }
 });
 
-// ---------- ·ìÖÆ³µ¼ä£ºÅúÁ¿²Ù×÷ ----------
+// ---------- ç¼åˆ¶è½¦é—´ï¼šæ‰¹é‡æ“ä½œ ----------
 app.post('/api/sewing-workshop-tree/batch', (req, res) => {
   try {
     const { type, items } = req.body; // type='category', items=[{line_id, name}]
     if (type !== 'category' || !Array.isArray(items) || !items.length) {
-      return res.status(400).json({ error: '²ÎÊı´íÎó' });
+      return res.status(400).json({ error: 'å‚æ•°é”™è¯¯' });
     }
     let added = 0;
     const rawDb = db.getDb();
@@ -1297,19 +1297,19 @@ app.post('/api/sewing-workshop-tree/batch', (req, res) => {
   }
 });
 
-// ---------- ·ìÖÆ³µ¼ä£ºµ¼Èëµ¼³ö ----------
+// ---------- ç¼åˆ¶è½¦é—´ï¼šå¯¼å…¥å¯¼å‡º ----------
 app.get('/api/sewing-workshop-tree/export', async (req, res) => {
   try {
     const workshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
     const lines = db.all('SELECT * FROM production_lines ORDER BY sort_order');
     const categories = db.all('SELECT * FROM line_style_categories ORDER BY sort_order');
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('³µ¼ä°à×é¿îÊ½·ÖÀà');
+    const ws = wb.addWorksheet('è½¦é—´ç­ç»„æ¬¾å¼åˆ†ç±»');
     ws.columns = [
-      { header: '³µ¼ä', key: 'workshop', width: 15 },
-      { header: '°à×é', key: 'team', width: 15 },
-      { header: 'ÈÕ²úÁ¿', key: 'daily_output', width: 12 },
-      { header: '¿îÊ½·ÖÀà', key: 'category', width: 30 },
+      { header: 'è½¦é—´', key: 'workshop', width: 15 },
+      { header: 'ç­ç»„', key: 'team', width: 15 },
+      { header: 'æ—¥äº§é‡', key: 'daily_output', width: 12 },
+      { header: 'æ¬¾å¼åˆ†ç±»', key: 'category', width: 30 },
     ];
     ws.getRow(1).font = { bold: true };
     for (const w of workshops) {
@@ -1345,15 +1345,15 @@ app.get('/api/sewing-workshop-tree/export', async (req, res) => {
 app.post('/api/sewing-workshop-tree/import', async (req, res) => {
   try {
     const { file, mode } = req.body; // mode: 'append' (default) or 'replace'
-    if (!file) return res.status(400).json({ error: 'ÇëÉÏ´«ÎÄ¼ş' });
+    if (!file) return res.status(400).json({ error: 'è¯·ä¸Šä¼ æ–‡ä»¶' });
     const buffer = Buffer.from(file, 'base64');
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
     const ws = wb.worksheets[0];
-    if (!ws || ws.rowCount < 2) return res.status(400).json({ error: 'ÎÄ¼şÎª¿Õ' });
+    if (!ws || ws.rowCount < 2) return res.status(400).json({ error: 'æ–‡ä»¶ä¸ºç©º' });
 
     if (mode === 'replace') {
-      // Çå¿Õ¾ÉÊ÷£¬ÓÃ Excel Êı¾İÖØ½¨
+      // æ¸…ç©ºæ—§æ ‘ï¼Œç”¨ Excel æ•°æ®é‡å»º
       let workshopsCreated = 0, teamsCreated = 0, catsCreated = 0;
       const txn = db.getDb().transaction(() => {
         db.run('DELETE FROM line_style_categories');
@@ -1393,7 +1393,7 @@ app.post('/api/sewing-workshop-tree/import', async (req, res) => {
       txn();
       res.json({ mode: 'replace', workshops: workshopsCreated, teams: teamsCreated, categories: catsCreated });
     } else {
-      // ×·¼ÓÄ£Ê½
+      // è¿½åŠ æ¨¡å¼
       const workshops = db.all('SELECT * FROM workshops');
       const lines = db.all('SELECT * FROM production_lines');
       const wsMap = {};
@@ -1434,13 +1434,13 @@ app.post('/api/sewing-workshop-tree/import', async (req, res) => {
   }
 });
 
-// ---------- Ö÷¼Æ»® ----------
+// ---------- ä¸»è®¡åˆ’ ----------
 app.get('/api/main-plan', (req, res) => {
   try {
-    // [2026-06-20 M-1] Ö§³Ö page/limit/sort/dir ¼òµ¥·ÖÒ³²ÎÊı
-    // ²»´« page/limit Ê±·µ»ØÈ«²¿(Ïòºó¼æÈİ)
-    // [fix 2026-06-20 S-3] Ö®Ç° Math.max(1, 0)=1 µ¼ÖÂÎŞ²ÎÊ±Ò²×ß·ÖÒ³ÇÒ limit=1,
-    // ĞŞ¸´: ÏÈÅĞ¶ÏÊÇ·ñÓĞ query,ÔÙ parse
+    // [2026-06-20 M-1] æ”¯æŒ page/limit/sort/dir ç®€å•åˆ†é¡µå‚æ•°
+    // ä¸ä¼  page/limit æ—¶è¿”å›å…¨éƒ¨(å‘åå…¼å®¹)
+    // [fix 2026-06-20 S-3] ä¹‹å‰ Math.max(1, 0)=1 å¯¼è‡´æ— å‚æ—¶ä¹Ÿèµ°åˆ†é¡µä¸” limit=1,
+    // ä¿®å¤: å…ˆåˆ¤æ–­æ˜¯å¦æœ‰ query,å† parse
     const hasPaging = req.query.page !== undefined || req.query.limit !== undefined;
     if (!hasPaging) {
       return res.json(db.all('SELECT * FROM main_plan'));
@@ -1457,7 +1457,7 @@ app.get('/api/main-plan', (req, res) => {
   }
 });
 
-// [2026-06-20] ²ÃÆ¬¿âÈë¿â£º·µ»ØÓĞ²Ã¼ô¼Æ»®µÄ¿îÊ½£¨¹©Èë¿âµ¯´°Ñ¡Ôñ£©
+// [2026-06-20] è£ç‰‡åº“å…¥åº“ï¼šè¿”å›æœ‰è£å‰ªè®¡åˆ’çš„æ¬¾å¼ï¼ˆä¾›å…¥åº“å¼¹çª—é€‰æ‹©ï¼‰
 app.get('/api/main-plan/styles', (req, res) => {
   try {
     const { keyword } = req.query;
@@ -1476,7 +1476,7 @@ app.get('/api/main-plan/styles', (req, res) => {
   }
 });
 
-// Ô¤ÅÅ×Ü¼Æ»®¸ÊÌØÍ¼Êı¾İ
+// é¢„æ’æ€»è®¡åˆ’ç”˜ç‰¹å›¾æ•°æ®
 app.get('/api/main-plan/gantt', (req, res) => {
   try {
     const plans = db.all(`
@@ -1493,7 +1493,7 @@ app.get('/api/main-plan/gantt', (req, res) => {
       ORDER BY cutting_start ASC, id ASC
     `);
 
-    // ¼ÆËãÈÕÆÚ·¶Î§
+    // è®¡ç®—æ—¥æœŸèŒƒå›´
     const allDates = plans.flatMap(p => [
       p.cutting_start, p.cutting_end,
       p.printing_start, p.printing_end,
@@ -1507,10 +1507,10 @@ app.get('/api/main-plan/gantt', (req, res) => {
     if (allDates.length > 0) {
       const min = new Date(Math.min(...allDates.map(d => new Date(d + 'T00:00:00'))));
       const max = new Date(Math.max(...allDates.map(d => new Date(d + 'T00:00:00'))));
-      // À©Õ¹µ½ÖÜÒ»~ÖÜÈÕ
-      min.setDate(min.getDate() - ((min.getDay() + 6) % 7)); // »Øµ½ÖÜÒ»
-      max.setDate(max.getDate() + (7 - ((max.getDay() + 6) % 7)) - 1); // µ½ÖÜÈÕ
-      // ÖÁÉÙÏÔÊ¾4ÖÜ
+      // æ‰©å±•åˆ°å‘¨ä¸€~å‘¨æ—¥
+      min.setDate(min.getDate() - ((min.getDay() + 6) % 7)); // å›åˆ°å‘¨ä¸€
+      max.setDate(max.getDate() + (7 - ((max.getDay() + 6) % 7)) - 1); // åˆ°å‘¨æ—¥
+      // è‡³å°‘æ˜¾ç¤º4å‘¨
       const diffDays = (max - min) / 86400000;
       if (diffDays < 28) max.setDate(max.getDate() + (28 - diffDays));
       dateRange = {
@@ -1532,12 +1532,12 @@ app.post('/api/main-plan', requireRole('admin', 'planning_manager', 'planner'), 
     const errors = validateMainPlan(p);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
-    // [2026-06-20 S-1] ºó¶ËÍ³Ò»ÖØËãÈÕÆÚ,²»ĞÅÈÎÇ°¶Ë´«µÄÈÕÆÚÖµ
+    // [2026-06-20 S-1] åç«¯ç»Ÿä¸€é‡ç®—æ—¥æœŸ,ä¸ä¿¡ä»»å‰ç«¯ä¼ çš„æ—¥æœŸå€¼
     recalcMainPlanDates(p);
 
     if (p.id) {
       const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [p.id]);
-      if (!existing) return res.status(404).json({ error: '¼Æ»®²»´æÔÚ' });
+      if (!existing) return res.status(404).json({ error: 'è®¡åˆ’ä¸å­˜åœ¨' });
       db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,arrival_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=?,line_count=?,line_index=?,expired=? WHERE id=?`,
         [p.style_id, p.style_no, p.product_name, p.plan_qty, p.due_date, p.arrival_date||'', p.cutting_start, p.cutting_end, p.secondary_start, p.secondary_end, p.printing_start||'', p.printing_end||'', p.embroidery_start||'', p.embroidery_end||'', p.template_start||'', p.template_end||'', p.sewing_remind_date, p.sewing_start, p.sewing_end, p.ironing_start || '', p.ironing_end || '', p.conflict_flag || 0, p.pipeline_count || 1, p.is_scheduled ? 1 : 0, p.workshop || '', p.line_team || '', p.line_count || 1, p.line_index || 1, p.expired || 0, p.id]);
       broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
@@ -1561,8 +1561,8 @@ app.put('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'planner'
     const p = req.body;
     const id = req.params.id;
     const existing = db.get('SELECT * FROM main_plan WHERE id = ?', [id]);
-    if (!existing) return res.status(404).json({ error: '¼Æ»®²»´æÔÚ' });
-    // [2026-06-20 ¶Î4] PUT Í¬Ñù×ßÖØËã,È·±£ due_date/plan_qty ¸Ä¶¯ºó cutting/sewing µÈÈÕÆÚÍ¬²½
+    if (!existing) return res.status(404).json({ error: 'è®¡åˆ’ä¸å­˜åœ¨' });
+    // [2026-06-20 æ®µ4] PUT åŒæ ·èµ°é‡ç®—,ç¡®ä¿ due_date/plan_qty æ”¹åŠ¨å cutting/sewing ç­‰æ—¥æœŸåŒæ­¥
     const merged = {
       style_id: p.style_id ?? existing.style_id,
       style_no: p.style_no ?? existing.style_no,
@@ -1618,8 +1618,8 @@ app.delete('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'plann
   try {
     const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Not found' });
-    // [2026-06-20 fix#ÒµÎñ-P1-6] ¼¶ÁªÉ¾³ı:schedule_daily + schedule_master Í¬²½Çå
-    //   ±ÜÃâÏÂÓÎ¹Â¶ùĞĞ(Ô­ main_plan_id ÕÒ²»µ½)
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-6] çº§è”åˆ é™¤:schedule_daily + schedule_master åŒæ­¥æ¸…
+    //   é¿å…ä¸‹æ¸¸å­¤å„¿è¡Œ(åŸ main_plan_id æ‰¾ä¸åˆ°)
     const delTxn = db.getDb().transaction(() => {
       db.run('DELETE FROM schedule_daily WHERE master_id IN (SELECT id FROM schedule_master WHERE style_id = (SELECT style_id FROM main_plan WHERE id = ?))', [req.params.id]);
       db.run('DELETE FROM schedule_master WHERE style_id = (SELECT style_id FROM main_plan WHERE id = ?)', [req.params.id]);
@@ -1636,7 +1636,7 @@ app.delete('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'plann
 });
 
 // ============================================================
-// ÏµÍ³²ÎÊı (system_config ¶ÁĞ´)
+// ç³»ç»Ÿå‚æ•° (system_config è¯»å†™)
 // ============================================================
 app.get('/api/system-config', requireRole('admin', 'planning_manager', 'planner', 'dispatcher', 'supervisor'), (req, res) => {
   try {
@@ -1649,18 +1649,18 @@ app.put('/api/system-config/:key', requireRole('admin', 'planning_manager'), (re
     const { key } = req.params;
     const { config_value } = req.body;
     if (config_value === undefined || config_value === null) {
-      return res.status(400).json({ error: 'config_value ±ØÌî' });
+      return res.status(400).json({ error: 'config_value å¿…å¡«' });
     }
     const existing = db.get('SELECT config_key FROM system_config WHERE config_key = ?', [key]);
-    if (!existing) return res.status(404).json({ error: '²ÎÊı²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'å‚æ•°ä¸å­˜åœ¨' });
     db.run('UPDATE system_config SET config_value = ? WHERE config_key = ?', [String(config_value), key]);
-    invalidateSystemConfig();  // [¶Î7 C-1] Ë¢ĞÂ»º´æ
+    invalidateSystemConfig();  // [æ®µ7 C-1] åˆ·æ–°ç¼“å­˜
     logOp(req, 'system_config', 'update', null, key, `value=${config_value}`);
     res.json({ ok: true, config_key: key, config_value: String(config_value) });
   } catch (e) { sendError(res, 'PUT /api/system-config/:key', e); }
 });
 
-// [2026-06-19] Í¨ÓÃÏµÍ³²ÎÊı(system_params, Çø±ğÓÚ system_config ÅÅ³Ì³£Á¿)
+// [2026-06-19] é€šç”¨ç³»ç»Ÿå‚æ•°(system_params, åŒºåˆ«äº system_config æ’ç¨‹å¸¸é‡)
 app.get('/api/system-params', requireRole('admin', 'planning_manager', 'planner', 'dispatcher', 'supervisor'), (req, res) => {
   try { res.json(db.listSystemParams()); } catch (e) { sendError(res, 'GET /api/system-params', e); }
 });
@@ -1669,17 +1669,17 @@ app.put('/api/system-params/:key', requireRole('admin', 'planning_manager'), (re
   try {
     const { key } = req.params;
     const { value, remark } = req.body;
-    if (value === undefined) return res.status(400).json({ error: 'value ±ØÌî' });
+    if (value === undefined) return res.status(400).json({ error: 'value å¿…å¡«' });
     db.setSystemParam(key, value, remark || '');
     logOp(req, 'system_params', 'update', null, key, `value=${value}`);
     res.json({ ok: true, key, value: String(value) });
   } catch (e) { sendError(res, 'PUT /api/system-params/:key', e); }
 });
 
-// ---------- Ô¤ÅÅ²úËã·¨ ----------
+// ---------- é¢„æ’äº§ç®—æ³• ----------
 app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
-    // 0. ¶Á system_config ¿Éµ÷²ÎÊı(´ø fallback)
+    // 0. è¯» system_config å¯è°ƒå‚æ•°(å¸¦ fallback)
     const cfg = getSystemConfig();
     const LOADING_TO_ARRIVAL = parseInt(cfg.loading_to_arrival_days) || 15;
     const FABRIC_INSPECTION = parseInt(cfg.fabric_inspection_days) || 9;
@@ -1688,13 +1688,13 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     const IRONING_BUFFER = parseInt(cfg.ironing_buffer_days) || 3;
     const MAX_SEWING_LINES = parseInt(cfg.max_sewing_lines) || 49;
     const DEFAULT_DAILY_TARGET = parseInt(cfg.default_daily_target) || 500;
-    // [2026-06-19] É¾³ı workshop_category_multiplier£¬Ö±½ÓÓÃ°à×éÊı×÷ÎªÉÏÏŞ
-    // [2026-06-19] ÌØÊâË®Ï´Ç°ÖÃÌìÊı ¡ª ¿îÊ½ has_special_wash=1 Ê±²Ã¼ôÌáÇ° N Ìì
+    // [2026-06-19] åˆ é™¤ workshop_category_multiplierï¼Œç›´æ¥ç”¨ç­ç»„æ•°ä½œä¸ºä¸Šé™
+    // [2026-06-19] ç‰¹æ®Šæ°´æ´—å‰ç½®å¤©æ•° â€” æ¬¾å¼ has_special_wash=1 æ—¶è£å‰ªæå‰ N å¤©
     const SPECIAL_WASH_DAYS = parseInt(db.getSystemParam('special_wash_days')) || 7;
 
-    // [2026-06-20 Åú´Î2-ÒµÎñ-P0-5] ÎÈ¶¨ÅÅĞòÖÖ×Ó
-    // Í¬Ò»·İÊäÈëÊı¾İ,Ã¿´Î auto-schedule ¶¼ÓÃÍ¬Ò»¸ö runSeed ×÷´òÆÆÆ½¾Ö×Ö¶Î
-    // ±ÜÃâ²»Í¬½ø³Ì/²»Í¬Æô¶¯Ë³Ğòµ¼ÖÂµÄ plan_qty ·ÖÅä²»Ò»ÖÂ
+    // [2026-06-20 æ‰¹æ¬¡2-ä¸šåŠ¡-P0-5] ç¨³å®šæ’åºç§å­
+    // åŒä¸€ä»½è¾“å…¥æ•°æ®,æ¯æ¬¡ auto-schedule éƒ½ç”¨åŒä¸€ä¸ª runSeed ä½œæ‰“ç ´å¹³å±€å­—æ®µ
+    // é¿å…ä¸åŒè¿›ç¨‹/ä¸åŒå¯åŠ¨é¡ºåºå¯¼è‡´çš„ plan_qty åˆ†é…ä¸ä¸€è‡´
     const runSeed = crypto.randomBytes(4).readUInt32BE(0);
     function styleHash(styleNo) {
       // FNV-1a 32-bit hash,salted with runSeed
@@ -1706,7 +1706,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       return h;
     }
 
-    // 1. »ñÈ¡ËùÓĞÊı¾İ
+    // 1. è·å–æ‰€æœ‰æ•°æ®
     const loadingList = db.all('SELECT * FROM fabric_loading_list');
     const styles = db.all('SELECT * FROM styles');
     const capRows = db.all('SELECT * FROM capacity_config');
@@ -1716,11 +1716,11 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     const styleMap = {};
     for (const s of styles) styleMap[s.style_no] = s;
 
-    // 2. °´¿îÊ½È¥ÖØ£¬Ö»´¦Àí×°¹ñÇåµ¥ÖĞµÄ¿îÊ½
+    // 2. æŒ‰æ¬¾å¼å»é‡ï¼Œåªå¤„ç†è£…æŸœæ¸…å•ä¸­çš„æ¬¾å¼
     const styleNos = [...new Set(loadingList.map(r => r.style_no).filter(Boolean).filter(sn => styleMap[sn]))];
-    if (styleNos.length === 0) return res.json({ ok: true, count: 0, message: '×°¹ñÇåµ¥Îª¿Õ' });
+    if (styleNos.length === 0) return res.json({ ok: true, count: 0, message: 'è£…æŸœæ¸…å•ä¸ºç©º' });
 
-    // 3. °´¿îÊ½»ã×Ü×°¹ñĞÅÏ¢£¨È¡×îÔçµÄ×°¹ñÈÕÆÚ£¬ÀÛ¼Ó garment_qty£©
+    // 3. æŒ‰æ¬¾å¼æ±‡æ€»è£…æŸœä¿¡æ¯ï¼ˆå–æœ€æ—©çš„è£…æŸœæ—¥æœŸï¼Œç´¯åŠ  garment_qtyï¼‰
     const loadingInfo = {};
     for (const row of loadingList) {
       const sn = row.style_no;
@@ -1734,7 +1734,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       loadingInfo[sn].garment_qty += parseFloat(row.garment_qty) || 0;
     }
 
-    // ÊıÁ¿ÓÅÏÈ¹æÔò
+    // æ•°é‡ä¼˜å…ˆè§„åˆ™
     function getQty(sn) {
       const li = loadingInfo[sn];
       const st = styleMap[sn];
@@ -1743,7 +1743,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       return li ? li.garment_qty : 0;
     }
 
-    // ÈÕÆÚ¹¤¾ß
+    // æ—¥æœŸå·¥å…·
     function parseDate(val) {
       if (!val) return '';
       const s = String(val).trim();
@@ -1755,7 +1755,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
         return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       }
       // Already ISO date
-      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 12);
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
       return '';
     }
     function addDays(dateStr, days) {
@@ -1766,14 +1766,14 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       return fmtLocal(dt);
     }
 
-    // ========== Step 1: ²Ã¼ô ==========
-    // [2026-06-19] ²Ã¼ôÅÅĞò£ºÍ¬/½ü cutting_start Ê±£¬¶ş´Î¼Ó¹¤ + ÌØÊâË®Ï´ÓÅÏÈ¼¶¸ß
+    // ========== Step 1: è£å‰ª ==========
+    // [2026-06-19] è£å‰ªæ’åºï¼šåŒ/è¿‘ cutting_start æ—¶ï¼ŒäºŒæ¬¡åŠ å·¥ + ç‰¹æ®Šæ°´æ´—ä¼˜å…ˆçº§é«˜
     function cuttingPriority(sn) {
       const s = styleMap[sn];
       if (!s) return 0;
       const secondary = (s.printing || s.embroidery || s.template) ? 1 : 0;
       const specialWash = parseInt(s.has_special_wash) > 0 ? 1 : 0;
-      return secondary + specialWash;  // 0=ÆÕÍ¨, 1=¶ş´Î¼Ó¹¤»òÌØÊâË®Ï´, 2=Á½Õß¶¼ÓĞ
+      return secondary + specialWash;  // 0=æ™®é€š, 1=äºŒæ¬¡åŠ å·¥æˆ–ç‰¹æ®Šæ°´æ´—, 2=ä¸¤è€…éƒ½æœ‰
     }
     const cuttingItems = styleNos.map(sn => {
       const li = loadingInfo[sn];
@@ -1791,7 +1791,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       if (priDiff !== 0) return priDiff;
       const dateDiff = a.cutting_start.localeCompare(b.cutting_start);
       if (dateDiff !== 0) return dateDiff;
-      // [2026-06-20 Åú´Î2-ÒµÎñ-P0-5] ÎÈ¶¨´òÆÆÆ½¾Ö
+      // [2026-06-20 æ‰¹æ¬¡2-ä¸šåŠ¡-P0-5] ç¨³å®šæ‰“ç ´å¹³å±€
       return styleHash(a.style_no) - styleHash(b.style_no);
     });
 
@@ -1820,7 +1820,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       }
     }
 
-    // ========== Step 2: ¶ş´Î¼Ó¹¤£¨Ó¡»¨/´ÌĞå/Ä£°å£© ==========
+    // ========== Step 2: äºŒæ¬¡åŠ å·¥ï¼ˆå°èŠ±/åˆºç»£/æ¨¡æ¿ï¼‰ ==========
     const secTypes = [
       { key: 'printing', flag: 'printing', dailyField: 'printing_daily_output', standard: cap.printing || 10000, prefix: 'printing' },
       { key: 'embroidery', flag: 'embroidery', dailyField: 'embroidery_daily_output', standard: cap.embroidery || 8000, prefix: 'embroidery' },
@@ -1833,7 +1833,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
         .filter(sn => {
           const st = styleMap[sn];
           const cr = cuttingResults[sn];
-          return cr && st[sec.flag] === 'ÊÇ' && parseInt(st[sec.dailyField]) > 0;
+          return cr && st[sec.flag] === 'æ˜¯' && parseInt(st[sec.dailyField]) > 0;
         })
         .map(sn => {
           const st = styleMap[sn];
@@ -1848,22 +1848,22 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       items.sort((a, b) => {
       const dateDiff = a.start.localeCompare(b.start);
       if (dateDiff !== 0) return dateDiff;
-      // [2026-06-20 Åú´Î2-ÒµÎñ-P0-5] ÎÈ¶¨´òÆÆÆ½¾Ö
+      // [2026-06-20 æ‰¹æ¬¡2-ä¸šåŠ¡-P0-5] ç¨³å®šæ‰“ç ´å¹³å±€
       return styleHash(a.style_no) - styleHash(b.style_no);
     });
 
       let curDay = '';
       let remain = sec.standard;
-      // [2026-06-20 fix#ÒµÎñ-P1-4 ×¢ÊÍ] curDay ÔÚ for (sec) Ñ­»·ÄÚÉùÃ÷,
-      //   Èı¸ö secondary ¹¤Ğò(printing/embroidery/template)¸÷×Ô¶ÀÁ¢ curDay ¡ú ÒÑ²¢ĞĞ
-      // ¿îÊ½¼¶ curDay ÍÆ½øÊÇÄ£Äâ"»úÆ÷¹²Ïí":¶à¸ö¿îÊ½ÅÅ¶ÓµÈÍ¬Ò»Ì¨»úÆ÷(²úÄÜ cap.standard)
-      // Èç¹ûÎ´À´ĞèÒªÍêÈ«"Ã¿¿îÊ½¶ÀÁ¢"Ä£Ê½,¿É¼Ó ?parallelLines=true ²ÎÊı
+      // [2026-06-20 fix#ä¸šåŠ¡-P1-4 æ³¨é‡Š] curDay åœ¨ for (sec) å¾ªç¯å†…å£°æ˜,
+      //   ä¸‰ä¸ª secondary å·¥åº(printing/embroidery/template)å„è‡ªç‹¬ç«‹ curDay â†’ å·²å¹¶è¡Œ
+      // æ¬¾å¼çº§ curDay æ¨è¿›æ˜¯æ¨¡æ‹Ÿ"æœºå™¨å…±äº«":å¤šä¸ªæ¬¾å¼æ’é˜Ÿç­‰åŒä¸€å°æœºå™¨(äº§èƒ½ cap.standard)
+      // å¦‚æœæœªæ¥éœ€è¦å®Œå…¨"æ¯æ¬¾å¼ç‹¬ç«‹"æ¨¡å¼,å¯åŠ  ?parallelLines=true å‚æ•°
       for (const item of items) {
         if (!curDay || item.start > curDay) {
           curDay = item.start;
           remain = sec.standard;
         }
-        const styleStart = curDay; // ¼ÇÂ¼¸Ã¿îÊ½¿ª¹¤ÈÕ
+        const styleStart = curDay; // è®°å½•è¯¥æ¬¾å¼å¼€å·¥æ—¥
         let styleRemain = item.qty;
         while (styleRemain > 0) {
           const todayCap = Math.min(item.style_max, remain);
@@ -1887,7 +1887,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       }
     }
 
-    // ========== Step 3: ·ìÖÆ + ÌÌ±ê£¨µ¥Ïßµ¹ÍÆ£© ==========
+    // ========== Step 3: ç¼åˆ¶ + çƒ«æ ‡ï¼ˆå•çº¿å€’æ¨ï¼‰ ==========
     const today = fmtLocal(new Date());
     const baseResults = [];
     for (const sn of styleNos) {
@@ -1900,7 +1900,7 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       const cr = cuttingResults[sn] || {};
       const sr = secondaryResults[sn] || {};
 
-      // ·ìÖÆµ¹ÍÆ£¨µ¥Ïß£©
+      // ç¼åˆ¶å€’æ¨ï¼ˆå•çº¿ï¼‰
       const sewingEnd = addDays(st.due_date, -SEWING_BUFFER);
       let dailyTarget = parseInt(st.target_daily_output) || 0;
       if (dailyTarget <= 0) {
@@ -1911,13 +1911,13 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       const sewingDays = Math.ceil(qty / dailyTarget) + 1;
       const sewingStart = addDays(sewingEnd, -(sewingDays - 1));
 
-      // ÌÌ±êµ¹ÍÆ£¨½ö ironing_label = 'ÊÇ'£©
-      // [2026-06-20 fix#ÒµÎñ-P1-1] Í³Ò» ironing ¹«Ê½Óë recalcMainPlanDates Ò»ÖÂ
-      // Ö®Ç°:auto-schedule ÓÃ"´Ó sewingStart ÏòÇ°ÍÆ"Ëã³ö ironingEnd,µ¼ÖÂÓë recalc µÄ
-      //   "ironing_start = sewing_end + 1, ironing_end = ironing_start + BUFFER-1" ½á¹û»¥»»
-      // ÏÖÔÚ:ÌÌ±êÊÇ·ìÖÆºó¹¤Ğò,ironing_start = sewing_end + 1,ironing_end = sewing_end + IRONING_BUFFER
+      // çƒ«æ ‡å€’æ¨ï¼ˆä»… ironing_label = 'æ˜¯'ï¼‰
+      // [2026-06-20 fix#ä¸šåŠ¡-P1-1] ç»Ÿä¸€ ironing å…¬å¼ä¸ recalcMainPlanDates ä¸€è‡´
+      // ä¹‹å‰:auto-schedule ç”¨"ä» sewingStart å‘å‰æ¨"ç®—å‡º ironingEnd,å¯¼è‡´ä¸ recalc çš„
+      //   "ironing_start = sewing_end + 1, ironing_end = ironing_start + BUFFER-1" ç»“æœäº’æ¢
+      // ç°åœ¨:çƒ«æ ‡æ˜¯ç¼åˆ¶åå·¥åº,ironing_start = sewing_end + 1,ironing_end = sewing_end + IRONING_BUFFER
       let ironingStart = '', ironingEnd = '';
-      if (st.ironing_label === 'ÊÇ') {
+      if (st.ironing_label === 'æ˜¯') {
         ironingStart = addDays(sewingEnd, 1);
         ironingEnd = addDays(sewingEnd, IRONING_BUFFER);
       }
@@ -1940,12 +1940,12 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       });
     }
 
-    // ========== Step 4: ¹ıÆÚ¼ì²â ==========
+    // ========== Step 4: è¿‡æœŸæ£€æµ‹ ==========
     for (const r of baseResults) {
       r.expired = (r.due_date && r.due_date < today) ? 1 : 0;
     }
 
-    // ========== Step 5: ¶àÏß·ÖÁ÷ ==========
+    // ========== Step 5: å¤šçº¿åˆ†æµ ==========
     const results = [];
     const categoryUsed = {};
     let totalLinesAssigned = 0;
@@ -1953,25 +1953,25 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     baseResults.sort((a, b) => {
       const dateDiff = (a.due_date || '').localeCompare(b.due_date || '');
       if (dateDiff !== 0) return dateDiff;
-      // [2026-06-20 Åú´Î2-ÒµÎñ-P0-5] ÎÈ¶¨´òÆÆÆ½¾Ö
+      // [2026-06-20 æ‰¹æ¬¡2-ä¸šåŠ¡-P0-5] ç¨³å®šæ‰“ç ´å¹³å±€
       return styleHash(a.style_no) - styleHash(b.style_no);
     });
 
     for (const r of baseResults) {
       if (r.expired) { r.line_count = 1; r.line_index = 1; r.conflict_flag = 1; results.push(r); continue; }
 
-      // ½»ÆÚ¡Ü15Ìì£º²»·ÖÁ÷£¬»ù´¡ÅÅ²ú+±¨¾¯
+      // äº¤æœŸâ‰¤15å¤©ï¼šä¸åˆ†æµï¼ŒåŸºç¡€æ’äº§+æŠ¥è­¦
       const dueInDays = r.due_date ? Math.ceil((new Date(r.due_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) : 999;
       if (dueInDays <= 15) {
         r.line_count = 1; r.line_index = 1; r.conflict_flag = 1;
         results.push(r); continue;
       }
 
-      // Ç°µÀ¹¤Ğò×îÍíÏÂÏß
+      // å‰é“å·¥åºæœ€æ™šä¸‹çº¿
       const secEnds = [r.printing_end, r.embroidery_end, r.template_end, r.ironing_end].filter(Boolean);
       const maxPreEnd = secEnds.length > 0 ? secEnds.reduce((a, b) => a > b ? a : b) : (r.cutting_end || '');
 
-      // ·ÖÁ÷³¢ÊÔ£ºÖğ²½Ôö¼ÓÏßÊı£¬Ö±µ½·ìÖÆÉÏÏß > Ç°µÀÏÂÏß
+      // åˆ†æµå°è¯•ï¼šé€æ­¥å¢åŠ çº¿æ•°ï¼Œç›´åˆ°ç¼åˆ¶ä¸Šçº¿ > å‰é“ä¸‹çº¿
       let N = 1;
       const sewingEnd = r.sewing_end;
       const dailyTarget = r.daily_target;
@@ -1983,20 +1983,20 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
         N++;
       }
 
-      // °à×é·ÖÅä£º²»ÄÜ³¬¹ı·ÖÀàÏŞÖÆºÍÈ«³§ÏŞÖÆ
+      // ç­ç»„åˆ†é…ï¼šä¸èƒ½è¶…è¿‡åˆ†ç±»é™åˆ¶å’Œå…¨å‚é™åˆ¶
       const styleCategory = (styleMap[r.style_no] || {}).style_category || '';
       const fullLimit = MAX_SEWING_LINES - totalLinesAssigned;
       let catLimit = fullLimit;
       if (styleCategory) {
         const catRows = db.all("SELECT id FROM line_style_categories WHERE name = ?", [styleCategory]);
-        const totalCatSlots = catRows.length; // Ö±½ÓÓÃ°à×éÊı£¬²»³Ë±¶ÂÊ
+        const totalCatSlots = catRows.length; // ç›´æ¥ç”¨ç­ç»„æ•°ï¼Œä¸ä¹˜å€ç‡
         const catUsed = categoryUsed[styleCategory] || 0;
         catLimit = Math.min(totalCatSlots - catUsed, fullLimit);
       }
       if (catLimit <= 0) { N = 1; }
       else { N = Math.min(N, catLimit); }
 
-      // Éú³É¶àĞĞ£¬Ã¿ĞĞ¶ÀÁ¢ÖØËã sewing_start ²¢¼ì²â³åÍ»
+      // ç”Ÿæˆå¤šè¡Œï¼Œæ¯è¡Œç‹¬ç«‹é‡ç®— sewing_start å¹¶æ£€æµ‹å†²çª
       const perQty = Math.floor(r.plan_qty / N);
       const remainder = r.plan_qty - perQty * N;
       let hasConflict = false;
@@ -2008,9 +2008,9 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
         const perLineIroningEnd = r.ironing_start ? addDays(perLineSewingStart, -IRONING_BUFFER) : '';
 
         let lineConflict = 0;
-        // 1) ·ìÖÆÉÏÏß <= Ç°µÀÏÂÏß£¨µ¹ÍÆÀ´²»¼°£©
+        // 1) ç¼åˆ¶ä¸Šçº¿ <= å‰é“ä¸‹çº¿ï¼ˆå€’æ¨æ¥ä¸åŠï¼‰
         if (maxPreEnd && perLineSewingStart && perLineSewingStart <= maxPreEnd) lineConflict = 1;
-        // 2) ÌÌ±êÉÏÏßÔçÓÚ½ñÌì£¨µ¹ÍÆµ½¹ıÈ¥£©
+        // 2) çƒ«æ ‡ä¸Šçº¿æ—©äºä»Šå¤©ï¼ˆå€’æ¨åˆ°è¿‡å»ï¼‰
         if (r.ironing_start && r.ironing_start < today) lineConflict = 1;
         if (lineConflict) hasConflict = true;
 
@@ -2029,21 +2029,21 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       totalLinesAssigned += N;
       if (styleCategory) categoryUsed[styleCategory] = (categoryUsed[styleCategory] || 0) + N;
 
-      // »ØÌî line_count µ½Ã¿ĞĞ
+      // å›å¡« line_count åˆ°æ¯è¡Œ
       for (let i = results.length - N; i < results.length; i++) {
         results[i].line_count = N;
       }
     }
 
-    // ========== Step 6: Ğ´ÈëÖ÷¼Æ»®£¨ÊÂÎñ±£»¤£© ==========
+    // ========== Step 6: å†™å…¥ä¸»è®¡åˆ’ï¼ˆäº‹åŠ¡ä¿æŠ¤ï¼‰ ==========
     const expiredCount = results.filter(r => r.expired).length;
     const conflictCount = results.filter(r => r.conflict_flag).length;
 
     const rawDb = db.getDb();
     const writeTxn = rawDb.transaction(() => {
-      // [2026-06-20 Åú´Î2-ÒµÎñ-P0-1] ¼¶ÁªÇåÀíÏÂÓÎ"Î´À´¼Æ»®"±í,±ÜÃâ¹Â¶ùÊı¾İ
-      // ×¢Òâ:actual_production(±¨¹¤ÀúÊ·)ºÍ schedule_plan_overrides(ÓÃ»§ÊÖ¶¯µ÷Õû)²»É¾,
-      //       ÕâÁ½ÀàÊÇ"ÀúÊ·ÊÂÊµ",ÖØĞÂÅÅ²ú²»Ó¦¸²¸ÇËüÃÇ
+      // [2026-06-20 æ‰¹æ¬¡2-ä¸šåŠ¡-P0-1] çº§è”æ¸…ç†ä¸‹æ¸¸"æœªæ¥è®¡åˆ’"è¡¨,é¿å…å­¤å„¿æ•°æ®
+      // æ³¨æ„:actual_production(æŠ¥å·¥å†å²)å’Œ schedule_plan_overrides(ç”¨æˆ·æ‰‹åŠ¨è°ƒæ•´)ä¸åˆ ,
+      //       è¿™ä¸¤ç±»æ˜¯"å†å²äº‹å®",é‡æ–°æ’äº§ä¸åº”è¦†ç›–å®ƒä»¬
       rawDb.prepare(`DELETE FROM schedule_daily WHERE master_id IN (SELECT id FROM schedule_master)`).run();
       rawDb.prepare(`DELETE FROM schedule_master`).run();
       rawDb.prepare('DELETE FROM main_plan').run();
@@ -2071,23 +2071,23 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     writeTxn();
 
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    logOp(req, 'main_plan', 'auto_schedule', 0, `Éú³É${results.length}Ìõ¼Æ»®`);
+    logOp(req, 'main_plan', 'auto_schedule', 0, `ç”Ÿæˆ${results.length}æ¡è®¡åˆ’`);
     res.json({ ok: true, count: results.length, conflicts: conflictCount, expired: expiredCount, lines: totalLinesAssigned });
   } catch (e) {
     console.error('POST /api/main-plan/auto-schedule error:', e);
-    res.status(500).json({ error: 'Ö÷¼Æ»®×Ô¶¯ÅÅ²úÊ§°Ü' });
+    res.status(500).json({ error: 'ä¸»è®¡åˆ’è‡ªåŠ¨æ’äº§å¤±è´¥' });
   }
 });
 
-// ---------- ²Ã¼ôÅÅ³Ì ----------
-// Êı¾İÔ´£ºfabric_loading_list (¿îÊ½¼¯ºÏ) ¡É style_color_size (ÑÕÉ«/³ßÂë/Ô­µ¥Á¿) + main_plan (²Ã¼ôÆğÖ¹Ê±¼ä) + actual_production (Êµ¼Ê²úÁ¿)
-// µ¥´ÎÏìÓ¦·µ»Ø rows + daily£¨°´ row_id Ë÷Òı£©£¬±ÜÃâÇ°¶Ë²¢·¢ N ¸ö daily ÇëÇó
+// ---------- è£å‰ªæ’ç¨‹ ----------
+// æ•°æ®æºï¼šfabric_loading_list (æ¬¾å¼é›†åˆ) âˆ© style_color_size (é¢œè‰²/å°ºç /åŸå•é‡) + main_plan (è£å‰ªèµ·æ­¢æ—¶é—´) + actual_production (å®é™…äº§é‡)
+// å•æ¬¡å“åº”è¿”å› rows + dailyï¼ˆæŒ‰ row_id ç´¢å¼•ï¼‰ï¼Œé¿å…å‰ç«¯å¹¶å‘ N ä¸ª daily è¯·æ±‚
 app.get('/api/schedule/cutting', (req, res) => {
   try {
-    // ÓÃÔ­Ê¼ better-sqlite3 ÊµÀı£¬±Ü¿ª db.all °ü×°²ãµÄ²ÎÊı spread ÎÊÌâ£¨style_no ¿ÉÄÜ >100 ¸ö£©
+    // ç”¨åŸå§‹ better-sqlite3 å®ä¾‹ï¼Œé¿å¼€ db.all åŒ…è£…å±‚çš„å‚æ•° spread é—®é¢˜ï¼ˆstyle_no å¯èƒ½ >100 ä¸ªï¼‰
     const rawDb = db.getDb();
 
-    // 1. Ò»´ÎĞÔ²éËùÓĞ¿îÊ½ + ¹ØÁª main_plan£¨×îĞÂÒ»Ìõ£©µÄ²Ã¼ô×Ö¶Î
+    // 1. ä¸€æ¬¡æ€§æŸ¥æ‰€æœ‰æ¬¾å¼ + å…³è” main_planï¼ˆæœ€æ–°ä¸€æ¡ï¼‰çš„è£å‰ªå­—æ®µ
     const plans = rawDb.prepare(`
       SELECT fl.style_no,
         (SELECT id FROM main_plan WHERE style_no = fl.style_no ORDER BY id DESC LIMIT 1) as main_plan_id,
@@ -2107,18 +2107,18 @@ app.get('/api/schedule/cutting', (req, res) => {
     const styleNos = plans.map(p => p.style_no);
     const placeholders = styleNos.map(() => '?').join(',');
 
-    // 2. ÅúÁ¿²é·ÖÉ«·Ö³ßÂë£¨Ò»´Î SQL£¬IN ²éÑ¯£©
+    // 2. æ‰¹é‡æŸ¥åˆ†è‰²åˆ†å°ºç ï¼ˆä¸€æ¬¡ SQLï¼ŒIN æŸ¥è¯¢ï¼‰
     const colorSizes = rawDb.prepare(
       `SELECT style_no, color, size_spec, plan_qty FROM style_color_size WHERE style_no IN (${placeholders}) ORDER BY style_no, color, size_spec`
     ).all(...styleNos);
 
-    // °´ style_no Ë÷Òı
+    // æŒ‰ style_no ç´¢å¼•
     const csByStyle = {};
     for (const cs of colorSizes) {
       (csByStyle[cs.style_no] = csByStyle[cs.style_no] || []).push(cs);
     }
 
-    // 3. ÅúÁ¿²éÊµ¼Ê²úÁ¿£¨cutting ÀàĞÍ£¬Ò»´Î SQL£©
+    // 3. æ‰¹é‡æŸ¥å®é™…äº§é‡ï¼ˆcutting ç±»å‹ï¼Œä¸€æ¬¡ SQLï¼‰
     const actuals = rawDb.prepare(
       `SELECT style_no, IFNULL(color,'') as color, IFNULL(size_spec,'') as size_spec, production_date, SUM(completed_qty) as actual
        FROM actual_production
@@ -2126,7 +2126,7 @@ app.get('/api/schedule/cutting', (req, res) => {
        GROUP BY style_no, color, size_spec, production_date`
     ).all(...styleNos);
 
-    // °´ row_id Ë÷Òı daily
+    // æŒ‰ row_id ç´¢å¼• daily
     const planByStyle = {};
     for (const p of plans) planByStyle[p.style_no] = p;
     const dailyMap = {};
@@ -2136,10 +2136,10 @@ app.get('/api/schedule/cutting', (req, res) => {
       (dailyMap[key] = dailyMap[key] || []).push({ date: a.production_date, actual: a.actual });
     }
 
-    // 4. È¡²Ã¼ôÈÕ²úÁ¿
+    // 4. å–è£å‰ªæ—¥äº§é‡
     const dailyTarget = rawDb.prepare("SELECT daily_capacity FROM capacity_config WHERE process_type = 'cutting'").get()?.daily_capacity || 30000;
 
-    // 5. ×°Åä rows
+    // 5. è£…é… rows
     const rows = [];
     for (const p of plans) {
       const csList = csByStyle[p.style_no] || [];
@@ -2152,7 +2152,7 @@ app.get('/api/schedule/cutting', (req, res) => {
         due_date: p.due_date || '',
         daily_target: dailyTarget,
       };
-      // [2026-06-20 S-2] ºó¶ËËãÃ¿ÈÕ¼Æ»®Á¿,Óë sewing-daily-plan ¶ÔÆë
+      // [2026-06-20 S-2] åç«¯ç®—æ¯æ—¥è®¡åˆ’é‡,ä¸ sewing-daily-plan å¯¹é½
       const dateData = computeDateData(p.cutting_start, p.cutting_end, p.plan_qty || 0, dailyTarget);
       if (csList.length === 0) {
         rows.push({
@@ -2177,7 +2177,7 @@ app.get('/api/schedule/cutting', (req, res) => {
       }
     }
 
-    // ÅÅĞò
+    // æ’åº
     rows.sort((a, b) => {
       const as = a.cutting_start || '9999-99-99';
       const bs = b.cutting_start || '9999-99-99';
@@ -2194,13 +2194,13 @@ app.get('/api/schedule/cutting', (req, res) => {
   }
 });
 
-// ---------- ¸üĞÂ main_plan µÄ²Ã¼ôÆğÖ¹Ê±¼ä ----------
+// ---------- æ›´æ–° main_plan çš„è£å‰ªèµ·æ­¢æ—¶é—´ ----------
 app.put('/api/main-plan/:id/cutting', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { cutting_start, cutting_end } = req.body;
     const id = req.params.id;
     const existing = db.get('SELECT id FROM main_plan WHERE id = ?', [id]);
-    if (!existing) return res.status(404).json({ error: '¼Æ»®²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'è®¡åˆ’ä¸å­˜åœ¨' });
     db.run(
       'UPDATE main_plan SET cutting_start = ?, cutting_end = ? WHERE id = ?',
       [cutting_start || '', cutting_end || '', id]
@@ -2245,7 +2245,7 @@ app.get('/api/schedule/cutting/export', async (req, res) => {
         }
       }
     }
-    if (!rows.length) return res.status(404).json({ error: 'ÎŞÊı¾İ' });
+    if (!rows.length) return res.status(404).json({ error: 'æ— æ•°æ®' });
     if (!minDate) minDate = fmtLocal(new Date());
     if (!maxDate) maxDate = fmtLocal(new Date());
     const sd = new Date(minDate + 'T00:00:00'), ed = new Date(maxDate + 'T00:00:00');
@@ -2257,10 +2257,10 @@ app.get('/api/schedule/cutting/export', async (req, res) => {
     }
 
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('²Ã¼ôÅÅ³Ì');
+    const ws = wb.addWorksheet('è£å‰ªæ’ç¨‹');
 
     function hdr(v) { return { value: v, font: { bold: true }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }, border: { style: 'thin' } }; }
-    const headers = ['¿îÊ½', 'Æ·Ãû', 'ÑÕÉ«', '¹æ¸ñ', 'Ô­µ¥Á¿', '²Ã¼ôÉÏÏß', '²Ã¼ôÏÂÏß', 'ºÏ¼Æ'];
+    const headers = ['æ¬¾å¼', 'å“å', 'é¢œè‰²', 'è§„æ ¼', 'åŸå•é‡', 'è£å‰ªä¸Šçº¿', 'è£å‰ªä¸‹çº¿', 'åˆè®¡'];
     for (const dc of dateCols) headers.push(dc);
     ws.addRow(headers.map(h => hdr(h)));
 
@@ -2302,7 +2302,7 @@ app.get('/api/schedule/cutting/export', async (req, res) => {
     for (let i = 0; i < dateCols.length; i++) ws.getColumn(9 + i).width = 7;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('²Ã¼ôÅÅ³Ì_' + fmtLocal(new Date()) + '.xlsx')}`);
+    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('è£å‰ªæ’ç¨‹_' + fmtLocal(new Date()) + '.xlsx')}`);
     await wb.xlsx.write(res);
     res.end();
   } catch (e) {
@@ -2311,10 +2311,10 @@ app.get('/api/schedule/cutting/export', async (req, res) => {
   }
 });
 
-// ---------- ·ìÖÆÃ¿ÈÕ¼Æ»®£¨Êı¾İÀ´Ô´£ºÔ¤ÅÅ×Ü¼Æ»® + ·ÖÉ«·Ö³ßÂë + Êµ¼Ê²úÁ¿£©----------
+// ---------- ç¼åˆ¶æ¯æ—¥è®¡åˆ’ï¼ˆæ•°æ®æ¥æºï¼šé¢„æ’æ€»è®¡åˆ’ + åˆ†è‰²åˆ†å°ºç  + å®é™…äº§é‡ï¼‰----------
 app.get('/api/schedule/sewing-daily-plan', (req, res) => {
   try {
-    // »ñÈ¡ËùÓĞÓĞ·ìÖÆÈÕÆÚµÄ main_plan
+    // è·å–æ‰€æœ‰æœ‰ç¼åˆ¶æ—¥æœŸçš„ main_plan
     const plans = db.all(`
       SELECT id, style_no, product_name, plan_qty, sewing_start, sewing_end
       FROM main_plan
@@ -2324,7 +2324,7 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
 
     if (!plans.length) return res.json({ plans: [], dateRange: [], rows: [] });
 
-    // ¼ÆËãÕûÌåÈÕÆÚ·¶Î§£¨ÏŞÖÆÔÚ½ñÌìÇ°ºóºÏÀí·¶Î§£©
+    // è®¡ç®—æ•´ä½“æ—¥æœŸèŒƒå›´ï¼ˆé™åˆ¶åœ¨ä»Šå¤©å‰ååˆç†èŒƒå›´ï¼‰
     let minDate = null, maxDate = null;
     for (const p of plans) {
       if (!minDate || p.sewing_start < minDate) minDate = p.sewing_start;
@@ -2344,7 +2344,7 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
       dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
     }
 
-    // ÎªÃ¿¸ö plan »ñÈ¡·ÖÉ«·Ö³ßÂëÊı¾İ
+    // ä¸ºæ¯ä¸ª plan è·å–åˆ†è‰²åˆ†å°ºç æ•°æ®
     const rows = [];
     for (const plan of plans) {
       const colorSizes = db.all(
@@ -2353,7 +2353,7 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
       );
 
       if (!colorSizes.length) {
-        // Ã»ÓĞ·ÖÉ«·Ö³ßÂëÊı¾İÊ±£¬ÓÃÖ÷¼Æ»®×ÔÉí
+        // æ²¡æœ‰åˆ†è‰²åˆ†å°ºç æ•°æ®æ—¶ï¼Œç”¨ä¸»è®¡åˆ’è‡ªèº«
         colorSizes.push({ color: '', size_spec: '', plan_qty: plan.plan_qty });
       }
 
@@ -2362,7 +2362,7 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
       for (const cs of colorSizes) {
         const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
 
-        // »ñÈ¡¸ÃÑÕÉ«³ßÂëµÄÊµ¼Ê²úÁ¿
+        // è·å–è¯¥é¢œè‰²å°ºç çš„å®é™…äº§é‡
         const actuals = db.all(
           `SELECT production_date, SUM(completed_qty) as qty
            FROM actual_production
@@ -2374,7 +2374,7 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
         const actualMap = {};
         for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
 
-        // ²éÑ¯¼Æ»®¸²¸Ç
+        // æŸ¥è¯¢è®¡åˆ’è¦†ç›–
         const planOverrides = db.all(
           "SELECT production_date, completed_qty FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = 'plan_override'",
           [plan.style_no, cs.color || '', cs.size_spec || '']
@@ -2382,13 +2382,13 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
         const overrideMap = {};
         for (const po of planOverrides) { overrideMap[po.production_date] = po.completed_qty; }
 
-        // ÎªÃ¿¸öÈÕÆÚÉú³É¼Æ»®/Êµ¼Ê/²îÒì
+        // ä¸ºæ¯ä¸ªæ—¥æœŸç”Ÿæˆè®¡åˆ’/å®é™…/å·®å¼‚
         const dateData = [];
         let totalPlan = 0, totalActual = 0;
         for (const date of dateRange) {
           let planQty = 0;
           if (overrideMap[date] != null) {
-            // ÓĞÊÖ¶¯¸²¸Ç£¬Ê¹ÓÃ¸²¸ÇÖµ
+            // æœ‰æ‰‹åŠ¨è¦†ç›–ï¼Œä½¿ç”¨è¦†ç›–å€¼
             planQty = overrideMap[date];
           } else if (date >= plan.sewing_start && date <= plan.sewing_end && dailyTarget > 0) {
             const sd2 = new Date(plan.sewing_start + 'T00:00:00');
@@ -2428,31 +2428,31 @@ app.get('/api/schedule/sewing-daily-plan', (req, res) => {
   }
 });
 
-// ±£´æÄ³¸öÑÕÉ«+³ßÂëÄ³ÈÕµÄÊµ¼Ê²úÁ¿
+// ä¿å­˜æŸä¸ªé¢œè‰²+å°ºç æŸæ—¥çš„å®é™…äº§é‡
 app.post('/api/schedule/sewing-daily-plan/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
   try {
     const { style_no, color, size_spec, production_date, completed_qty, secondary_type } = req.body;
     if (!style_no || !production_date) {
-      return res.status(400).json({ error: '¿îºÅºÍÈÕÆÚ²»ÄÜÎª¿Õ' });
+      return res.status(400).json({ error: 'æ¬¾å·å’Œæ—¥æœŸä¸èƒ½ä¸ºç©º' });
     }
 
-    // [2026-06-20] ¿ç³µ¼äÀ¹½Ø:supervisor / dispatcher ±ØĞëÆ¥Åä secondary_type ¶ÔÓ¦µÄ³µ¼ä
-    // secondary_type ĞÎÈç 'printing' / 'embroidery' / 'template' / 'ironing'
-    // [2026-06-20 fix#ÒµÎñ-P1-3] ÓÃ userCanAccessWorkshop ÔÊĞí secondary Ö÷ÈÎ¿ç 3 ¹¤Ğò
+    // [2026-06-20] è·¨è½¦é—´æ‹¦æˆª:supervisor / dispatcher å¿…é¡»åŒ¹é… secondary_type å¯¹åº”çš„è½¦é—´
+    // secondary_type å½¢å¦‚ 'printing' / 'embroidery' / 'template' / 'ironing'
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-3] ç”¨ userCanAccessWorkshop å…è®¸ secondary ä¸»ä»»è·¨ 3 å·¥åº
     const u = req.user;
     if (u.role !== 'admin') {
       const needWorkshop = secondary_type ? SCHEDULE_TYPE_WORKSHOP[secondary_type] : null;
       if (needWorkshop && !userCanAccessWorkshop(u, needWorkshop)) {
-        return res.status(403).json({ error: 'ÎŞÈ¨²Ù×÷ÆäËû³µ¼äµÄÊı¾İ' });
+        return res.status(403).json({ error: 'æ— æƒæ“ä½œå…¶ä»–è½¦é—´çš„æ•°æ®' });
       }
     }
 
-    // [2026-06-20] schedule_type ÅÉÉú:secondary_type ¾ö¶¨ schedule_type(secondary)
-    // Ô­´úÂëÓ²±àÂë 'sewing' µ¼ÖÂ secondary ÏêÇéÒ³Ğ´ÈëÎÛÈ¾ sewing Êı¾İ,ĞŞ¸´Îª secondary
+    // [2026-06-20] schedule_type æ´¾ç”Ÿ:secondary_type å†³å®š schedule_type(secondary)
+    // åŸä»£ç ç¡¬ç¼–ç  'sewing' å¯¼è‡´ secondary è¯¦æƒ…é¡µå†™å…¥æ±¡æŸ“ sewing æ•°æ®,ä¿®å¤ä¸º secondary
     const scheduleType = secondary_type ? 'secondary' : 'sewing';
 
-    // [2026-06-20 Z-07] ÓÃ UPSERT Ìæ´ú SELECT-then-INSERT,¶Å¾ø²¢·¢¾ºÌ¬
-    // ÒÀÀµ idx_actual_production_unique UNIQUE Ë÷Òı
+    // [2026-06-20 Z-07] ç”¨ UPSERT æ›¿ä»£ SELECT-then-INSERT,æœç»å¹¶å‘ç«æ€
+    // ä¾èµ– idx_actual_production_unique UNIQUE ç´¢å¼•
     db.run(
       `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty)
        VALUES (?, 0, ?, ?, ?, ?, ?)
@@ -2468,8 +2468,8 @@ app.post('/api/schedule/sewing-daily-plan/actual', requireRole('dispatcher', 'su
   }
 });
 
-// [2026-06-20 fix P0-1/P0-2] ²Ã¼ôÃ¿ÈÕ¼Æ»®(Óë sewing-daily-plan ¶Ô³Æ)
-// ScheduleView.vue cutting Ä£Ê½µ÷ GET/POST ÕâÁ½¸ö¶Ëµã
+// [2026-06-20 fix P0-1/P0-2] è£å‰ªæ¯æ—¥è®¡åˆ’(ä¸ sewing-daily-plan å¯¹ç§°)
+// ScheduleView.vue cutting æ¨¡å¼è°ƒ GET/POST è¿™ä¸¤ä¸ªç«¯ç‚¹
 app.get('/api/schedule/cutting-daily-plan', (req, res) => {
   try {
     const plans = db.all(`
@@ -2481,7 +2481,7 @@ app.get('/api/schedule/cutting-daily-plan', (req, res) => {
 
     if (!plans.length) return res.json({ plans: [], dateRange: [], rows: [] });
 
-    // ¼ÆËãÕûÌåÈÕÆÚ·¶Î§(ÏŞÖÆÔÚ½ñÌìÇ°ºóºÏÀí·¶Î§,Óë sewing ¶ÔÆë)
+    // è®¡ç®—æ•´ä½“æ—¥æœŸèŒƒå›´(é™åˆ¶åœ¨ä»Šå¤©å‰ååˆç†èŒƒå›´,ä¸ sewing å¯¹é½)
     let minDate = null, maxDate = null;
     for (const p of plans) {
       if (!minDate || p.cutting_start < minDate) minDate = p.cutting_start;
@@ -2517,7 +2517,7 @@ app.get('/api/schedule/cutting-daily-plan', (req, res) => {
       for (const cs of colorSizes) {
         const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
 
-        // ²Ã¼ôÊµ¼Ê²úÁ¿: schedule_type='cutting' ÇÒ²»ÊÇ¶ş¼ì
+        // è£å‰ªå®é™…äº§é‡: schedule_type='cutting' ä¸”ä¸æ˜¯äºŒæ£€
         const actuals = db.all(
           `SELECT production_date, SUM(completed_qty) as qty
            FROM actual_production
@@ -2575,17 +2575,17 @@ app.post('/api/schedule/cutting-daily-plan/actual', requireRole('dispatcher', 's
   try {
     const { style_no, color, size_spec, production_date, completed_qty } = req.body;
     if (!style_no || !production_date) {
-      return res.status(400).json({ error: '¿îºÅºÍÈÕÆÚ²»ÄÜÎª¿Õ' });
+      return res.status(400).json({ error: 'æ¬¾å·å’Œæ—¥æœŸä¸èƒ½ä¸ºç©º' });
     }
 
-    // [fix 2026-06-20] ²Ã¼ô±¨¹¤×ßÍ¨ÓÃ validateActualPayload (¸ºÊı/NaN/³¬ plan_qty*2/Î´À´ÈÕÆÚ)
-    // ×¢Òâ:validateActualPayload ·µ»Ø null ±íÊ¾Í¨¹ı,·ñÔò·µ»Ø {status, body}
+    // [fix 2026-06-20] è£å‰ªæŠ¥å·¥èµ°é€šç”¨ validateActualPayload (è´Ÿæ•°/NaN/è¶… plan_qty*2/æœªæ¥æ—¥æœŸ)
+    // æ³¨æ„:validateActualPayload è¿”å› null è¡¨ç¤ºé€šè¿‡,å¦åˆ™è¿”å› {status, body}
     const validation = validateActualPayload({ style_no, production_date, completed_qty });
     if (validation) {
       return res.status(validation.status).json(validation.body);
     }
 
-    // [fix 2026-06-20 Z-07] UPSERT,Óë sewing Â·¾¶¶ÔÆë
+    // [fix 2026-06-20 Z-07] UPSERT,ä¸ sewing è·¯å¾„å¯¹é½
     db.run(
       `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty, is_second_inspection)
        VALUES ('cutting', 0, ?, ?, ?, ?, ?, 0)
@@ -2601,27 +2601,27 @@ app.post('/api/schedule/cutting-daily-plan/actual', requireRole('dispatcher', 's
   }
 });
 
-// ---------- ±£´æ¼Æ»®±à¼­£¨Í¨ÓÃ£©[B-01/B-07 fix] ----------
-// Ö®Ç°ÓÃ schedule_type='plan_override_<type>' Ğ´Èë actual_production,ÓïÒå»ìÂÒ
-// ¸ÄÓÃ×¨ÓÃ±í schedule_plan_overrides,²¢°ü³ÉÊÂÎñ
+// ---------- ä¿å­˜è®¡åˆ’ç¼–è¾‘ï¼ˆé€šç”¨ï¼‰[B-01/B-07 fix] ----------
+// ä¹‹å‰ç”¨ schedule_type='plan_override_<type>' å†™å…¥ actual_production,è¯­ä¹‰æ··ä¹±
+// æ”¹ç”¨ä¸“ç”¨è¡¨ schedule_plan_overrides,å¹¶åŒ…æˆäº‹åŠ¡
 function savePlanOverride(typeLabel, req, res) {
   try {
     if (!SECONDARY_TYPES[typeLabel]) {
-      return res.status(400).json({ error: `Î´Öª¶ş´Î¼Ó¹¤ÀàĞÍ: ${typeLabel}` });
+      return res.status(400).json({ error: `æœªçŸ¥äºŒæ¬¡åŠ å·¥ç±»å‹: ${typeLabel}` });
     }
     const { style_no, color, size_spec, order_qty, datePlans } = req.body;
-    if (!style_no) return res.status(400).json({ error: 'È±ÉÙ¿îºÅ' });
+    if (!style_no) return res.status(400).json({ error: 'ç¼ºå°‘æ¬¾å·' });
     if (!datePlans || typeof datePlans !== 'object') {
-      return res.status(400).json({ error: 'È±ÉÙ datePlans' });
+      return res.status(400).json({ error: 'ç¼ºå°‘ datePlans' });
     }
     const rawDb = db.getDb();
     const txn = rawDb.transaction(() => {
-      // ÏÈÇåµôÕâ¸ö (type, style, color, size) µÄËùÓĞ¾É¸²¸Ç
+      // å…ˆæ¸…æ‰è¿™ä¸ª (type, style, color, size) çš„æ‰€æœ‰æ—§è¦†ç›–
       rawDb.prepare(`
         DELETE FROM schedule_plan_overrides
         WHERE secondary_type = ? AND style_no = ? AND color = ? AND size_spec = ?
       `).run(typeLabel, style_no, color || '', size_spec || '');
-      // ÔÙ²åĞÂµÄ¸²¸Ç
+      // å†æ’æ–°çš„è¦†ç›–
       const ins = rawDb.prepare(`
         INSERT OR REPLACE INTO schedule_plan_overrides
           (secondary_type, style_no, color, size_spec, production_date, qty)
@@ -2633,7 +2633,7 @@ function savePlanOverride(typeLabel, req, res) {
           ins.run(typeLabel, style_no, color || '', size_spec || '', date, q);
         }
       }
-      // Èç¹ûÇ°¶Ë´ø order_qty,Í¬²½¸üĞÂ·ÖÉ«·Ö³ßÂë
+      // å¦‚æœå‰ç«¯å¸¦ order_qty,åŒæ­¥æ›´æ–°åˆ†è‰²åˆ†å°ºç 
       if (order_qty != null && color && size_spec) {
         rawDb.prepare(`UPDATE style_color_size SET plan_qty = ? WHERE style_no = ? AND color = ? AND size_spec = ?`)
           .run(Number(order_qty) || 0, style_no, color, size_spec);
@@ -2652,23 +2652,23 @@ app.post('/api/schedule/embroidery-daily-plan/plan', (req, res) => savePlanOverr
 app.post('/api/schedule/ironing-daily-plan/plan', (req, res) => savePlanOverride('ironing', req, res));
 app.post('/api/schedule/template-daily-plan/plan', (req, res) => savePlanOverride('template', req, res));
 
-// ---------- ¶ş´Î¼Ó¹¤Ã¿ÈÕ¼Æ»®(Í³Ò»´¦Àí)[B-03/B-04/B-05 fix] ----------
-// 4 ÖÖ secondary ¹²ÓÃÍ¬Ò»·İÂß¼­,×Ö¶Î²îÒìÍ¨¹ı SECONDARY_TYPES ÅäÖÃ½â¾ö
-// ÈÕÆÚ´°¿ÚÍ³Ò»:today-SEC_DAILY_PLAN_WINDOW.beforeDays ~ today+afterDays
-// ¼Æ»®¸²¸Ç´Ó schedule_plan_overrides ±í¶Á(²»ÔÙ²é actual_production)
+// ---------- äºŒæ¬¡åŠ å·¥æ¯æ—¥è®¡åˆ’(ç»Ÿä¸€å¤„ç†)[B-03/B-04/B-05 fix] ----------
+// 4 ç§ secondary å…±ç”¨åŒä¸€ä»½é€»è¾‘,å­—æ®µå·®å¼‚é€šè¿‡ SECONDARY_TYPES é…ç½®è§£å†³
+// æ—¥æœŸçª—å£ç»Ÿä¸€:today-SEC_DAILY_PLAN_WINDOW.beforeDays ~ today+afterDays
+// è®¡åˆ’è¦†ç›–ä» schedule_plan_overrides è¡¨è¯»(ä¸å†æŸ¥ actual_production)
 function getSecondaryDailyPlan(secType, req, res) {
   try {
     const cfg = SECONDARY_TYPES[secType];
-    if (!cfg) return res.status(400).json({ error: `Î´Öª¶ş´Î¼Ó¹¤ÀàĞÍ: ${secType}` });
+    if (!cfg) return res.status(400).json({ error: `æœªçŸ¥äºŒæ¬¡åŠ å·¥ç±»å‹: ${secType}` });
 
-    // 1. ÕÒµ½ÓĞÕâ¸ö secondary ±êÖ¾µÄ¿îÊ½
+    // 1. æ‰¾åˆ°æœ‰è¿™ä¸ª secondary æ ‡å¿—çš„æ¬¾å¼
     const styles = db.all(
       `SELECT id, style_no, product_name, plan_qty, due_date, ${cfg.sqlField} as flag, ${cfg.dailyField} as daily_output
        FROM styles WHERE ${cfg.sqlField} IS NOT NULL AND ${cfg.sqlField} != ''`
     );
     if (!styles.length) return res.json({ plans: [], dateRange: [], rows: [] });
 
-    // 2. Ö»±£ÁôÔÚ×°¹ñÇåµ¥ÀïµÄ¿îÊ½
+    // 2. åªä¿ç•™åœ¨è£…æŸœæ¸…å•é‡Œçš„æ¬¾å¼
     const styleNos = styles.map(s => s.style_no);
     const loadingQ = inQuery('style_no', styleNos);
     const loadingStyles = db.all(
@@ -2678,7 +2678,7 @@ function getSecondaryDailyPlan(secType, req, res) {
     const validStyles = styles.filter(s => loadingSet.has(s.style_no));
     if (!validStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
 
-    // 3. ´Ó main_plan È¡¸Ã secondary µÄÆğÖ¹Ê±¼ä
+    // 3. ä» main_plan å–è¯¥ secondary çš„èµ·æ­¢æ—¶é—´
     const validStyleNos = validStyles.map(s => s.style_no);
     const mpQ = inQuery('style_no', validStyleNos);
     const mainPlans = db.all(
@@ -2696,7 +2696,7 @@ function getSecondaryDailyPlan(secType, req, res) {
     const activeStyles = validStyles.filter(s => planMap[s.style_no]);
     if (!activeStyles.length) return res.json({ plans: [], dateRange: [], rows: [] });
 
-    // 4. Í³Ò»ÈÕÆÚ´°¿Ú
+    // 4. ç»Ÿä¸€æ—¥æœŸçª—å£
     const today = new Date();
     const sd = new Date(today); sd.setDate(sd.getDate() - SEC_DAILY_PLAN_WINDOW.beforeDays);
     const ed = new Date(today); ed.setDate(ed.getDate() + SEC_DAILY_PLAN_WINDOW.afterDays);
@@ -2707,7 +2707,7 @@ function getSecondaryDailyPlan(secType, req, res) {
       dateRange.push(fmtLocal(dt));
     }
 
-    // 5. Éú³É plans + rows
+    // 5. ç”Ÿæˆ plans + rows
     const plans = [];
     const rows = [];
     for (const style of activeStyles) {
@@ -2733,11 +2733,11 @@ function getSecondaryDailyPlan(secType, req, res) {
 
       for (const cs of csList) {
         if (cs.plan_qty <= 0) continue;
-        // [2026-06-19] ÅÅ³Ì¼ÆËãÓÃ²Ã¼ô²ÎÊı(Ô­µ¥ÊıÈÔÏÔÊ¾,cutting_param Ä¬ÈÏ = order_qty)
+        // [2026-06-19] æ’ç¨‹è®¡ç®—ç”¨è£å‰ªå‚æ•°(åŸå•æ•°ä»æ˜¾ç¤º,cutting_param é»˜è®¤ = order_qty)
         const cutParam = parseInt(cs.cutting_param) > 0 ? parseInt(cs.cutting_param) : cs.plan_qty;
         const dailyTarget = workingDays > 0 ? Math.ceil(cutParam / workingDays) : 0;
 
-        // Êµ¼Ê²úÁ¿(´Ó actual_production ¶Á,¹ıÂË schedule_type=secondary ÇÒÆ¥Åä secondary_type)
+        // å®é™…äº§é‡(ä» actual_production è¯»,è¿‡æ»¤ schedule_type=secondary ä¸”åŒ¹é… secondary_type)
         const actuals = db.all(
           `SELECT production_date, SUM(completed_qty) as qty
            FROM actual_production
@@ -2749,7 +2749,7 @@ function getSecondaryDailyPlan(secType, req, res) {
         const actualMap = {};
         for (const a of actuals) actualMap[a.production_date] = a.qty || 0;
 
-        // [2026-06-19] ²Ã¼ô¶ş¼ì AÆ·Êı(´Ó actual_production ¶Á is_second_inspection=1 + source_type=´ËÀàĞÍ)
+        // [2026-06-19] è£å‰ªäºŒæ£€ Aå“æ•°(ä» actual_production è¯» is_second_inspection=1 + source_type=æ­¤ç±»å‹)
         const siActuals = db.all(
           `SELECT production_date, SUM(completed_qty) as qty
            FROM actual_production
@@ -2761,7 +2761,7 @@ function getSecondaryDailyPlan(secType, req, res) {
         const siMap = {};
         for (const a of siActuals) siMap[a.production_date] = a.qty || 0;
 
-        // ¼Æ»®¸²¸Ç(´Ó×¨ÓÃ±í schedule_plan_overrides ¶Á[B-01 fix])
+        // è®¡åˆ’è¦†ç›–(ä»ä¸“ç”¨è¡¨ schedule_plan_overrides è¯»[B-01 fix])
         const overrides = db.all(
           `SELECT production_date, qty
            FROM schedule_plan_overrides
@@ -2841,7 +2841,7 @@ app.get('/api/schedule/:scheduleType', (req, res) => {
   }
 });
 
-// ¶ş´Î¼Ó¹¤»ã×Ü£¨°´ÀàĞÍÍ³¼Æ£©
+// äºŒæ¬¡åŠ å·¥æ±‡æ€»ï¼ˆæŒ‰ç±»å‹ç»Ÿè®¡ï¼‰
 app.get('/api/schedule/secondary/summary', (req, res) => {
   try {
     const rows = db.all(`
@@ -2861,7 +2861,7 @@ app.get('/api/schedule/secondary/summary', (req, res) => {
   }
 });
 
-// Ó¡»¨¼Æ»®Êı¾İ
+// å°èŠ±è®¡åˆ’æ•°æ®
 app.get('/api/printing-plan-data', (req, res) => {
   try {
     const rows = db.all(`
@@ -2899,10 +2899,10 @@ app.post('/api/schedule/:scheduleType', requireRole('admin', 'planning_manager',
   try {
     const validTypes = ['cutting', 'secondary', 'sewing'];
     if (!validTypes.includes(req.params.scheduleType)) {
-      return res.status(400).json({ error: 'ÎŞĞ§µÄÅÅ³ÌÀàĞÍ' });
+      return res.status(400).json({ error: 'æ— æ•ˆçš„æ’ç¨‹ç±»å‹' });
     }
     const m = req.body;
-    if (!m.style_no) return res.status(400).json({ error: '¿îºÅ²»ÄÜÎª¿Õ' });
+    if (!m.style_no) return res.status(400).json({ error: 'æ¬¾å·ä¸èƒ½ä¸ºç©º' });
     const result = db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec, plan_qty, plan_start, plan_end, workshop, line_team, secondary_type, cutting_plan_qty, daily_target, due_date)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [req.params.scheduleType, m.style_id, m.style_no, m.product_name, m.color, m.size_spec, m.plan_qty || 0, m.plan_start, m.plan_end, m.workshop || '', m.line_team || '', m.secondary_type || '', m.cutting_plan_qty || 0, m.daily_target || 0, m.due_date || '']);
@@ -2956,7 +2956,7 @@ app.delete('/api/schedule/:scheduleType/:id', requireRole('admin', 'planning_man
 });
 
 
-// ---------- ·ìÖÆÄ£¿é»ã×Ü ----------
+// ---------- ç¼åˆ¶æ¨¡å—æ±‡æ€» ----------
 app.get('/api/schedule/sewing/summary', (req, res) => {
   try {
     const today = fmtLocal(new Date());
@@ -2986,21 +2986,21 @@ app.get('/api/schedule/sewing/summary', (req, res) => {
   }
 });
 
-// ---------- ²úÏß×´Ì¬ÏêÇé£¨Êı¾İ¿´°åÓÃ£©----------
+// ---------- äº§çº¿çŠ¶æ€è¯¦æƒ…ï¼ˆæ•°æ®çœ‹æ¿ç”¨ï¼‰----------
 app.get('/api/dashboard/line-status', (req, res) => {
   try {
     const today = fmtLocal(new Date());
-    // [2026-06-20 fix#ÒµÎñ-P1-9] ·Ç admin °´ workshop ¹ıÂË
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-9] é admin æŒ‰ workshop è¿‡æ»¤
     const userWs = dashboardWorkshopScope(req);
-    // ËùÓĞ³µ¼ä
+    // æ‰€æœ‰è½¦é—´
     const workshops = userWs
       ? db.all('SELECT * FROM workshops WHERE name = ? ORDER BY sort_order', [userWs])
       : db.all('SELECT * FROM workshops ORDER BY sort_order');
-    // ËùÓĞ²úÏß
+    // æ‰€æœ‰äº§çº¿
     const lines = userWs
       ? db.all('SELECT pl.*, ws.name as workshop_name FROM production_lines pl JOIN workshops ws ON pl.workshop_id = ws.id WHERE ws.name = ? ORDER BY ws.sort_order, pl.sort_order', [userWs])
       : db.all('SELECT pl.*, ws.name as workshop_name FROM production_lines pl JOIN workshops ws ON pl.workshop_id = ws.id ORDER BY ws.sort_order, pl.sort_order');
-    // µ±Ç°ÔÚ²úµÄ·ìÖÆÅÅ³Ì£¨½ñÌìÔÚ plan_start ~ plan_end Ö®¼ä£©
+    // å½“å‰åœ¨äº§çš„ç¼åˆ¶æ’ç¨‹ï¼ˆä»Šå¤©åœ¨ plan_start ~ plan_end ä¹‹é—´ï¼‰
     let activeSchedules;
     if (userWs) {
       activeSchedules = db.all(`
@@ -3015,10 +3015,10 @@ app.get('/api/dashboard/line-status', (req, res) => {
         WHERE sm.schedule_type = 'sewing' AND sm.plan_start <= ? AND sm.plan_end >= ?
       `, [today, today]);
     }
-    // ³µ¼äÃû¹éÒ»»¯
-    const wsNorm = { 'Ò»³µ¼ä': '1', '¶ş³µ¼ä': '2', 'Èı³µ¼ä': '3', 'ËÄ³µ¼ä': '4', 'Îå³µ¼ä': '5' };
-    const stripSuffix = (name) => String(name || '').replace(/°à$/, '');
-    // °´ workshop+line_team Ë÷ÒıÅÅ³Ì
+    // è½¦é—´åå½’ä¸€åŒ–
+    const wsNorm = { 'ä¸€è½¦é—´': '1', 'äºŒè½¦é—´': '2', 'ä¸‰è½¦é—´': '3', 'å››è½¦é—´': '4', 'äº”è½¦é—´': '5' };
+    const stripSuffix = (name) => String(name || '').replace(/ç­$/, '');
+    // æŒ‰ workshop+line_team ç´¢å¼•æ’ç¨‹
     const schedMap = {};
     for (const s of activeSchedules) {
       const wNorm = wsNorm[s.workshop] || s.workshop || '';
@@ -3026,7 +3026,7 @@ app.get('/api/dashboard/line-status', (req, res) => {
       if (!schedMap[key]) schedMap[key] = [];
       schedMap[key].push(s);
     }
-    // Êµ¼Ê²úÁ¿°´ style_no+line_team ¾ÛºÏ
+    // å®é™…äº§é‡æŒ‰ style_no+line_team èšåˆ
     const styleNos = [...new Set(activeSchedules.map(s => s.style_no))];
     let actualMap = {};
     if (styleNos.length > 0) {
@@ -3042,7 +3042,7 @@ app.get('/api/dashboard/line-status', (req, res) => {
         actualMap[key] = a.total || 0;
       }
     }
-    // ×é×°½á¹û
+    // ç»„è£…ç»“æœ
     const result = workshops.map(ws => ({
       workshop: ws.name,
       lines: lines.filter(l => l.workshop_id === ws.id).map(line => {
@@ -3073,11 +3073,11 @@ app.get('/api/dashboard/line-status', (req, res) => {
   }
 });
 
-// ---------- Ç°ÖÃ³µ¼äÉú²ú×´Ì¬£¨Êı¾İ¿´°åÓÃ£©----------
+// ---------- å‰ç½®è½¦é—´ç”Ÿäº§çŠ¶æ€ï¼ˆæ•°æ®çœ‹æ¿ç”¨ï¼‰----------
 app.get('/api/dashboard/secondary-status', (req, res) => {
   try {
     const today = fmtLocal(new Date());
-    // [2026-06-20 fix#ÒµÎñ-P1-9] ·Ç admin °´ workshop ¹ıÂË
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-9] é admin æŒ‰ workshop è¿‡æ»¤
     const userWs = dashboardWorkshopScope(req);
     const processTypes = ['cutting', 'printing', 'embroidery', 'template', 'ironing'];
     const result = {};
@@ -3086,8 +3086,8 @@ app.get('/api/dashboard/secondary-status', (req, res) => {
       let items = [];
 
       if (type === 'cutting') {
-        // ²Ã¼ô:´Ó main_plan È¡½ñÌìÔÚ²Ã¼ôÊ±¼ä¶ÎÄÚµÄ
-        // [fix#ÒµÎñ-P1-9] main_plan Ã»ÓĞ workshop ×Ö¶Î,²Ã¼ôÊÇÇ°ÖÃ¹¤Ğò¶ÔËùÓĞÓÃ»§¶¼¿É¼û
+        // è£å‰ª:ä» main_plan å–ä»Šå¤©åœ¨è£å‰ªæ—¶é—´æ®µå†…çš„
+        // [fix#ä¸šåŠ¡-P1-9] main_plan æ²¡æœ‰ workshop å­—æ®µ,è£å‰ªæ˜¯å‰ç½®å·¥åºå¯¹æ‰€æœ‰ç”¨æˆ·éƒ½å¯è§
         const plans = db.all(`
           SELECT mp.id, mp.style_no, mp.product_name, mp.plan_qty,
                  mp.cutting_start as plan_start, mp.cutting_end as plan_end
@@ -3119,8 +3119,8 @@ app.get('/api/dashboard/secondary-status', (req, res) => {
           plan_end: p.plan_end,
         }));
       } else {
-        // ¶ş´Î¼Ó¹¤£º´Ó schedule_master È¡
-        // [fix#ÒµÎñ-P1-9] ·Ç admin ¼Ó workshop ¹ıÂË
+        // äºŒæ¬¡åŠ å·¥ï¼šä» schedule_master å–
+        // [fix#ä¸šåŠ¡-P1-9] é admin åŠ  workshop è¿‡æ»¤
         const masters = userWs
           ? db.all(`
             SELECT sm.id, sm.style_no, sm.product_name, sm.plan_qty,
@@ -3166,12 +3166,12 @@ app.get('/api/dashboard/secondary-status', (req, res) => {
         }));
       }
 
-      // ¼ÆËã×´Ì¬
+      // è®¡ç®—çŠ¶æ€
       for (const item of items) {
         const pct = item.plan_qty > 0 ? item.completed / item.plan_qty : 0;
-        if (pct >= 1) item.status = 'ÒÑÍê³É';
-        else if (pct > 0) item.status = '½øĞĞÖĞ';
-        else item.status = '´ıÉú²ú';
+        if (pct >= 1) item.status = 'å·²å®Œæˆ';
+        else if (pct > 0) item.status = 'è¿›è¡Œä¸­';
+        else item.status = 'å¾…ç”Ÿäº§';
         item.progress = Math.round(pct * 100);
       }
 
@@ -3185,22 +3185,22 @@ app.get('/api/dashboard/secondary-status', (req, res) => {
   }
 });
 
-// ---------- ¶©µ¥½ÓÊÕ/Íê³ÉÍ³¼Æ£¨Êı¾İ¿´°åÓÃ£©----------
+// ---------- è®¢å•æ¥æ”¶/å®Œæˆç»Ÿè®¡ï¼ˆæ•°æ®çœ‹æ¿ç”¨ï¼‰----------
 app.get('/api/dashboard/order-stats', (req, res) => {
   try {
     const { mode = 'week' } = req.query; // 'week' or 'month'
-    // [2026-06-20 fix#ÒµÎñ-P1-9] ·Ç admin °´ workshop ¹ıÂË
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-9] é admin æŒ‰ workshop è¿‡æ»¤
     const userWs = dashboardWorkshopScope(req);
     const now = new Date();
     const periods = [];
 
     if (mode === 'week') {
-      // ×î½ü 12 ÖÜ
+      // æœ€è¿‘ 12 å‘¨
       for (let i = 11; i >= 0; i--) {
         const start = new Date(now);
-        start.setDate(start.getDate() - start.getDay() + 1 - i * 7); // ÖÜÒ»
+        start.setDate(start.getDate() - start.getDay() + 1 - i * 7); // å‘¨ä¸€
         const end = new Date(start);
-        end.setDate(end.getDate() + 6); // ÖÜÈÕ
+        end.setDate(end.getDate() + 6); // å‘¨æ—¥
         periods.push({
           label: `${start.getMonth() + 1}/${start.getDate()}`,
           start: fmtLocal(start),
@@ -3208,14 +3208,14 @@ app.get('/api/dashboard/order-stats', (req, res) => {
         });
       }
     } else {
-      // ×î½ü 6 ¸öÔÂ
+      // æœ€è¿‘ 6 ä¸ªæœˆ
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const start = fmtLocal(d);
         const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
         const end = fmtLocal(lastDay);
         periods.push({
-          label: `${d.getMonth() + 1}ÔÂ`,
+          label: `${d.getMonth() + 1}æœˆ`,
           start,
           end,
         });
@@ -3226,7 +3226,7 @@ app.get('/api/dashboard/order-stats', (req, res) => {
     const completed = [];
 
     for (const p of periods) {
-      // ½ÓÊÕ¶©µ¥£ºÃæÁÏ×°¹ñÇåµ¥ÖĞ¸ÃÊ±¼ä¶ÎÄÚµÄÈ¥ÖØ¿îÊı
+      // æ¥æ”¶è®¢å•ï¼šé¢æ–™è£…æŸœæ¸…å•ä¸­è¯¥æ—¶é—´æ®µå†…çš„å»é‡æ¬¾æ•°
       const recv = db.get(`
         SELECT COUNT(DISTINCT style_no) as cnt
         FROM fabric_loading_list
@@ -3235,8 +3235,8 @@ app.get('/api/dashboard/order-stats', (req, res) => {
       `, [p.start, p.end, p.start, p.end]);
       received.push(recv?.cnt || 0);
 
-      // Íê³É¶©µ¥£º·ìÖÆÅÅ³ÌÖĞ¸ÃÊ±¼ä¶ÎÄÚ plan_end ÇÒÊµ¼ÊÍê³ÉÁ¿ >= ¼Æ»®Á¿µÄ¿îÊı
-      // [fix#ÒµÎñ-P1-9] ·Ç admin ¼Ó workshop ¹ıÂË
+      // å®Œæˆè®¢å•ï¼šç¼åˆ¶æ’ç¨‹ä¸­è¯¥æ—¶é—´æ®µå†… plan_end ä¸”å®é™…å®Œæˆé‡ >= è®¡åˆ’é‡çš„æ¬¾æ•°
+      // [fix#ä¸šåŠ¡-P1-9] é admin åŠ  workshop è¿‡æ»¤
       const comp = userWs
         ? db.get(`
           SELECT COUNT(DISTINCT sm.style_no) as cnt
@@ -3276,12 +3276,12 @@ app.get('/api/dashboard/order-stats', (req, res) => {
   }
 });
 
-// ---------- ÅÅ²ú¼Æ»®´ï³ÉÂÊ API ----------
+// ---------- æ’äº§è®¡åˆ’è¾¾æˆç‡ API ----------
 app.get('/api/dashboard/achievement-rate', (req, res) => {
   try {
-    // [2026-06-20 fix#ÒµÎñ-P1-9] ·Ç admin °´ workshop ¸ôÀë»º´æ
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-9] é admin æŒ‰ workshop éš”ç¦»ç¼“å­˜
     const userWs = dashboardWorkshopScope(req);
-    // [fix H-04] 60 ÃëÄÚ´æ»º´æ + µ¥ SQL ¾ÛºÏ,±ÜÃâ 6 ¹¤Ğò¡Á30 Ìì¡ÁN master µÄ N+1
+    // [fix H-04] 60 ç§’å†…å­˜ç¼“å­˜ + å• SQL èšåˆ,é¿å… 6 å·¥åºÃ—30 å¤©Ã—N master çš„ N+1
     const cacheKey = `achievement-rate:v1:${userWs || 'all'}`;
     const cached = achievementCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < 60000) {
@@ -3299,29 +3299,29 @@ app.get('/api/dashboard/achievement-rate', (req, res) => {
     const minDate = dates[0];
 
     const processTypes = [
-      { key: 'cutting', label: '²Ã¼ô', type: 'cutting' },
-      { key: 'printing', label: 'Ó¡»¨', type: 'secondary', subType: 'printing' },
-      { key: 'embroidery', label: '´ÌĞå', type: 'secondary', subType: 'embroidery' },
-      { key: 'template', label: 'Ä£°å', type: 'secondary', subType: 'template' },
-      { key: 'ironing', label: 'ÌÌ±ê', type: 'secondary', subType: 'ironing' },
-      { key: 'sewing', label: '·ìÖÆ', type: 'sewing' },
+      { key: 'cutting', label: 'è£å‰ª', type: 'cutting' },
+      { key: 'printing', label: 'å°èŠ±', type: 'secondary', subType: 'printing' },
+      { key: 'embroidery', label: 'åˆºç»£', type: 'secondary', subType: 'embroidery' },
+      { key: 'template', label: 'æ¨¡æ¿', type: 'secondary', subType: 'template' },
+      { key: 'ironing', label: 'çƒ«æ ‡', type: 'secondary', subType: 'ironing' },
+      { key: 'sewing', label: 'ç¼åˆ¶', type: 'sewing' },
     ];
 
-    // Ò»´ÎÀ­È« schedule_master,Ç°¶Ë°´ type/secondary_type ¹ıÂË
-    // [fix#ÒµÎñ-P1-9] ·Ç admin ¼Ó workshop ¹ıÂË
+    // ä¸€æ¬¡æ‹‰å…¨ schedule_master,å‰ç«¯æŒ‰ type/secondary_type è¿‡æ»¤
+    // [fix#ä¸šåŠ¡-P1-9] é admin åŠ  workshop è¿‡æ»¤
     const allMasters = userWs
       ? db.all("SELECT id, schedule_type, secondary_type, workshop, plan_qty, plan_start, plan_end FROM schedule_master WHERE workshop = ? AND plan_start IS NOT NULL AND plan_end IS NOT NULL", [userWs])
       : db.all("SELECT id, schedule_type, secondary_type, workshop, plan_qty, plan_start, plan_end FROM schedule_master WHERE plan_start IS NOT NULL AND plan_end IS NOT NULL");
-    // Ò»´Î¾ÛºÏÈ« ACTUAL
+    // ä¸€æ¬¡èšåˆå…¨ ACTUAL
     const allDaily = db.all("SELECT master_id, schedule_date, SUM(qty) as total FROM schedule_daily WHERE row_type='ACTUAL' AND schedule_date >= ? GROUP BY master_id, schedule_date", [minDate]);
 
-    // ÓÃ Map Ë÷Òı,master_id ¡ú daily[]
+    // ç”¨ Map ç´¢å¼•,master_id â†’ daily[]
     const dailyByMaster = new Map();
     for (const d of allDaily) {
       if (!dailyByMaster.has(d.master_id)) dailyByMaster.set(d.master_id, []);
       dailyByMaster.get(d.master_id).push(d);
     }
-    // master_id ¡ú ¸Ã master µÄÀÛ¼ÆÊµ¼Ê°´ÈÕÆÚÉıĞòÇ°×ººÍ
+    // master_id â†’ è¯¥ master çš„ç´¯è®¡å®é™…æŒ‰æ—¥æœŸå‡åºå‰ç¼€å’Œ
     const cumActualByMaster = new Map();
     for (const [mid, arr] of dailyByMaster) {
       arr.sort((a, b) => a.schedule_date < b.schedule_date ? -1 : 1);
@@ -3369,7 +3369,7 @@ app.get('/api/dashboard/achievement-rate', (req, res) => {
     }
 
     const sewingByWorkshop = {};
-    // [fix#ÒµÎñ-P1-9] ·Ç admin Ö»Õ¹Ê¾±¾³µ¼ä sewing ´ï³ÉÂÊ
+    // [fix#ä¸šåŠ¡-P1-9] é admin åªå±•ç¤ºæœ¬è½¦é—´ sewing è¾¾æˆç‡
     const workshops = userWs
       ? db.all("SELECT * FROM workshops WHERE name = ? ORDER BY sort_order", [userWs])
       : db.all("SELECT * FROM workshops ORDER BY sort_order");
@@ -3388,8 +3388,8 @@ app.get('/api/dashboard/achievement-rate', (req, res) => {
   }
 });
 
-// [2026-06-20 M-4] Ê×Ò³Ò»´ÎĞÔÍ³¼Æ½Ó¿Ú
-// Ìæ´ú EntryHome.vue 8 ¸ö²¢ĞĞÇëÇó
+// [2026-06-20 M-4] é¦–é¡µä¸€æ¬¡æ€§ç»Ÿè®¡æ¥å£
+// æ›¿ä»£ EntryHome.vue 8 ä¸ªå¹¶è¡Œè¯·æ±‚
 app.get('/api/dashboard/stats', (req, res) => {
   try {
     const today = fmtLocal(new Date());
@@ -3397,7 +3397,7 @@ app.get('/api/dashboard/stats', (req, res) => {
     const planCount = db.get('SELECT COUNT(*) as c FROM main_plan').c;
     const workshopsCount = db.get('SELECT COUNT(*) as c FROM workshops').c;
     const linesCount = db.get('SELECT COUNT(*) as c FROM production_lines').c;
-    const busyLinesCount = db.get("SELECT COUNT(*) as c FROM production_lines WHERE status = 'Éú²úÖĞ'").c;
+    const busyLinesCount = db.get("SELECT COUNT(*) as c FROM production_lines WHERE status = 'ç”Ÿäº§ä¸­'").c;
     const cutPiecesInventory = db.get("SELECT COALESCE(SUM(current_qty), 0) as t FROM warehouse_inventory WHERE warehouse_type = 'cutting_piece'").t;
     const todayInbound = db.get(
       "SELECT COALESCE(SUM(qty), 0) as t FROM warehouse_inbound WHERE warehouse_type = 'cutting_piece' AND inbound_date = ?",
@@ -3423,18 +3423,18 @@ app.get('/api/dashboard/stats', (req, res) => {
   }
 });
 
-// ---------- ·ìÖÆµ¼³ö£¨Æ¥Åä·ìÖÆ¼Æ»®.xlsx£©----------
+// ---------- ç¼åˆ¶å¯¼å‡ºï¼ˆåŒ¹é…ç¼åˆ¶è®¡åˆ’.xlsxï¼‰----------
 app.get('/api/schedule/sewing/export', async (req, res) => {
   try {
     let masters;
     if (req.query.ids) {
       const ids = req.query.ids.split(',').map(Number).filter(Boolean);
-      if (!ids.length) return res.status(400).json({ error: 'ÎŞÓĞĞ§ID' });
+      if (!ids.length) return res.status(400).json({ error: 'æ— æœ‰æ•ˆID' });
       masters = db.all(`SELECT * FROM schedule_master WHERE schedule_type='sewing' AND id IN (${ids.map(() => '?').join(',')}) ORDER BY workshop, line_team, style_no`, ids);
     } else {
       masters = db.all("SELECT * FROM schedule_master WHERE schedule_type='sewing' ORDER BY workshop, line_team, style_no");
     }
-    if (!masters.length) return res.status(404).json({ error: 'ÎŞÊı¾İ' });
+    if (!masters.length) return res.status(404).json({ error: 'æ— æ•°æ®' });
 
     let minDate = null, maxDate = null;
     const masterDailies = [];
@@ -3460,15 +3460,15 @@ app.get('/api/schedule/sewing/export', async (req, res) => {
     }
 
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('ÅÅ³Ì¸ÊÌØÍ¼');
+    const ws = wb.addWorksheet('æ’ç¨‹ç”˜ç‰¹å›¾');
 
     function hdr(v) { return { value: v, font: { bold: true }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }, border: { style: 'thin' } }; }
-    // ExcelÁĞÓ³ÉäÑÏ¸ñ°´ÕÕÓÃ»§Ìá¹©µÄ¡¶·ìÖÆÅÅ³ÌÄ£°å.xlsx¡·µ÷Õû
-    const headers = ['³µ¼ä', '°à×é', '¿îºÅ', 'Æ·Ãû', '²Ã´²¼Æ»®ÊıÁ¿', '½»ÆÚ', 'Ä¿±êÈÕ²úÁ¿', '·ìÖÆ¿ªÊ¼ÈÕÆÚ', '·ìÖÆ½áÊøÈÕÆÚ', 'ºÏ¼Æ', ''];
+    // Excelåˆ—æ˜ å°„ä¸¥æ ¼æŒ‰ç…§ç”¨æˆ·æä¾›çš„ã€Šç¼åˆ¶æ’ç¨‹æ¨¡æ¿.xlsxã€‹è°ƒæ•´
+    const headers = ['è½¦é—´', 'ç­ç»„', 'æ¬¾å·', 'å“å', 'è£åºŠè®¡åˆ’æ•°é‡', 'äº¤æœŸ', 'ç›®æ ‡æ—¥äº§é‡', 'ç¼åˆ¶å¼€å§‹æ—¥æœŸ', 'ç¼åˆ¶ç»“æŸæ—¥æœŸ', 'åˆè®¡', ''];
     for (const dc of dateCols) headers.push(dc);
     const hdrRow = ws.addRow(headers.map(h => hdr(h)));
 
-    const typeLabels = ['¼Æ»®', 'Êµ¼ÊQC1', '²îÒì'];
+    const typeLabels = ['è®¡åˆ’', 'å®é™…QC1', 'å·®å¼‚'];
     const rowTypes = ['PLAN', 'ACTUAL', 'DIFF'];
 
     for (const { master, dailyMap } of masterDailies) {
@@ -3488,7 +3488,7 @@ app.get('/api/schedule/sewing/export', async (req, res) => {
           r.getCell(9).value = master.plan_end || '';
         }
         r.getCell(11).value = typeLabels[ri];
-        r.getCell(12).value = 'ºÏ¼Æ';
+        r.getCell(12).value = 'åˆè®¡';
 
         for (let di = 0; di < dateCols.length; di++) {
           const dc = dateCols[di];
@@ -3514,18 +3514,18 @@ app.get('/api/schedule/sewing/export', async (req, res) => {
 
     const buf = await wb.xlsx.writeBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('°à×é·ìÖÆ¼Æ»®_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('ç­ç»„ç¼åˆ¶è®¡åˆ’_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
     res.send(Buffer.from(buf));
   } catch (e) {
     sendError(res, 'GET /api/schedule/sewing/export', e);
   }
 });
 
-// ---------- ·ìÖÆµ¼Èë ----------
+// ---------- ç¼åˆ¶å¯¼å…¥ ----------
 app.post('/api/schedule/sewing/import', async (req, res) => {
   try {
     const { records, mode } = req.body;
-    if (!records?.length) return res.status(400).json({ error: 'Ã»ÓĞÊı¾İ' });
+    if (!records?.length) return res.status(400).json({ error: 'æ²¡æœ‰æ•°æ®' });
     let imported = 0, skipped = 0;
     const errors = [];
 
@@ -3536,9 +3536,9 @@ app.post('/api/schedule/sewing/import', async (req, res) => {
       for (let i = 0; i < records.length; i++) {
         const r = records[i];
         try {
-          const styleNo = r['¿îºÅ'] || r.style_no || '';
-          const planStart = r['·ìÖÆ¿ªÊ¼ÈÕÆÚ'] || r.plan_start || '';
-          const planEnd = r['·ìÖÆ½áÊøÈÕÆÚ'] || r.plan_end || '';
+          const styleNo = r['æ¬¾å·'] || r.style_no || '';
+          const planStart = r['ç¼åˆ¶å¼€å§‹æ—¥æœŸ'] || r.plan_start || '';
+          const planEnd = r['ç¼åˆ¶ç»“æŸæ—¥æœŸ'] || r.plan_end || '';
           if (mode === 'skip' && chkDup.get(styleNo, planStart, planEnd)) { skipped++; continue; }
           if (mode === 'overwrite') {
             const dup = chkDup.get(styleNo, planStart, planEnd);
@@ -3546,18 +3546,18 @@ app.post('/api/schedule/sewing/import', async (req, res) => {
           }
           const info = insMaster.run(
             parseInt(r.style_id) || 0, styleNo,
-            r['Æ·Ãû'] || r.product_name || '', r['ÑÕÉ«'] || r.color || '', r['¹æ¸ñ'] || r.size_spec || '',
-            parseInt(r['²Ã´²¼Æ»®ÊıÁ¿'] || r.plan_qty) || 0,
+            r['å“å'] || r.product_name || '', r['é¢œè‰²'] || r.color || '', r['è§„æ ¼'] || r.size_spec || '',
+            parseInt(r['è£åºŠè®¡åˆ’æ•°é‡'] || r.plan_qty) || 0,
             planStart, planEnd,
-            r['³µ¼ä'] || r.workshop || '', r['°à×é'] || r.line_team || '', '',
-            parseInt(r['²Ã´²¼Æ»®ÊıÁ¿']) || parseInt(r.plan_qty) || 0,
-            r['½»ÆÚ'] || r.due_date || null,
-            parseInt(r['Ä¿±êÈÕ²úÁ¿'] || r.daily_target) || 0
+            r['è½¦é—´'] || r.workshop || '', r['ç­ç»„'] || r.line_team || '', '',
+            parseInt(r['è£åºŠè®¡åˆ’æ•°é‡']) || parseInt(r.plan_qty) || 0,
+            r['äº¤æœŸ'] || r.due_date || null,
+            parseInt(r['ç›®æ ‡æ—¥äº§é‡'] || r.daily_target) || 0
           );
           const mid = info.lastInsertRowid;
-          if (r['Ã¿ÈÕÃ÷Ï¸'] && mid) {
+          if (r['æ¯æ—¥æ˜ç»†'] && mid) {
             const insDaily = db.getDb().prepare('INSERT OR REPLACE INTO schedule_daily (master_id,schedule_date,row_type,qty) VALUES (?,?,?,?)');
-            for (const [date, vals] of Object.entries(r['Ã¿ÈÕÃ÷Ï¸'])) {
+            for (const [date, vals] of Object.entries(r['æ¯æ—¥æ˜ç»†'])) {
               if (vals.PLAN != null) insDaily.run(mid, date, 'PLAN', vals.PLAN || 0);
               if (vals.ACTUAL != null) insDaily.run(mid, date, 'ACTUAL', vals.ACTUAL || 0);
               insDaily.run(mid, date, 'DIFF', (vals.ACTUAL || 0) - (vals.PLAN || 0));
@@ -3574,11 +3574,11 @@ app.post('/api/schedule/sewing/import', async (req, res) => {
   }
 });
 
-// ---------- ²Ã¼ôµ¼Èë£¨Ğ´ schedule_master£¬type=cutting£»cutting ÏêÇé±íÈÔ¶Á join ÊÓÍ¼£© ----------
+// ---------- è£å‰ªå¯¼å…¥ï¼ˆå†™ schedule_masterï¼Œtype=cuttingï¼›cutting è¯¦æƒ…è¡¨ä»è¯» join è§†å›¾ï¼‰ ----------
 app.post('/api/schedule/cutting/import', async (req, res) => {
   try {
     const { records, mode } = req.body;
-    if (!records?.length) return res.status(400).json({ error: 'Ã»ÓĞÊı¾İ' });
+    if (!records?.length) return res.status(400).json({ error: 'æ²¡æœ‰æ•°æ®' });
     let imported = 0, skipped = 0;
     const errors = [];
 
@@ -3589,10 +3589,10 @@ app.post('/api/schedule/cutting/import', async (req, res) => {
       for (let i = 0; i < records.length; i++) {
         const r = records[i];
         try {
-          const styleNo = r['¿îºÅ'] || r.style_no || '';
-          const color = r['ÑÕÉ«'] || r.color || '';
-          const sizeSpec = r['³ßÂë'] || r.size_spec || '';
-          const planStart = r['²Ã¼ôÉÏÏß'] || r.cutting_start || r.plan_start || '';
+          const styleNo = r['æ¬¾å·'] || r.style_no || '';
+          const color = r['é¢œè‰²'] || r.color || '';
+          const sizeSpec = r['å°ºç '] || r.size_spec || '';
+          const planStart = r['è£å‰ªä¸Šçº¿'] || r.cutting_start || r.plan_start || '';
           if (mode === 'skip' && chkDup.get(styleNo, color, sizeSpec, planStart)) { skipped++; continue; }
           if (mode === 'overwrite') {
             const dup = chkDup.get(styleNo, color, sizeSpec, planStart);
@@ -3600,12 +3600,12 @@ app.post('/api/schedule/cutting/import', async (req, res) => {
           }
           const info = insMaster.run(
             parseInt(r.style_id) || 0, styleNo,
-            r['Æ·Ãû'] || r.product_name || '', color, sizeSpec,
-            parseInt(r['Ô­µ¥Á¿'] || r.plan_qty) || 0,
-            planStart, r['²Ã¼ôÏÂÏß'] || r.cutting_end || r.plan_end || '',
+            r['å“å'] || r.product_name || '', color, sizeSpec,
+            parseInt(r['åŸå•é‡'] || r.plan_qty) || 0,
+            planStart, r['è£å‰ªä¸‹çº¿'] || r.cutting_end || r.plan_end || '',
             '', '', '',
-            parseInt(r['¼Æ»®ÊıÁ¿']) || parseInt(r.plan_qty) || 0,
-            r['½»ÆÚ'] || r.due_date || null,
+            parseInt(r['è®¡åˆ’æ•°é‡']) || parseInt(r.plan_qty) || 0,
+            r['äº¤æœŸ'] || r.due_date || null,
             0
           );
           imported++;
@@ -3619,7 +3619,7 @@ app.post('/api/schedule/cutting/import', async (req, res) => {
   }
 });
 
-// ÁĞË÷Òı×ªExcelÁĞ×ÖÄ¸
+// åˆ—ç´¢å¼•è½¬Excelåˆ—å­—æ¯
 function colIdxToLetter(idx) {
   let letters = '';
   let n = idx;
@@ -3658,7 +3658,7 @@ function generatePlanRows(masterId, start, end, totalQty) {
   txn();
 }
 
-// ---------- Êµ¼ÊÉú²úÊı¾İ ----------
+// ---------- å®é™…ç”Ÿäº§æ•°æ® ----------
 app.get('/api/actual', (req, res) => {
   try {
     const { scheduleType, keyword, is_second_inspection, secondary_type } = req.query;
@@ -3666,14 +3666,14 @@ app.get('/api/actual', (req, res) => {
     const wheres = [];
     const params = [];
     if (scheduleType) { wheres.push('schedule_type = ?'); params.push(scheduleType); }
-    // [2026-06-20 ¶Î8 M-2] ¿îºÅÄ£ºı,ºó¶Ë SQL LIKE(Ìæ´úÇ°¶Ë .filter())
+    // [2026-06-20 æ®µ8 M-2] æ¬¾å·æ¨¡ç³Š,åç«¯ SQL LIKE(æ›¿ä»£å‰ç«¯ .filter())
     if (keyword) { wheres.push(`style_no LIKE ? ESCAPE '\\'`); params.push(`%${escapeLike(keyword)}%`); }
-    // [2026-06-20 ¶Î11 M-2] ¶ş¼ì¹ıÂË,ºó¶Ë SQL(Ìæ´ú CuttingSecondDispatch .filter)
+    // [2026-06-20 æ®µ11 M-2] äºŒæ£€è¿‡æ»¤,åç«¯ SQL(æ›¿ä»£ CuttingSecondDispatch .filter)
     if (is_second_inspection !== undefined && is_second_inspection !== '') {
       wheres.push('is_second_inspection = ?');
       params.push(parseInt(is_second_inspection) ? 1 : 0);
     }
-    // [2026-06-20 ¶Î14 M-2] secondary_type ¹ıÂË(Ìæ´ú SecondaryDispatch .filter)
+    // [2026-06-20 æ®µ14 M-2] secondary_type è¿‡æ»¤(æ›¿ä»£ SecondaryDispatch .filter)
     if (secondary_type) { wheres.push('secondary_type = ?'); params.push(secondary_type); }
     if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
     sql += ' ORDER BY production_date DESC';
@@ -3687,13 +3687,13 @@ app.get('/api/actual', (req, res) => {
 app.post('/api/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
   try {
     const r = req.body;
-    if (!r.style_no) return res.status(400).json({ error: '¿îºÅ²»ÄÜÎª¿Õ' });
-    if (!r.production_date) return res.status(400).json({ error: 'ÈÕÆÚ²»ÄÜÎª¿Õ' });
-    // [2026-06-19] ¶ş¼ì±ØĞëÖ¸¶¨ source_type
+    if (!r.style_no) return res.status(400).json({ error: 'æ¬¾å·ä¸èƒ½ä¸ºç©º' });
+    if (!r.production_date) return res.status(400).json({ error: 'æ—¥æœŸä¸èƒ½ä¸ºç©º' });
+    // [2026-06-19] äºŒæ£€å¿…é¡»æŒ‡å®š source_type
     if (parseInt(r.is_second_inspection) > 0 && !r.source_type) {
-      return res.status(400).json({ error: '¶ş¼ì±¨¹¤±ØĞëÑ¡ÔñÀ´Ô´(Ó¡»¨/´ÌĞå)' });
+      return res.status(400).json({ error: 'äºŒæ£€æŠ¥å·¥å¿…é¡»é€‰æ‹©æ¥æº(å°èŠ±/åˆºç»£)' });
     }
-    // [2026-06-20 Åú´Î1-ÒµÎñ-P0-6] ÊıÖµ/ÈÕÆÚºÏÀíĞÔĞ£Ñé
+    // [2026-06-20 æ‰¹æ¬¡1-ä¸šåŠ¡-P0-6] æ•°å€¼/æ—¥æœŸåˆç†æ€§æ ¡éªŒ
     const vErr = validateActualPayload(r);
     if (vErr) return res.status(vErr.status).json(vErr.body);
 
@@ -3703,12 +3703,12 @@ app.post('/api/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, 
        parseInt(r.is_second_inspection) || 0, r.source_type || '']);
 
     const inserted = { id: result.lastInsertRowid, ...r };
-    // [2026-06-19] ±¨¹¤Íê³É ¡ú ×Ô¶¯Èë²ÃÆ¬¿â
+    // [2026-06-19] æŠ¥å·¥å®Œæˆ â†’ è‡ªåŠ¨å…¥è£ç‰‡åº“
     db.recordCutPiecesInbound(inserted);
 
     syncActualToDaily(inserted);
-    // ×Ô¶¯ÖØËãÈÎÎñ×´Ì¬
-    // [2026-06-20 fix#ÒµÎñ-P1-11] ½Ó×¡ recalcTaskStatus ·µ»ØÖµ,Ê§°ÜÊ±¼ÇÈë²Ù×÷ÈÕÖ¾
+    // è‡ªåŠ¨é‡ç®—ä»»åŠ¡çŠ¶æ€
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-11] æ¥ä½ recalcTaskStatus è¿”å›å€¼,å¤±è´¥æ—¶è®°å…¥æ“ä½œæ—¥å¿—
     if (r.style_id) {
       const rc = db.recalcTaskStatus(r.style_id);
       if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', r.style_id, r.style_no, `err=${rc.error}`);
@@ -3722,13 +3722,13 @@ app.post('/api/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, 
   }
 });
 
-// ---------- ±¨¹¤»ã×Ü ----------
+// ---------- æŠ¥å·¥æ±‡æ€» ----------
 app.get('/api/dispatch-summary', (req, res) => {
   try {
     const { schedule_type, secondary_type, workshop, style_no, date_from, date_to, group_by = 'date' } = req.query;
     const ALLOWED_GROUP_BY = ['date', 'style', 'workshop', 'line_team'];
     if (!ALLOWED_GROUP_BY.includes(group_by)) {
-      return res.status(400).json({ error: 'group_by ²ÎÊı·Ç·¨' });
+      return res.status(400).json({ error: 'group_by å‚æ•°éæ³•' });
     }
     let groupExpr, selectExtra;
     switch (group_by) {
@@ -3763,11 +3763,11 @@ app.get('/api/dispatch-summary', (req, res) => {
   }
 });
 
-// ---------- µ¥Ìõ±¨¹¤ CRUD ----------
+// ---------- å•æ¡æŠ¥å·¥ CRUD ----------
 app.get('/api/actual/:id', (req, res) => {
   try {
     const row = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
-    if (!row) return res.status(404).json({ error: '¼ÇÂ¼²»´æÔÚ' });
+    if (!row) return res.status(404).json({ error: 'è®°å½•ä¸å­˜åœ¨' });
     res.json(row);
   } catch (e) {
     console.error('GET /api/actual/:id error:', e);
@@ -3779,20 +3779,20 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
   try {
     const r = req.body;
     const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
-    if (!existing) return res.status(404).json({ error: '¼ÇÂ¼²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'è®°å½•ä¸å­˜åœ¨' });
 
-    // [2026-06-20 Åú´Î1-ÒµÎñ-P0-6] ÊıÖµ/ÈÕÆÚºÏÀíĞÔĞ£Ñé(»ùÓÚºÏ²¢ºóµÄÖµ)
+    // [2026-06-20 æ‰¹æ¬¡1-ä¸šåŠ¡-P0-6] æ•°å€¼/æ—¥æœŸåˆç†æ€§æ ¡éªŒ(åŸºäºåˆå¹¶åçš„å€¼)
     const merged = { ...existing, ...r };
     const vErr = validateActualPayload(merged, existing);
     if (vErr) return res.status(vErr.status).json(vErr.body);
 
-    // [2026-06-20] ¿ç³µ¼äÀ¹½Ø:supervisor Ö»ÄÜ¸Ä×Ô¼º³µ¼äµÄ±¨¹¤,dispatcher Ö»ÄÜ¸Ä×Ô¼º³µ¼äµÄ±¨¹¤
-    // [2026-06-20 fix#ÒµÎñ-P1-3] ÓÃ userCanAccessWorkshop ÔÊĞí secondary Ö÷ÈÎ¿ç 3 ¹¤Ğò
+    // [2026-06-20] è·¨è½¦é—´æ‹¦æˆª:supervisor åªèƒ½æ”¹è‡ªå·±è½¦é—´çš„æŠ¥å·¥,dispatcher åªèƒ½æ”¹è‡ªå·±è½¦é—´çš„æŠ¥å·¥
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-3] ç”¨ userCanAccessWorkshop å…è®¸ secondary ä¸»ä»»è·¨ 3 å·¥åº
     const u = req.user;
     if (u.role !== 'admin') {
       const needWorkshop = SCHEDULE_TYPE_WORKSHOP[existing.schedule_type];
       if (needWorkshop && !userCanAccessWorkshop(u, needWorkshop)) {
-        return res.status(403).json({ error: 'ÎŞÈ¨²Ù×÷ÆäËû³µ¼äµÄ±¨¹¤' });
+        return res.status(403).json({ error: 'æ— æƒæ“ä½œå…¶ä»–è½¦é—´çš„æŠ¥å·¥' });
       }
     }
 
@@ -3805,11 +3805,11 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
     const oldQty = parseInt(existing.completed_qty) || 0;
     const newQty = r.completed_qty != null ? parseInt(r.completed_qty) : oldQty;
 
-    // [2026-06-20 fix#ÒµÎñ-P1-11] ÊÕ¼¯´ı recalc µÄ style_id,transaction Ìá½»ºóµ÷ÓÃ
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-11] æ”¶é›†å¾… recalc çš„ style_id,transaction æäº¤åè°ƒç”¨
     const recalcIds = new Set();
-    // [2026-06-20 Åú´Î2-ÒµÎñ-P1-8] UPDATE + ¸±×÷ÓÃÕû¶Î°üÊÂÎñ
-    // Ö®Ç° rollbackCutPiecesInbound / recordCutPiecesInbound / syncActualToDaily ¶¼²»ÔÚÊÂÎñÄÚ
-    // Ê§°Ü»áÁôÏÂ²»Ò»ÖÂ×´Ì¬(¿â´æ¿ÛÁËµ« actual Ã»¸Ä / ·´Ö®)
+    // [2026-06-20 æ‰¹æ¬¡2-ä¸šåŠ¡-P1-8] UPDATE + å‰¯ä½œç”¨æ•´æ®µåŒ…äº‹åŠ¡
+    // ä¹‹å‰ rollbackCutPiecesInbound / recordCutPiecesInbound / syncActualToDaily éƒ½ä¸åœ¨äº‹åŠ¡å†…
+    // å¤±è´¥ä¼šç•™ä¸‹ä¸ä¸€è‡´çŠ¶æ€(åº“å­˜æ‰£äº†ä½† actual æ²¡æ”¹ / åä¹‹)
     const updateTxn = db.getDb().transaction(() => {
       db.run(`UPDATE actual_production SET schedule_type=?, secondary_type=?, style_id=?, style_no=?, color=?, size_spec=?,
         production_date=?, completed_qty=?, defect_qty=?, workshop=?, line_team=?, remark=?,
@@ -3824,8 +3824,8 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
          r.end_time ?? existing.end_time,
          newIsSecond, newSourceType, req.params.id]);
 
-      // [2026-06-19] Èç¹û¶ş¼ì±ê¼Ç/ÊıÁ¿±äÁË ¡ú »Ø¹ö¾ÉÈë¿â²¢°´ĞÂÖµÖØÈë
-      // [2026-06-20 fix#ºó¶Ë-P1-4] ´« rawDb ÈÃ recordCutPiecesInbound SQL ×ßµ±Ç° transaction
+      // [2026-06-19] å¦‚æœäºŒæ£€æ ‡è®°/æ•°é‡å˜äº† â†’ å›æ»šæ—§å…¥åº“å¹¶æŒ‰æ–°å€¼é‡å…¥
+      // [2026-06-20 fix#åç«¯-P1-4] ä¼  rawDb è®© recordCutPiecesInbound SQL èµ°å½“å‰ transaction
       const rawDb = db.getDb();
       if (oldIsSecond !== newIsSecond || oldQty !== newQty) {
         db.rollbackCutPiecesInbound(existing, rawDb);
@@ -3833,19 +3833,19 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
         db.recordCutPiecesInbound(updated, rawDb);
       }
 
-      // syncActualToDaily ÄÚ²¿×Ô´øÊÂÎñ(SQLite SAVEPOINT ¼æÈİÇ¶Ì×)
+      // syncActualToDaily å†…éƒ¨è‡ªå¸¦äº‹åŠ¡(SQLite SAVEPOINT å…¼å®¹åµŒå¥—)
       syncActualToDaily({ ...existing, ...r, style_id: newStyleId });
-      // [2026-06-20 fix#ÒµÎñ-P1-11] °Ñ´ı recalc µÄ style_id ÊÕ¼¯µ½Íâ²ã Set,transaction ÍâÔÙÖ´ĞĞ
+      // [2026-06-20 fix#ä¸šåŠ¡-P1-11] æŠŠå¾… recalc çš„ style_id æ”¶é›†åˆ°å¤–å±‚ Set,transaction å¤–å†æ‰§è¡Œ
       if (newStyleId) recalcIds.add(newStyleId);
       if (oldStyleId && oldStyleId !== newStyleId) recalcIds.add(oldStyleId);
     });
     updateTxn();
-    // [2026-06-20 fix#ÒµÎñ-P1-11] transaction Ìá½»ºóÔÙ recalc,Ê§°Ü½ö logOp
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-11] transaction æäº¤åå† recalc,å¤±è´¥ä»… logOp
     for (const sid of recalcIds) {
       const rc = db.recalcTaskStatus(sid);
       if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', sid, '', `err=${rc.error}`);
     }
-    logOp(req, 'actual_production', 'update', req.params.id, existing.style_no, `qty: ${oldQty}¡ú${newQty} ${existing.schedule_type}`);
+    logOp(req, 'actual_production', 'update', req.params.id, existing.style_no, `qty: ${oldQty}â†’${newQty} ${existing.schedule_type}`);
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true });
   } catch (e) {
@@ -3857,19 +3857,19 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
 app.delete('/api/actual/:id', requireRole('supervisor', 'admin'), (req, res) => {
   try {
     const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
-    if (!existing) return res.status(404).json({ error: '¼ÇÂ¼²»´æÔÚ' });
+    if (!existing) return res.status(404).json({ error: 'è®°å½•ä¸å­˜åœ¨' });
 
-    // [2026-06-19] ÒÑ³ö¿âÔò¾Ü
+    // [2026-06-19] å·²å‡ºåº“åˆ™æ‹’
     const check = db.checkActualDeletable(existing);
     if (!check.ok) return res.status(400).json({ error: check.error });
 
-    // P0 °²È«: Õû¸öÉ¾³ıÁ÷³Ì°üÊÂÎñ,ÈÎÒ»²½ÖèÊ§°Ü»Ø¹ö
-    // [2026-06-20 fix#ÒµÎñ-P1-11] ÊÕ¼¯ style_id µ½Íâ²ã,transaction Íâ recalc
+    // P0 å®‰å…¨: æ•´ä¸ªåˆ é™¤æµç¨‹åŒ…äº‹åŠ¡,ä»»ä¸€æ­¥éª¤å¤±è´¥å›æ»š
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-11] æ”¶é›† style_id åˆ°å¤–å±‚,transaction å¤– recalc
     const delRecalcIds = new Set();
     if (existing.style_id) delRecalcIds.add(existing.style_id);
     const delTxn = db.getDb().transaction(() => {
-      // [2026-06-19] »Ø¹ö²ÃÆ¬¿âÈë¿â
-      // [2026-06-20 fix#ºó¶Ë-P1-4] ´« rawDb ÈÃ SQL ×ßµ±Ç° transaction
+      // [2026-06-19] å›æ»šè£ç‰‡åº“å…¥åº“
+      // [2026-06-20 fix#åç«¯-P1-4] ä¼  rawDb è®© SQL èµ°å½“å‰ transaction
       const rawDb = db.getDb();
       db.rollbackCutPiecesInbound(existing, rawDb);
 
@@ -3883,7 +3883,7 @@ app.delete('/api/actual/:id', requireRole('supervisor', 'admin'), (req, res) => 
       }
     });
     delTxn();
-    // [2026-06-20 fix#ÒµÎñ-P1-11] transaction Ìá½»ºóÔÙ recalc
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-11] transaction æäº¤åå† recalc
     for (const sid of delRecalcIds) {
       const rc = db.recalcTaskStatus(sid);
       if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', sid, '', `err=${rc.error}`);
@@ -3896,20 +3896,20 @@ app.delete('/api/actual/:id', requireRole('supervisor', 'admin'), (req, res) => 
   }
 });
 
-// ---------- ÅúÁ¿µ¼Èë±¨¹¤ ----------
+// ---------- æ‰¹é‡å¯¼å…¥æŠ¥å·¥ ----------
 app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
   try {
     const { records } = req.body;
     if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: 'ÇëÌá¹©±¨¹¤¼ÇÂ¼Êı×é' });
+      return res.status(400).json({ error: 'è¯·æä¾›æŠ¥å·¥è®°å½•æ•°ç»„' });
     }
     let inserted = 0;
     const styleIds = new Set();
-    // P0 °²È«: ÕûÅú INSERT+¸±×÷ÓÃ ·Å½øÊÂÎñ,²¿·ÖÊ§°Ü¿É»Ø¹ö
+    // P0 å®‰å…¨: æ•´æ‰¹ INSERT+å‰¯ä½œç”¨ æ”¾è¿›äº‹åŠ¡,éƒ¨åˆ†å¤±è´¥å¯å›æ»š
     const batchTxn = db.getDb().transaction(() => {
       for (const r of records) {
         if (!r.style_no || !r.production_date) continue;
-        // [2026-06-20 Åú´Î1-ÒµÎñ-P0-6] µ¥ÌõÊıÖµ/ÈÕÆÚºÏÀíĞÔĞ£Ñé,Ê§°ÜÕûÅú»Ø¹ö
+        // [2026-06-20 æ‰¹æ¬¡1-ä¸šåŠ¡-P0-6] å•æ¡æ•°å€¼/æ—¥æœŸåˆç†æ€§æ ¡éªŒ,å¤±è´¥æ•´æ‰¹å›æ»š
         const vErr = validateActualPayload(r);
         if (vErr) {
           throw Object.assign(new Error('batch validation failed'), { httpStatus: vErr.status, httpBody: vErr.body });
@@ -3920,17 +3920,17 @@ app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), 
            r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '',
            r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '',
            parseInt(r.is_second_inspection) || 0, r.source_type || '']);
-        // [2026-06-19] ±¨¹¤Íê³É ¡ú ×Ô¶¯Èë²ÃÆ¬¿â
-        // [2026-06-20 fix#ºó¶Ë-P1-4] ´« rawDb ÈÃ SQL ×ßµ±Ç° transaction
+        // [2026-06-19] æŠ¥å·¥å®Œæˆ â†’ è‡ªåŠ¨å…¥è£ç‰‡åº“
+        // [2026-06-20 fix#åç«¯-P1-4] ä¼  rawDb è®© SQL èµ°å½“å‰ transaction
         db.recordCutPiecesInbound({ id: result.lastInsertRowid, ...r }, db.getDb());
         syncActualToDaily(r);
         if (r.style_id) styleIds.add(r.style_id);
         inserted++;
       }
-      // [2026-06-20 fix#ÒµÎñ-P1-11] recalc ÒÆµ½ transaction Íâ
+      // [2026-06-20 fix#ä¸šåŠ¡-P1-11] recalc ç§»åˆ° transaction å¤–
     });
     batchTxn();
-    // [2026-06-20 fix#ÒµÎñ-P1-11] transaction Ìá½»ºóÔÙ recalc,Ê§°Ü½ö logOp
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-11] transaction æäº¤åå† recalc,å¤±è´¥ä»… logOp
     for (const sid of styleIds) {
       const rc = db.recalcTaskStatus(sid);
       if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', sid, '', `err=${rc.error}`);
@@ -3939,13 +3939,13 @@ app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), 
     res.json({ ok: true, inserted });
   } catch (e) {
     console.error('POST /api/actual/batch error:', e);
-    // [2026-06-20 Åú´Î1-ÒµÎñ-P0-6] ÒµÎñĞ£Ñé´íÍ¸´« 4xx,²»ÒªÈ«·µ 500
+    // [2026-06-20 æ‰¹æ¬¡1-ä¸šåŠ¡-P0-6] ä¸šåŠ¡æ ¡éªŒé”™é€ä¼  4xx,ä¸è¦å…¨è¿” 500
     if (e && e.httpStatus && e.httpBody) return res.status(e.httpStatus).json(e.httpBody);
-    res.status(500).json({ error: 'ÅúÁ¿µ¼ÈëÊ§°Ü' });
+    res.status(500).json({ error: 'æ‰¹é‡å¯¼å…¥å¤±è´¥' });
   }
 });
 
-// ---------- Ã¿ÈÕÍê³ÉÁ¿Ç÷ÊÆ ----------
+// ---------- æ¯æ—¥å®Œæˆé‡è¶‹åŠ¿ ----------
 app.get('/api/dispatch-daily-trend', (req, res) => {
   try {
     const { schedule_type, secondary_type, workshop, style_no, date_from, date_to } = req.query;
@@ -3966,7 +3966,7 @@ app.get('/api/dispatch-daily-trend', (req, res) => {
   }
 });
 
-// ---------- ¼Æ»® vs Êµ¼Ê¶Ô±È ----------
+// ---------- è®¡åˆ’ vs å®é™…å¯¹æ¯” ----------
 app.get('/api/dispatch-plan-vs-actual', (req, res) => {
   try {
     const { date_from, date_to } = req.query;
@@ -3997,7 +3997,7 @@ app.get('/api/dispatch-plan-vs-actual', (req, res) => {
   }
 });
 
-// ---------- ±¨¹¤Ô¤¾¯£¨ÂäºóÓÚ¼Æ»®£© ----------
+// ---------- æŠ¥å·¥é¢„è­¦ï¼ˆè½åäºè®¡åˆ’ï¼‰ ----------
 app.get('/api/dispatch-alerts', (req, res) => {
   try {
     const rows = db.all(`
@@ -4021,11 +4021,11 @@ app.get('/api/dispatch-alerts', (req, res) => {
   }
 });
 
-// [2026-06-19] ²Ã¼ôÍê³É¶È¶Ô±È£ºÊµ¼Ê±¨¹¤Êı vs ²Ã¼ô²ÎÊı vs Ô­µ¥Êı
-// ÓÃÓÚ CuttingDispatch ±¨¾¯£ºÊµ¼Ê < Ô­µ¥Êı ºìÉ«ÌáÊ¾
+// [2026-06-19] è£å‰ªå®Œæˆåº¦å¯¹æ¯”ï¼šå®é™…æŠ¥å·¥æ•° vs è£å‰ªå‚æ•° vs åŸå•æ•°
+// ç”¨äº CuttingDispatch æŠ¥è­¦ï¼šå®é™… < åŸå•æ•° çº¢è‰²æç¤º
 app.get('/api/cutting-completion', (req, res) => {
   try {
-    // [2026-06-20 ¶Î10 M-2] mode=active ½ö·µ»ØÎ´Íê³É»òÓĞ±¨¹¤µÄĞĞ(Ìæ´úÇ°¶Ë .filter)
+    // [2026-06-20 æ®µ10 M-2] mode=active ä»…è¿”å›æœªå®Œæˆæˆ–æœ‰æŠ¥å·¥çš„è¡Œ(æ›¿ä»£å‰ç«¯ .filter)
     const mode = req.query.mode;
     let sql = `
       SELECT
@@ -4044,7 +4044,7 @@ app.get('/api/cutting-completion', (req, res) => {
       GROUP BY scs.style_no, scs.color, scs.size_spec
     `;
     if (mode === 'active') {
-      // ÖØ¸´±í´ïÊ½(SQLite HAVING ²»Ö§³Ö±ğÃû)+ ¸´ÓÃ under_order ±í´ïÊ½
+      // é‡å¤è¡¨è¾¾å¼(SQLite HAVING ä¸æ”¯æŒåˆ«å)+ å¤ç”¨ under_order è¡¨è¾¾å¼
       sql += ` HAVING (
         CASE WHEN scs.plan_qty > 0 AND
           COALESCE(SUM(CASE WHEN ap.schedule_type = 'cutting' AND COALESCE(ap.is_second_inspection, 0) = 0 THEN ap.completed_qty ELSE 0 END), 0) < scs.plan_qty
@@ -4061,7 +4061,7 @@ app.get('/api/cutting-completion', (req, res) => {
   }
 });
 
-// ---------- ±¨¹¤µ¼³ö Excel ----------
+// ---------- æŠ¥å·¥å¯¼å‡º Excel ----------
 app.get('/api/dispatch-export', async (req, res) => {
   try {
     const { schedule_type, secondary_type, workshop, style_no, date_from, date_to } = req.query;
@@ -4079,36 +4079,36 @@ app.get('/api/dispatch-export', async (req, res) => {
     const rows = db.all(sql, params);
 
     const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet('±¨¹¤Ã÷Ï¸');
+    const ws = workbook.addWorksheet('æŠ¥å·¥æ˜ç»†');
     ws.columns = [
-      { header: 'Éú²úÈÕÆÚ', key: 'production_date', width: 14 },
-      { header: '¿îºÅ', key: 'style_no', width: 25 },
-      { header: '¹¤Ğò', key: 'secondary_type', width: 10 },
-      { header: 'ÑÕÉ«', key: 'color', width: 12 },
-      { header: '³ßÂë', key: 'size_spec', width: 10 },
-      { header: 'Íê³ÉÊıÁ¿', key: 'completed_qty', width: 12 },
-      { header: '´ÎÆ·ÊıÁ¿', key: 'defect_qty', width: 10 },
-      { header: '³µ¼ä', key: 'workshop', width: 10 },
-      { header: '°à×é', key: 'line_team', width: 10 },
-      { header: '¹¤ÈË', key: 'worker_name', width: 12 },
-      { header: '±¸×¢', key: 'remark', width: 20 },
-      { header: 'Â¼ÈëÊ±¼ä', key: 'recorded_at', width: 20 },
+      { header: 'ç”Ÿäº§æ—¥æœŸ', key: 'production_date', width: 14 },
+      { header: 'æ¬¾å·', key: 'style_no', width: 25 },
+      { header: 'å·¥åº', key: 'secondary_type', width: 10 },
+      { header: 'é¢œè‰²', key: 'color', width: 12 },
+      { header: 'å°ºç ', key: 'size_spec', width: 10 },
+      { header: 'å®Œæˆæ•°é‡', key: 'completed_qty', width: 12 },
+      { header: 'æ¬¡å“æ•°é‡', key: 'defect_qty', width: 10 },
+      { header: 'è½¦é—´', key: 'workshop', width: 10 },
+      { header: 'ç­ç»„', key: 'line_team', width: 10 },
+      { header: 'å·¥äºº', key: 'worker_name', width: 12 },
+      { header: 'å¤‡æ³¨', key: 'remark', width: 20 },
+      { header: 'å½•å…¥æ—¶é—´', key: 'recorded_at', width: 20 },
     ];
     ws.getRow(1).font = { bold: true };
     for (const r of rows) {
       ws.addRow(r);
     }
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('±¨¹¤Ã÷Ï¸_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('æŠ¥å·¥æ˜ç»†_' + fmtLocal(new Date()).replace(/-/g, '') + '.xlsx')}`);
     await workbook.xlsx.write(res);
     res.end();
   } catch (e) {
     console.error('GET /api/dispatch-export error:', e);
-    res.status(500).json({ error: 'µ¼³öÊ§°Ü' });
+    res.status(500).json({ error: 'å¯¼å‡ºå¤±è´¥' });
   }
 });
 
-// ---------- °´²úÏßÍ³¼Æ ----------
+// ---------- æŒ‰äº§çº¿ç»Ÿè®¡ ----------
 app.get('/api/dispatch-by-line', (req, res) => {
   try {
     const { schedule_type, secondary_type, workshop, style_no, date_from, date_to } = req.query;
@@ -4133,7 +4133,7 @@ app.get('/api/dispatch-by-line', (req, res) => {
   }
 });
 
-// ---------- °´³µ¼äÍ³¼Æ ----------
+// ---------- æŒ‰è½¦é—´ç»Ÿè®¡ ----------
 app.get('/api/dispatch-by-workshop', (req, res) => {
   try {
     const { schedule_type, secondary_type, style_no, date_from, date_to } = req.query;
@@ -4157,7 +4157,7 @@ app.get('/api/dispatch-by-workshop', (req, res) => {
   }
 });
 
-// ---------- °´¹¤ÈËÍ³¼Æ ----------
+// ---------- æŒ‰å·¥äººç»Ÿè®¡ ----------
 app.get('/api/dispatch-by-worker', (req, res) => {
   try {
     const { schedule_type, secondary_type, workshop, line_team, date_from, date_to } = req.query;
@@ -4182,7 +4182,7 @@ app.get('/api/dispatch-by-worker', (req, res) => {
   }
 });
 
-// ---------- ³ö»õ¼Æ»® ----------
+// ---------- å‡ºè´§è®¡åˆ’ ----------
 app.get('/api/shipping-plans', (req, res) => {
   try { res.json(db.all('SELECT * FROM shipping_plans ORDER BY ship_date')); }
   catch (e) { console.error('GET /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
@@ -4191,7 +4191,7 @@ app.get('/api/shipping-plans', (req, res) => {
 app.post('/api/shipping-plans', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const p = req.body;
-    if (!p.plan_no) return res.status(400).json({ error: '¼Æ»®±àºÅ²»ÄÜÎª¿Õ' });
+    if (!p.plan_no) return res.status(400).json({ error: 'è®¡åˆ’ç¼–å·ä¸èƒ½ä¸ºç©º' });
     const result = db.run('INSERT INTO shipping_plans (plan_no, customer, style_no, product_name, plan_qty, ship_date, remark) VALUES (?,?,?,?,?,?,?)',
       [p.plan_no, p.customer || '', p.style_no || '', p.product_name || '', p.plan_qty || 0, p.ship_date || '', p.remark || '']);
     logOp(req, 'shipping', 'create', result.lastInsertRowid, p.plan_no);
@@ -4218,7 +4218,7 @@ app.delete('/api/shipping-plans/:id', requireRole('admin', 'planning_manager', '
   } catch (e) { console.error('DELETE /api/shipping-plans error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ´ÓÖ÷¼Æ»®×Ô¶¯Éú³É³ö»õ¼Æ»®
+// ä»ä¸»è®¡åˆ’è‡ªåŠ¨ç”Ÿæˆå‡ºè´§è®¡åˆ’
 app.post('/api/shipping-plans/generate', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const plans = db.all('SELECT * FROM main_plan WHERE due_date IS NOT NULL ORDER BY due_date');
@@ -4233,12 +4233,12 @@ app.post('/api/shipping-plans/generate', requireRole('admin', 'planning_manager'
       }
     });
     txn();
-    logOp(req, 'shipping', 'generate', null, `×Ô¶¯Éú³É${count}Ìõ³ö»õ¼Æ»®`);
+    logOp(req, 'shipping', 'generate', null, `è‡ªåŠ¨ç”Ÿæˆ${count}æ¡å‡ºè´§è®¡åˆ’`);
     res.json({ ok: true, count });
   } catch (e) { console.error('POST /api/shipping-plans/generate error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ---------- ÅÅ²ú²ßÂÔ ----------
+// ---------- æ’äº§ç­–ç•¥ ----------
 app.get('/api/strategies', (req, res) => {
   try { res.json(db.all('SELECT * FROM scheduling_strategies ORDER BY id')); }
   catch (e) { console.error('GET /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
@@ -4267,7 +4267,7 @@ app.delete('/api/strategies/:id', requireRole('admin', 'planning_manager'), (req
   catch (e) { console.error('DELETE /api/strategies error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// Ò»¼ü×Ô¶¯ÅÅ²ú
+// ä¸€é”®è‡ªåŠ¨æ’äº§
 app.post('/api/auto-schedule', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { strategy_id } = req.body;
@@ -4276,7 +4276,7 @@ app.post('/api/auto-schedule', requireRole('admin', 'planning_manager', 'planner
   } catch (e) { console.error('POST /api/auto-schedule error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ²úÄÜÔ¤ÅÅÑéÖ¤
+// äº§èƒ½é¢„æ’éªŒè¯
 app.get('/api/capacity-precheck', (req, res) => {
   try {
     const result = db.capacityPrecheck();
@@ -4285,8 +4285,8 @@ app.get('/api/capacity-precheck', (req, res) => {
 });
 
 // [B-02 fix] Override instead of accumulate
-// Ôö¼Ó (color, size_spec, secondary_type) Î¬¶È¾«È·Æ¥Åä,±ÜÃâÒ»´Î±¨¹¤ÎÛÈ¾ËùÓĞ master
-// [2026-06-18] ¶à master Ğ´ÈëÓÃÊÂÎñ,È·±£Ô­×ÓĞÔ(ÖĞÍ¾Ê§°Ü»Ø¹öÈ«²¿)
+// å¢åŠ  (color, size_spec, secondary_type) ç»´åº¦ç²¾ç¡®åŒ¹é…,é¿å…ä¸€æ¬¡æŠ¥å·¥æ±¡æŸ“æ‰€æœ‰ master
+// [2026-06-18] å¤š master å†™å…¥ç”¨äº‹åŠ¡,ç¡®ä¿åŸå­æ€§(ä¸­é€”å¤±è´¥å›æ»šå…¨éƒ¨)
 function syncActualToDaily(record) {
   const conditions = ['style_no = ?', 'schedule_type = ?'];
   const params = [record.style_no, record.schedule_type];
@@ -4311,7 +4311,7 @@ function syncActualToDaily(record) {
       const existing = db.get('SELECT id, locked_by_user_id FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = ?',
         [m.id, record.production_date, 'ACTUAL']);
       if (existing) {
-        // [2026-06-18] Ëø¼ì²é:supervisor Ëø¶¨µÄĞĞ dispatcher ²»ÄÜÔÙ¸²¸Ç
+        // [2026-06-18] é”æ£€æŸ¥:supervisor é”å®šçš„è¡Œ dispatcher ä¸èƒ½å†è¦†ç›–
         if (existing.locked_by_user_id) continue;
         db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [record.completed_qty || 0, existing.id]);
       } else {
@@ -4323,26 +4323,26 @@ function syncActualToDaily(record) {
   txn();
 }
 
-// [2026-06-18] ÓÃ»§ÏµÍ³:supervisor ¸Ä ACTUAL ĞĞ¾À´í
-// ÒµÎñÁ÷:dispatcher ÏÈ±¨ ¡ú supervisor ¸´ºË ¡ú ÓĞ´í¾Í¸Ä ¡ú ¸ÄÍêËø¶¨(·ÀÖ¹ dispatcher ¶ş´Î¸²¸Ç)
+// [2026-06-18] ç”¨æˆ·ç³»ç»Ÿ:supervisor æ”¹ ACTUAL è¡Œçº é”™
+// ä¸šåŠ¡æµ:dispatcher å…ˆæŠ¥ â†’ supervisor å¤æ ¸ â†’ æœ‰é”™å°±æ”¹ â†’ æ”¹å®Œé”å®š(é˜²æ­¢ dispatcher äºŒæ¬¡è¦†ç›–)
 
-// [2026-06-18] supervisor ¸´ºËÓÃ:ÁĞ³öÄ³ scheduleType ÏÂËùÓĞ ACTUAL ĞĞ
-// (º¬ daily id,ÓÃÓÚ±à¼­/½âËø)
+// [2026-06-18] supervisor å¤æ ¸ç”¨:åˆ—å‡ºæŸ scheduleType ä¸‹æ‰€æœ‰ ACTUAL è¡Œ
+// (å« daily id,ç”¨äºç¼–è¾‘/è§£é”)
 app.get('/api/schedule/daily/actuals', (req, res) => {
   try {
     const { schedule_type, style_no } = req.query;
-    if (!schedule_type) return res.status(400).json({ error: 'schedule_type ±ØÌî' });
+    if (!schedule_type) return res.status(400).json({ error: 'schedule_type å¿…å¡«' });
 
-    // ½ÇÉ« + ³µ¼ä¼ì²é:½ö admin/supervisor ¿É·ÃÎÊ
-    // [2026-06-20 fix#ÒµÎñ-P1-3] ÓÃ userCanAccessWorkshop ÔÊĞí secondary Ö÷ÈÎ¿ç 3 ¹¤Ğò
+    // è§’è‰² + è½¦é—´æ£€æŸ¥:ä»… admin/supervisor å¯è®¿é—®
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-3] ç”¨ userCanAccessWorkshop å…è®¸ secondary ä¸»ä»»è·¨ 3 å·¥åº
     if (req.user.role === 'admin') {
-      // Í¨¹ı
+      // é€šè¿‡
     } else if (req.user.role === 'supervisor') {
       if (!userCanAccessWorkshop(req.user, SCHEDULE_TYPE_WORKSHOP[schedule_type])) {
-        return res.status(403).json({ error: 'ÎŞÈ¨²é¿´ÆäËû³µ¼äµÄÊı¾İ' });
+        return res.status(403).json({ error: 'æ— æƒæŸ¥çœ‹å…¶ä»–è½¦é—´çš„æ•°æ®' });
       }
     } else {
-      return res.status(403).json({ error: '¸Ã¶Ëµã½öÏŞ³µ¼äÖ÷ÈÎ»ò¹ÜÀíÔ±' });
+      return res.status(403).json({ error: 'è¯¥ç«¯ç‚¹ä»…é™è½¦é—´ä¸»ä»»æˆ–ç®¡ç†å‘˜' });
     }
 
     let sql = `
@@ -4366,47 +4366,47 @@ app.put('/api/schedule/daily/actual/:id', requireRole('admin', 'supervisor'), (r
     const { id } = req.params;
     const { qty } = req.body || {};
     if (qty == null || isNaN(qty) || qty < 0) {
-      return res.status(400).json({ error: 'qty ±ØĞëÊÇ·Ç¸ºÊı' });
+      return res.status(400).json({ error: 'qty å¿…é¡»æ˜¯éè´Ÿæ•°' });
     }
 
-    // [2026-06-20] Ëø¼ì²é + UPDATE °ü½øÊÂÎñ,±ÜÃâÀíÂÛ²¢·¢¾ºÌ¬
-    // (SQLite WAL ÏÂ db.run ´®ĞĞ»¯,µ«ÒµÎñ²ã"¶Áµ½Î´Ëø ¡ú Ğ´Ê±ÒÑ±»Ëø"´°¿Ú´æÔÚ)
+    // [2026-06-20] é”æ£€æŸ¥ + UPDATE åŒ…è¿›äº‹åŠ¡,é¿å…ç†è®ºå¹¶å‘ç«æ€
+    // (SQLite WAL ä¸‹ db.run ä¸²è¡ŒåŒ–,ä½†ä¸šåŠ¡å±‚"è¯»åˆ°æœªé” â†’ å†™æ—¶å·²è¢«é”"çª—å£å­˜åœ¨)
     const txn = db.getDb().transaction(() => {
       const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
-      if (!row) return { status: 404, body: { error: '¼ÇÂ¼²»´æÔÚ' } };
+      if (!row) return { status: 404, body: { error: 'è®°å½•ä¸å­˜åœ¨' } };
 
-      // ½ÇÉ« + ³µ¼ä¼ì²é:admin È«È¨,supervisor ÏŞ±¾³µ¼ä,ÆäËû½ÇÉ«¾Ü¾ø
-      // [2026-06-20 fix#ÒµÎñ-P1-3] ÓÃ userCanAccessWorkshop ÔÊĞí secondary Ö÷ÈÎ¿ç 3 ¹¤Ğò
+      // è§’è‰² + è½¦é—´æ£€æŸ¥:admin å…¨æƒ,supervisor é™æœ¬è½¦é—´,å…¶ä»–è§’è‰²æ‹’ç»
+      // [2026-06-20 fix#ä¸šåŠ¡-P1-3] ç”¨ userCanAccessWorkshop å…è®¸ secondary ä¸»ä»»è·¨ 3 å·¥åº
       const master = db.get('SELECT schedule_type FROM schedule_master WHERE id = ?', [row.master_id]);
-      if (!master) return { status: 404, body: { error: 'master ²»´æÔÚ' } };
+      if (!master) return { status: 404, body: { error: 'master ä¸å­˜åœ¨' } };
       if (req.user.role === 'admin') {
-        // Í¨¹ı
+        // é€šè¿‡
       } else if (req.user.role === 'supervisor') {
         if (!userCanAccessWorkshop(req.user, SCHEDULE_TYPE_WORKSHOP[master.schedule_type])) {
-          return { status: 403, body: { error: 'ÎŞÈ¨²Ù×÷ÆäËû³µ¼äµÄÊı¾İ' } };
+          return { status: 403, body: { error: 'æ— æƒæ“ä½œå…¶ä»–è½¦é—´çš„æ•°æ®' } };
         }
       } else {
-        return { status: 403, body: { error: '¸Ã²Ù×÷½öÏŞ³µ¼äÖ÷ÈÎ»ò¹ÜÀíÔ±' } };
+        return { status: 403, body: { error: 'è¯¥æ“ä½œä»…é™è½¦é—´ä¸»ä»»æˆ–ç®¡ç†å‘˜' } };
       }
 
-      // [2026-06-20 fix#ÒµÎñ-P1-5] ¶à tab Ëø³åÍ»:¿Í»§¶Ë´« expected_qty(¿´µ½ĞĞÊ±µÄ qty)
-      // ²»Æ¥ÅäÔò 409,Ç°¶ËÊÕµ½ºóÖØĞÂ load
+      // [2026-06-20 fix#ä¸šåŠ¡-P1-5] å¤š tab é”å†²çª:å®¢æˆ·ç«¯ä¼  expected_qty(çœ‹åˆ°è¡Œæ—¶çš„ qty)
+      // ä¸åŒ¹é…åˆ™ 409,å‰ç«¯æ”¶åˆ°åé‡æ–° load
       if (req.body?.expected_qty != null && Number(req.body.expected_qty) !== Number(row.qty)) {
-        return { status: 409, body: { error: 'Êı¾İÒÑ±»ÆäËû»á»°ĞŞ¸Ä,ÇëË¢ĞÂºóÖØÊÔ', current_qty: row.qty } };
+        return { status: 409, body: { error: 'æ•°æ®å·²è¢«å…¶ä»–ä¼šè¯ä¿®æ”¹,è¯·åˆ·æ–°åé‡è¯•', current_qty: row.qty } };
       }
 
-      // Ëø¼ì²é:ÒÑ±»ÆäËûÖ÷ÈÎËø¶¨?admin ¿É¸²¸ÇÈÎºÎËø
+      // é”æ£€æŸ¥:å·²è¢«å…¶ä»–ä¸»ä»»é”å®š?admin å¯è¦†ç›–ä»»ä½•é”
       if (row.locked_by_user_id && row.locked_by_user_id !== req.user.id && req.user.role !== 'admin') {
-        return { status: 409, body: { error: '¸ÃÈÕÒÑ±»ÆäËûÖ÷ÈÎĞŞ¸ÄËø¶¨' } };
+        return { status: 409, body: { error: 'è¯¥æ—¥å·²è¢«å…¶ä»–ä¸»ä»»ä¿®æ”¹é”å®š' } };
       }
 
-      // [2026-06-18] admin ¸Ä²»ÇÀËø(±£³ÖÔ­Ëø);supervisor ¸Ä²ÅĞ´×Ô¼ºµÄËø
-      // [2026-06-20 Åú´Î1-ÒµÎñ-P0-4] admin ¸²¸ÇËøÇ¿ÖÆĞ´Éó¼Æ diff + Í¨ÖªÔ­Ëø¶¨ supervisor
+      // [2026-06-18] admin æ”¹ä¸æŠ¢é”(ä¿æŒåŸé”);supervisor æ”¹æ‰å†™è‡ªå·±çš„é”
+      // [2026-06-20 æ‰¹æ¬¡1-ä¸šåŠ¡-P0-4] admin è¦†ç›–é”å¼ºåˆ¶å†™å®¡è®¡ diff + é€šçŸ¥åŸé”å®š supervisor
       if (req.user.role === 'admin') {
         const previousLocker = row.locked_by_user_id;
         const previousQty = row.qty;
         db.run('UPDATE schedule_daily SET qty = ? WHERE id = ?', [qty, id]);
-        // Ö»ÓĞÔ­±¾±»ÆäËû supervisor Ëø×¡¡¢ÇÒ admin ¸Ä¶¯ÁË qty,²ÅËã¸²¸Ç
+        // åªæœ‰åŸæœ¬è¢«å…¶ä»– supervisor é”ä½ã€ä¸” admin æ”¹åŠ¨äº† qty,æ‰ç®—è¦†ç›–
         if (previousLocker && previousLocker !== req.user.id && Number(previousQty) !== Number(qty)) {
           logOp(req, 'schedule_daily', 'admin_override',
             id,
@@ -4426,19 +4426,19 @@ app.put('/api/schedule/daily/actual/:id', requireRole('admin', 'supervisor'), (r
   } catch (e) { sendError(res, 'PUT /api/schedule/daily/actual/:id', e); }
 });
 
-// [2026-06-18] ÓÃ»§ÏµÍ³:supervisor ½âËø(ÈÃ dispatcher ÖØĞÂ±¨¹¤)
+// [2026-06-18] ç”¨æˆ·ç³»ç»Ÿ:supervisor è§£é”(è®© dispatcher é‡æ–°æŠ¥å·¥)
 app.post('/api/schedule/daily/actual/:id/unlock', (req, res) => {
   try {
     const { id } = req.params;
     const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
-    if (!row) return res.status(404).json({ error: '¼ÇÂ¼²»´æÔÚ' });
+    if (!row) return res.status(404).json({ error: 'è®°å½•ä¸å­˜åœ¨' });
 
-    // [2026-06-18] ½ö admin/supervisor ¿É½âËø;ÇÒÖ»ÄÜ½â×Ô¼ºËøµÄ(¹ÜÀíÔ±³ıÍâ)
+    // [2026-06-18] ä»… admin/supervisor å¯è§£é”;ä¸”åªèƒ½è§£è‡ªå·±é”çš„(ç®¡ç†å‘˜é™¤å¤–)
     if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
-      return res.status(403).json({ error: '¸Ã²Ù×÷½öÏŞ³µ¼äÖ÷ÈÎ»ò¹ÜÀíÔ±' });
+      return res.status(403).json({ error: 'è¯¥æ“ä½œä»…é™è½¦é—´ä¸»ä»»æˆ–ç®¡ç†å‘˜' });
     }
     if (req.user.role !== 'admin' && row.locked_by_user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Ö»ÄÜ½âËø×Ô¼ºËø¶¨µÄ¼ÇÂ¼' });
+      return res.status(403).json({ error: 'åªèƒ½è§£é”è‡ªå·±é”å®šçš„è®°å½•' });
     }
 
     db.run('UPDATE schedule_daily SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?', [id]);
@@ -4447,7 +4447,7 @@ app.post('/api/schedule/daily/actual/:id/unlock', (req, res) => {
   } catch (e) { sendError(res, 'POST /api/schedule/daily/actual/:id/unlock', e); }
 });
 
-// ---------- ²Ö¿â¹ÜÀí ----------
+// ---------- ä»“åº“ç®¡ç† ----------
 app.get('/api/warehouse/:type/inbound', warehouseTypeGuard, (req, res) => {
   try {
     res.json(db.all('SELECT * FROM warehouse_inbound WHERE warehouse_type = ? ORDER BY inbound_date DESC', [req.params.type]));
@@ -4463,7 +4463,7 @@ app.post('/api/warehouse/:type/inbound', warehouseTypeGuard, (req, res) => {
     const errors = validateWarehouseRecord(r, req.params.type);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
-    // ×Ô¶¯Éú³ÉÈë¿âµ¥ºÅ£¨²»¿ÉÊÖ¶¯Ö¸¶¨£©
+    // è‡ªåŠ¨ç”Ÿæˆå…¥åº“å•å·ï¼ˆä¸å¯æ‰‹åŠ¨æŒ‡å®šï¼‰
     const today = fmtLocal(new Date()).replace(/-/g, '');
     const todayCount = db.get("SELECT COUNT(*) as c FROM warehouse_inbound WHERE order_no LIKE ?", [`RB${today}%`]).c;
     const orderNo = `RB${today}-${String(todayCount + 1).padStart(3, '0')}`;
@@ -4471,10 +4471,10 @@ app.post('/api/warehouse/:type/inbound', warehouseTypeGuard, (req, res) => {
     const result = db.run(`INSERT INTO warehouse_inbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no, loading_qty)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.inbound_date, r.operator || '',
-       r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'Æ¥', r.remark || '', orderNo, r.loading_qty || 0]);
+       r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'åŒ¹', r.remark || '', orderNo, r.loading_qty || 0]);
     updateInventory(req.params.type, r.style_no, r.color, r.size_spec, r.qty, r);
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
-    logOp(req, 'warehouse', 'inbound', null, `${req.params.type} Èë¿â${r.qty}¼ş`);
+    logOp(req, 'warehouse', 'inbound', null, `${req.params.type} å…¥åº“${r.qty}ä»¶`);
     res.json({ ok: true, id: result.lastInsertRowid, order_no: orderNo });
   } catch (e) {
     console.error('POST /api/warehouse/inbound error:', e);
@@ -4497,7 +4497,7 @@ app.post('/api/warehouse/:type/outbound', warehouseTypeGuard, (req, res) => {
     const errors = validateWarehouseRecord(r, req.params.type);
     if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
-    // ×Ô¶¯Éú³É³ö¿âµ¥ºÅ£¨²»¿ÉÊÖ¶¯Ö¸¶¨£©
+    // è‡ªåŠ¨ç”Ÿæˆå‡ºåº“å•å·ï¼ˆä¸å¯æ‰‹åŠ¨æŒ‡å®šï¼‰
     const today = fmtLocal(new Date()).replace(/-/g, '');
     const todayCount = db.get("SELECT COUNT(*) as c FROM warehouse_outbound WHERE order_no LIKE ?", [`CB${today}%`]).c;
     const orderNo = `CB${today}-${String(todayCount + 1).padStart(3, '0')}`;
@@ -4506,19 +4506,19 @@ app.post('/api/warehouse/:type/outbound', warehouseTypeGuard, (req, res) => {
       const inv = db.get('SELECT current_qty FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
         [req.params.type, r.style_no, r.color || '', r.size_spec || '', r.pot_no || '']);
       if (!inv || inv.current_qty < r.qty) {
-        throw new Error(`¿â´æ²»×ã£¬µ±Ç°¿â´æ ${inv ? inv.current_qty : 0}£¬³ö¿â ${r.qty}`);
+        throw new Error(`åº“å­˜ä¸è¶³ï¼Œå½“å‰åº“å­˜ ${inv ? inv.current_qty : 0}ï¼Œå‡ºåº“ ${r.qty}`);
       }
 
       const result = db.run(`INSERT INTO warehouse_outbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, outbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.outbound_date, r.operator || '',
-         r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'Æ¥', r.remark || '', orderNo]);
+         r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'åŒ¹', r.remark || '', orderNo]);
       updateInventory(req.params.type, r.style_no, r.color, r.size_spec, -r.qty, r);
       return result;
     });
     const result = txn();
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
-    logOp(req, 'warehouse', 'outbound', null, `${req.params.type} ³ö¿â${r.qty}¼ş`);
+    logOp(req, 'warehouse', 'outbound', null, `${req.params.type} å‡ºåº“${r.qty}ä»¶`);
     res.json({ ok: true, id: result.lastInsertRowid, order_no: orderNo });
   } catch (e) {
     console.error('POST /api/warehouse/outbound error:', e);
@@ -4531,7 +4531,7 @@ app.get('/api/warehouse/:type/inventory', warehouseTypeGuard, (req, res) => {
     const { keyword, in_stock } = req.query;
     let sql = 'SELECT * FROM warehouse_inventory WHERE warehouse_type = ?';
     const params = [req.params.type];
-    // [2026-06-20 ¶Î13 M-2] ¹Ø¼ü×Ö+¿â´æ¹ıÂË,ºó¶Ë SQL(Ìæ´ú WarehouseDetail .filter)
+    // [2026-06-20 æ®µ13 M-2] å…³é”®å­—+åº“å­˜è¿‡æ»¤,åç«¯ SQL(æ›¿ä»£ WarehouseDetail .filter)
     if (keyword) {
       sql += ` AND (style_no LIKE ? ESCAPE '\\' OR color LIKE ? ESCAPE '\\' OR fabric_name LIKE ? ESCAPE '\\')`;
       const k = `%${escapeLike(keyword)}%`;
@@ -4547,11 +4547,11 @@ app.get('/api/warehouse/:type/inventory', warehouseTypeGuard, (req, res) => {
   }
 });
 
-// ---------- ²Ö¿âµ¼³ö ----------
+// ---------- ä»“åº“å¯¼å‡º ----------
 app.get('/api/warehouse/:type/export', warehouseTypeGuard, async (req, res) => {
   try {
     const whType = req.params.type;
-    const sheet = req.query.sheet; // inventory | inbound | outbound | undefined=È«²¿
+    const sheet = req.query.sheet; // inventory | inbound | outbound | undefined=å…¨éƒ¨
     const wb = new ExcelJS.Workbook();
 
     function addHeaders(ws, headers) {
@@ -4565,8 +4565,8 @@ app.get('/api/warehouse/:type/export', warehouseTypeGuard, async (req, res) => {
     }
 
     if (!sheet || sheet === 'inventory') {
-      const ws = wb.addWorksheet('¿â´æ');
-      addHeaders(ws, ['¿îºÅ', 'ÑÕÉ«', '¹æ¸ñ', 'µ±Ç°¿â´æ', '¸üĞÂÊ±¼ä']);
+      const ws = wb.addWorksheet('åº“å­˜');
+      addHeaders(ws, ['æ¬¾å·', 'é¢œè‰²', 'è§„æ ¼', 'å½“å‰åº“å­˜', 'æ›´æ–°æ—¶é—´']);
       for (const r of db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [whType])) {
         addRow(ws, [r.style_no, r.color, r.size_spec, r.current_qty, r.updated_at || '']);
       }
@@ -4574,8 +4574,8 @@ app.get('/api/warehouse/:type/export', warehouseTypeGuard, async (req, res) => {
     }
 
     if (!sheet || sheet === 'inbound') {
-      const ws = wb.addWorksheet('Èë¿â¼ÇÂ¼');
-      addHeaders(ws, ['Èë¿âÈÕÆÚ', '¿îºÅ', 'ÑÕÉ«', '¹æ¸ñ', 'ÊıÁ¿', '²Ù×÷ÈË']);
+      const ws = wb.addWorksheet('å…¥åº“è®°å½•');
+      addHeaders(ws, ['å…¥åº“æ—¥æœŸ', 'æ¬¾å·', 'é¢œè‰²', 'è§„æ ¼', 'æ•°é‡', 'æ“ä½œäºº']);
       for (const r of db.all('SELECT * FROM warehouse_inbound WHERE warehouse_type = ? ORDER BY inbound_date DESC', [whType])) {
         addRow(ws, [r.inbound_date, r.style_no, r.color, r.size_spec, r.qty, r.operator]);
       }
@@ -4583,16 +4583,16 @@ app.get('/api/warehouse/:type/export', warehouseTypeGuard, async (req, res) => {
     }
 
     if (!sheet || sheet === 'outbound') {
-      const ws = wb.addWorksheet('³ö¿â¼ÇÂ¼');
-      addHeaders(ws, ['³ö¿âÈÕÆÚ', '¿îºÅ', 'ÑÕÉ«', '¹æ¸ñ', 'ÊıÁ¿', '²Ù×÷ÈË']);
+      const ws = wb.addWorksheet('å‡ºåº“è®°å½•');
+      addHeaders(ws, ['å‡ºåº“æ—¥æœŸ', 'æ¬¾å·', 'é¢œè‰²', 'è§„æ ¼', 'æ•°é‡', 'æ“ä½œäºº']);
       for (const r of db.all('SELECT * FROM warehouse_outbound WHERE warehouse_type = ? ORDER BY outbound_date DESC', [whType])) {
         addRow(ws, [r.outbound_date, r.style_no, r.color, r.size_spec, r.qty, r.operator]);
       }
       [14, 14, 10, 10, 10, 10].forEach((w, i) => ws.getColumn(i + 1).width = w);
     }
 
-    const nameMap = { inventory: '¿â´æ', inbound: 'Èë¿â¼ÇÂ¼', outbound: '³ö¿â¼ÇÂ¼' };
-    const whNames = { raw_material: 'ÃæÁÏ¿â', auxiliary: '¸¨ÁÏ¿â', cutting_piece: '²ÃÆ¬¿â', finished: '³ÉÆ·¿â' };
+    const nameMap = { inventory: 'åº“å­˜', inbound: 'å…¥åº“è®°å½•', outbound: 'å‡ºåº“è®°å½•' };
+    const whNames = { raw_material: 'é¢æ–™åº“', auxiliary: 'è¾…æ–™åº“', cutting_piece: 'è£ç‰‡åº“', finished: 'æˆå“åº“' };
     const suffix = sheet ? `_${nameMap[sheet]}` : '';
     const buf = await wb.xlsx.writeBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -4604,12 +4604,12 @@ app.get('/api/warehouse/:type/export', warehouseTypeGuard, async (req, res) => {
   }
 });
 
-// ---------- ²Ö¿âµ¼Èë ----------
+// ---------- ä»“åº“å¯¼å…¥ ----------
 app.post('/api/warehouse/:type/import', warehouseTypeGuard, (req, res) => {
   try {
     const whType = req.params.type;
     const { records } = req.body;
-    if (!records || !records.length) return res.status(400).json({ error: 'Ã»ÓĞÊı¾İ' });
+    if (!records || !records.length) return res.status(400).json({ error: 'æ²¡æœ‰æ•°æ®' });
 
     let imported = 0;
     const errors = [];
@@ -4617,25 +4617,25 @@ app.post('/api/warehouse/:type/import', warehouseTypeGuard, (req, res) => {
       for (let i = 0; i < records.length; i++) {
         const r = records[i];
         try {
-          const sheet = r._sheet || '¿â´æ';
-          const styleNo = r['¿îºÅ'] || r.style_no || '';
-          const color = r['ÑÕÉ«'] || r.color || '';
-          const sizeSpec = r['¹æ¸ñ'] || r.size_spec || '';
+          const sheet = r._sheet || 'åº“å­˜';
+          const styleNo = r['æ¬¾å·'] || r.style_no || '';
+          const color = r['é¢œè‰²'] || r.color || '';
+          const sizeSpec = r['è§„æ ¼'] || r.size_spec || '';
 
-          if (sheet === '¿â´æ') {
-            const qty = parseInt(r['µ±Ç°¿â´æ'] || r.current_qty) || 0;
+          if (sheet === 'åº“å­˜') {
+            const qty = parseInt(r['å½“å‰åº“å­˜'] || r.current_qty) || 0;
             const ex = db.get('SELECT id FROM warehouse_inventory WHERE warehouse_type=? AND style_no=? AND color=? AND size_spec=?', [whType, styleNo, color, sizeSpec]);
             if (ex) db.run('UPDATE warehouse_inventory SET current_qty=? WHERE id=?', [qty, ex.id]);
             else db.run('INSERT INTO warehouse_inventory (warehouse_type,style_no,color,size_spec,current_qty) VALUES (?,?,?,?,?)', [whType, styleNo, color, sizeSpec, qty]);
-          } else if (sheet === 'Èë¿â¼ÇÂ¼') {
-            const qty = parseInt(r['ÊıÁ¿'] || r.qty) || 0;
+          } else if (sheet === 'å…¥åº“è®°å½•') {
+            const qty = parseInt(r['æ•°é‡'] || r.qty) || 0;
             db.run('INSERT INTO warehouse_inbound (warehouse_type,style_no,color,size_spec,qty,inbound_date,operator) VALUES (?,?,?,?,?,?,?)',
-              [whType, styleNo, color, sizeSpec, qty, r['Èë¿âÈÕÆÚ'] || r.inbound_date || fmtLocal(new Date()), r['²Ù×÷ÈË'] || r.operator || '']);
+              [whType, styleNo, color, sizeSpec, qty, r['å…¥åº“æ—¥æœŸ'] || r.inbound_date || fmtLocal(new Date()), r['æ“ä½œäºº'] || r.operator || '']);
             updateInventory(whType, styleNo, color, sizeSpec, qty);
-          } else if (sheet === '³ö¿â¼ÇÂ¼') {
-            const qty = parseInt(r['ÊıÁ¿'] || r.qty) || 0;
+          } else if (sheet === 'å‡ºåº“è®°å½•') {
+            const qty = parseInt(r['æ•°é‡'] || r.qty) || 0;
             db.run('INSERT INTO warehouse_outbound (warehouse_type,style_no,color,size_spec,qty,outbound_date,operator) VALUES (?,?,?,?,?,?,?)',
-              [whType, styleNo, color, sizeSpec, qty, r['³ö¿âÈÕÆÚ'] || r.outbound_date || fmtLocal(new Date()), r['²Ù×÷ÈË'] || r.operator || '']);
+              [whType, styleNo, color, sizeSpec, qty, r['å‡ºåº“æ—¥æœŸ'] || r.outbound_date || fmtLocal(new Date()), r['æ“ä½œäºº'] || r.operator || '']);
             updateInventory(whType, styleNo, color, sizeSpec, -qty);
           }
           imported++;
@@ -4651,9 +4651,9 @@ app.post('/api/warehouse/:type/import', warehouseTypeGuard, (req, res) => {
 });
 
 // ============================================================
-// ASN µ½»õÍ¨Öªµ¥£¨Èë¿âÁ÷³Ì£©
+// ASN åˆ°è´§é€šçŸ¥å•ï¼ˆå…¥åº“æµç¨‹ï¼‰
 // ============================================================
-// Éú³É ASN µ¥ºÅ
+// ç”Ÿæˆ ASN å•å·
 function genAsnCode() {
   const now = new Date();
   const d = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
@@ -4685,7 +4685,7 @@ app.get('/api/asn/:id', (req, res) => {
 app.post('/api/asn', (req, res) => {
   try {
     const { warehouse_type, supplier, expected_date, details, remark } = req.body;
-    if (!warehouse_type) return res.status(400).json({ error: '²Ö¿âÀàĞÍ²»ÄÜÎª¿Õ' });
+    if (!warehouse_type) return res.status(400).json({ error: 'ä»“åº“ç±»å‹ä¸èƒ½ä¸ºç©º' });
     const asn_code = genAsnCode();
     let total_qty = 0;
     if (details) details.forEach(d => total_qty += d.plan_qty || 0);
@@ -4697,7 +4697,7 @@ app.post('/api/asn', (req, res) => {
     if (details && details.length > 0) {
       const insDetail = db.prepare('INSERT INTO asn_detail (asn_id, style_no, fabric_name, color, size_spec, pot_no, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?,?,?)');
       for (const d of details) {
-        insDetail.run(asnId, d.style_no || '', d.fabric_name || '', d.color || '', d.size_spec || '', d.pot_no || '', d.plan_qty || 0, d.unit || '¼ş', d.remark || '');
+        insDetail.run(asnId, d.style_no || '', d.fabric_name || '', d.color || '', d.size_spec || '', d.pot_no || '', d.plan_qty || 0, d.unit || 'ä»¶', d.remark || '');
       }
     }
 
@@ -4720,25 +4720,25 @@ app.put('/api/asn/:id/status', (req, res) => {
       'CANCELLED': [],
     };
     if (!validTransitions[asn.status]?.includes(status)) {
-      return res.status(400).json({ error: `²»ÄÜ´Ó ${asn.status} ×ª»»µ½ ${status}` });
+      return res.status(400).json({ error: `ä¸èƒ½ä» ${asn.status} è½¬æ¢åˆ° ${status}` });
     }
 
     db.run(`UPDATE asn_list SET status = ?, actual_date = datetime('now','localtime') WHERE id = ?`, [status, req.params.id]);
 
     if (status === 'COMPLETED') {
-      // Èë¿âÍê³É£º¸üĞÂ¿â´æ
+      // å…¥åº“å®Œæˆï¼šæ›´æ–°åº“å­˜
       const details = db.all('SELECT * FROM asn_detail WHERE asn_id = ?', [asn.id]);
       for (const d of details) {
         const qty = d.actual_qty || d.plan_qty || 0;
         if (qty > 0) {
           updateInventory(asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, { pot_no: d.pot_no });
-          // Ğ´Èë inbound ¼ÇÂ¼
+          // å†™å…¥ inbound è®°å½•
           db.run(`INSERT INTO warehouse_inbound (warehouse_type, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, unit, remark, order_no)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [asn.warehouse_type, d.style_no, d.color, d.size_spec, qty, asn.actual_date || fmtLocal(new Date()), asn.operator, d.pot_no, d.fabric_name, asn.supplier, d.unit, `ASN:${asn.asn_code}`, asn.asn_code]);
         }
       }
-      // ¸üĞÂ ASN »ã×Ü
+      // æ›´æ–° ASN æ±‡æ€»
       const receivedTotal = details.reduce((s, d) => s + (d.actual_qty || d.plan_qty || 0), 0);
       const shortageTotal = details.reduce((s, d) => s + (d.shortage_qty || 0), 0);
       const damageTotal = details.reduce((s, d) => s + (d.damage_qty || 0), 0);
@@ -4746,7 +4746,7 @@ app.put('/api/asn/:id/status', (req, res) => {
         [receivedTotal, shortageTotal, damageTotal, asn.id]);
     }
 
-    const statusLabels = { PENDING: '´ıÊÕ»õ', RECEIVED: 'ÒÑÊÕ»õ', INSPECTING: 'ÖÊ¼ìÖĞ', COMPLETED: 'ÒÑÍê³É', CANCELLED: 'ÒÑÈ¡Ïû' };
+    const statusLabels = { PENDING: 'å¾…æ”¶è´§', RECEIVED: 'å·²æ”¶è´§', INSPECTING: 'è´¨æ£€ä¸­', COMPLETED: 'å·²å®Œæˆ', CANCELLED: 'å·²å–æ¶ˆ' };
     logOp(req, 'asn', status.toLowerCase(), req.params.id, asn.asn_code, statusLabels[status] || status);
     res.json({ ok: true });
   } catch (e) { console.error('PUT /api/asn/:id/status error:', e); res.status(500).json({ error: 'Internal server error' }); }
@@ -4756,8 +4756,8 @@ app.post('/api/asn/:id/details', (req, res) => {
   try {
     const { style_no, fabric_name, color, size_spec, pot_no, plan_qty, unit, remark } = req.body;
     const result = db.run('INSERT INTO asn_detail (asn_id, style_no, fabric_name, color, size_spec, pot_no, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?,?,?)',
-      [req.params.id, style_no || '', fabric_name || '', color || '', size_spec || '', pot_no || '', plan_qty || 0, unit || '¼ş', remark || '']);
-    // ¸üĞÂ×ÜÊıÁ¿
+      [req.params.id, style_no || '', fabric_name || '', color || '', size_spec || '', pot_no || '', plan_qty || 0, unit || 'ä»¶', remark || '']);
+    // æ›´æ–°æ€»æ•°é‡
     const total = db.get('SELECT SUM(plan_qty) as t FROM asn_detail WHERE asn_id = ?', [req.params.id]);
     db.run('UPDATE asn_list SET total_qty = ? WHERE id = ?', [total?.t || 0, req.params.id]);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -4768,7 +4768,7 @@ app.delete('/api/asn/:id', (req, res) => {
   try {
     const asn = db.get('SELECT * FROM asn_list WHERE id = ?', [req.params.id]);
     if (!asn) return res.status(404).json({ error: 'Not found' });
-    if (asn.status !== 'PENDING') return res.status(400).json({ error: 'Ö»ÓĞ´ıÊÕ»õ×´Ì¬µÄµ¥¾İ¿ÉÒÔÉ¾³ı' });
+    if (asn.status !== 'PENDING') return res.status(400).json({ error: 'åªæœ‰å¾…æ”¶è´§çŠ¶æ€çš„å•æ®å¯ä»¥åˆ é™¤' });
     db.run('DELETE FROM asn_detail WHERE asn_id = ?', [req.params.id]);
     db.run('DELETE FROM asn_list WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
@@ -4776,7 +4776,7 @@ app.delete('/api/asn/:id', (req, res) => {
 });
 
 // ============================================================
-// DN ·¢»õÍ¨Öªµ¥£¨³ö¿âÁ÷³Ì£©
+// DN å‘è´§é€šçŸ¥å•ï¼ˆå‡ºåº“æµç¨‹ï¼‰
 // ============================================================
 function genDnCode() {
   const now = new Date();
@@ -4809,7 +4809,7 @@ app.get('/api/dn/:id', (req, res) => {
 app.post('/api/dn', (req, res) => {
   try {
     const { warehouse_type, customer, ship_date, details, remark } = req.body;
-    if (!warehouse_type) return res.status(400).json({ error: '²Ö¿âÀàĞÍ²»ÄÜÎª¿Õ' });
+    if (!warehouse_type) return res.status(400).json({ error: 'ä»“åº“ç±»å‹ä¸èƒ½ä¸ºç©º' });
     const dn_code = genDnCode();
     let total_qty = 0;
     if (details) details.forEach(d => total_qty += d.plan_qty || 0);
@@ -4821,7 +4821,7 @@ app.post('/api/dn', (req, res) => {
     if (details && details.length > 0) {
       const insDetail = db.prepare('INSERT INTO dn_detail (dn_id, style_no, color, size_spec, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?)');
       for (const d of details) {
-        insDetail.run(dnId, d.style_no || '', d.color || '', d.size_spec || '', d.plan_qty || 0, d.unit || '¼ş', d.remark || '');
+        insDetail.run(dnId, d.style_no || '', d.color || '', d.size_spec || '', d.plan_qty || 0, d.unit || 'ä»¶', d.remark || '');
       }
     }
 
@@ -4845,13 +4845,13 @@ app.put('/api/dn/:id/status', (req, res) => {
       'CANCELLED': [],
     };
     if (!validTransitions[dn.status]?.includes(status)) {
-      return res.status(400).json({ error: `²»ÄÜ´Ó ${dn.status} ×ª»»µ½ ${status}` });
+      return res.status(400).json({ error: `ä¸èƒ½ä» ${dn.status} è½¬æ¢åˆ° ${status}` });
     }
 
     db.run('UPDATE dn_list SET status = ? WHERE id = ?', [status, req.params.id]);
 
     if (status === 'SHIPPED') {
-      // ·¢»õ£º¿Û¼õ¿â´æ
+      // å‘è´§ï¼šæ‰£å‡åº“å­˜
       const details = db.all('SELECT * FROM dn_detail WHERE dn_id = ?', [dn.id]);
       for (const d of details) {
         const qty = d.shipped_qty || d.picked_qty || d.plan_qty || 0;
@@ -4870,7 +4870,7 @@ app.put('/api/dn/:id/status', (req, res) => {
       db.run(`UPDATE dn_list SET delivery_date = datetime('now','localtime') WHERE id = ?`, [req.params.id]);
     }
 
-    const statusLabels = { PENDING: '´ı¼ğ»õ', PICKING: '¼ğ»õÖĞ', PICKED: 'ÒÑ¼ğ»õ', SHIPPED: 'ÒÑ·¢»õ', DELIVERED: 'ÒÑÇ©ÊÕ', CANCELLED: 'ÒÑÈ¡Ïû' };
+    const statusLabels = { PENDING: 'å¾…æ‹£è´§', PICKING: 'æ‹£è´§ä¸­', PICKED: 'å·²æ‹£è´§', SHIPPED: 'å·²å‘è´§', DELIVERED: 'å·²ç­¾æ”¶', CANCELLED: 'å·²å–æ¶ˆ' };
     logOp(req, 'dn', status.toLowerCase(), req.params.id, dn.dn_code, statusLabels[status] || status);
     res.json({ ok: true });
   } catch (e) { console.error('PUT /api/dn/:id/status error:', e); res.status(500).json({ error: 'Internal server error' }); }
@@ -4880,7 +4880,7 @@ app.post('/api/dn/:id/details', (req, res) => {
   try {
     const { style_no, color, size_spec, plan_qty, unit, remark } = req.body;
     const result = db.run('INSERT INTO dn_detail (dn_id, style_no, color, size_spec, plan_qty, unit, remark) VALUES (?,?,?,?,?,?,?)',
-      [req.params.id, style_no || '', color || '', size_spec || '', plan_qty || 0, unit || '¼ş', remark || '']);
+      [req.params.id, style_no || '', color || '', size_spec || '', plan_qty || 0, unit || 'ä»¶', remark || '']);
     const total = db.get('SELECT SUM(plan_qty) as t FROM dn_detail WHERE dn_id = ?', [req.params.id]);
     db.run('UPDATE dn_list SET total_qty = ? WHERE id = ?', [total?.t || 0, req.params.id]);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -4891,7 +4891,7 @@ app.delete('/api/dn/:id', (req, res) => {
   try {
     const dn = db.get('SELECT * FROM dn_list WHERE id = ?', [req.params.id]);
     if (!dn) return res.status(404).json({ error: 'Not found' });
-    if (dn.status !== 'PENDING') return res.status(400).json({ error: 'Ö»ÓĞ´ı¼ğ»õ×´Ì¬µÄµ¥¾İ¿ÉÒÔÉ¾³ı' });
+    if (dn.status !== 'PENDING') return res.status(400).json({ error: 'åªæœ‰å¾…æ‹£è´§çŠ¶æ€çš„å•æ®å¯ä»¥åˆ é™¤' });
     db.run('DELETE FROM dn_detail WHERE dn_id = ?', [req.params.id]);
     db.run('DELETE FROM dn_list WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
@@ -4902,22 +4902,22 @@ app.delete('/api/dn/:id', (req, res) => {
 function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
   if (!delta || delta === 0) return;
   const potNo = extra?.pot_no || ''
-  // ²éÕÒ¿â´æ¼ÇÂ¼£¨°´ UNIQUE Ô¼ÊøµÄ 5 ¸ö×Ö¶ÎÆ¥Åä,º¬ pot_no ±ÜÃâ¶à¹øºÅ»ìÏı£©
+  // æŸ¥æ‰¾åº“å­˜è®°å½•ï¼ˆæŒ‰ UNIQUE çº¦æŸçš„ 5 ä¸ªå­—æ®µåŒ¹é…,å« pot_no é¿å…å¤šé”…å·æ··æ·†ï¼‰
   const existing = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
     [type, styleNo, color || '', sizeSpec || '', potNo]);
   if (existing) {
     const newQty = existing.current_qty + delta;
     if (newQty < 0) {
-      console.warn(`¿â´æ²»×ã: ${type}/${styleNo} µ±Ç°${existing.current_qty}£¬³ö¿â${Math.abs(delta)}`);
+      console.warn(`åº“å­˜ä¸è¶³: ${type}/${styleNo} å½“å‰${existing.current_qty}ï¼Œå‡ºåº“${Math.abs(delta)}`);
     }
     db.run(`UPDATE warehouse_inventory SET current_qty = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
       [Math.max(0, newQty), existing.id]);
   } else if (delta > 0) {
     try {
       db.run('INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, current_qty, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        [type, styleNo, color || '', sizeSpec || '', delta, potNo, extra?.fabric_name || '', extra?.supplier || '', extra?.customer || '', extra?.width || '', extra?.weight || '', extra?.unit || 'KG', extra?.total_pcs || 0, extra?.unit2 || 'Æ¥']);
+        [type, styleNo, color || '', sizeSpec || '', delta, potNo, extra?.fabric_name || '', extra?.supplier || '', extra?.customer || '', extra?.width || '', extra?.weight || '', extra?.unit || 'KG', extra?.total_pcs || 0, extra?.unit2 || 'åŒ¹']);
     } catch (e) {
-      // ²¢·¢²åÈëÊ±¿ÉÄÜ³åÍ»£¬¸ÄÓÃ UPDATE
+      // å¹¶å‘æ’å…¥æ—¶å¯èƒ½å†²çªï¼Œæ”¹ç”¨ UPDATE
       const fallback = db.get('SELECT * FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ?',
         [type, styleNo, color || '', sizeSpec || '']);
       if (fallback) {
@@ -4928,7 +4928,7 @@ function updateInventory(type, styleNo, color, sizeSpec, delta, extra) {
 }
 
 // ============================================================
-// ·ÖÉ«·Ö³ßÂë
+// åˆ†è‰²åˆ†å°ºç 
 // ============================================================
 app.get('/api/style-color-size', (req, res) => {
   try {
@@ -4951,9 +4951,9 @@ app.get('/api/style-color-size', (req, res) => {
 app.post('/api/style-color-size', (req, res) => {
   try {
     const r = req.body;
-    // [2026-06-19] ²Ã¼ô²ÎÊı±ØĞë ¡İ Ô­µ¥Êı
+    // [2026-06-19] è£å‰ªå‚æ•°å¿…é¡» â‰¥ åŸå•æ•°
     if (parseInt(r.cutting_param) > 0 && parseInt(r.cutting_param) < parseInt(r.plan_qty)) {
-      return res.status(400).json({ error: '²Ã¼ô²ÎÊı²»ÄÜĞ¡ÓÚÔ­µ¥Á¿' });
+      return res.status(400).json({ error: 'è£å‰ªå‚æ•°ä¸èƒ½å°äºåŸå•é‡' });
     }
     const result = db.run(
       'INSERT INTO style_color_size (order_date, style_no, due_date, product_name, size_spec, color, plan_qty, cutting_param) VALUES (?,?,?,?,?,?,?,?)',
@@ -4970,7 +4970,7 @@ app.put('/api/style-color-size/:id', (req, res) => {
   try {
     const r = req.body;
     if (parseInt(r.cutting_param) > 0 && parseInt(r.cutting_param) < parseInt(r.plan_qty)) {
-      return res.status(400).json({ error: '²Ã¼ô²ÎÊı²»ÄÜĞ¡ÓÚÔ­µ¥Á¿' });
+      return res.status(400).json({ error: 'è£å‰ªå‚æ•°ä¸èƒ½å°äºåŸå•é‡' });
     }
     db.run(
       'UPDATE style_color_size SET order_date=?, style_no=?, due_date=?, product_name=?, size_spec=?, color=?, plan_qty=?, cutting_param=? WHERE id=?',
@@ -4997,15 +4997,15 @@ app.get('/api/style-color-size/export', async (req, res) => {
   try {
     const rows = db.all('SELECT * FROM style_color_size ORDER BY order_date DESC, style_no, color, size_spec');
     const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet('·ÖÉ«·Ö³ßÂë');
+    const ws = workbook.addWorksheet('åˆ†è‰²åˆ†å°ºç ');
     ws.columns = [
-      { header: '¶©µ¥ÈÕÆÚ', key: 'order_date', width: 14 },
-      { header: '¿îÊ½', key: 'style_no', width: 24 },
-      { header: '½»ÆÚ', key: 'due_date', width: 14 },
-      { header: '²úÆ·Ãû', key: 'product_name', width: 14 },
-      { header: '¹æ¸ñ', key: 'size_spec', width: 10 },
-      { header: 'ÑÕÉ«', key: 'color', width: 18 },
-      { header: 'Ô­µ¥Á¿', key: 'plan_qty', width: 10 },
+      { header: 'è®¢å•æ—¥æœŸ', key: 'order_date', width: 14 },
+      { header: 'æ¬¾å¼', key: 'style_no', width: 24 },
+      { header: 'äº¤æœŸ', key: 'due_date', width: 14 },
+      { header: 'äº§å“å', key: 'product_name', width: 14 },
+      { header: 'è§„æ ¼', key: 'size_spec', width: 10 },
+      { header: 'é¢œè‰²', key: 'color', width: 18 },
+      { header: 'åŸå•é‡', key: 'plan_qty', width: 10 },
     ];
     ws.getRow(1).font = { bold: true };
     for (const r of rows) {
@@ -5021,14 +5021,14 @@ app.get('/api/style-color-size/export', async (req, res) => {
     res.end();
   } catch (e) {
     console.error('GET /api/style-color-size/export error:', e);
-    res.status(500).json({ error: 'µ¼³öÊ§°Ü' });
+    res.status(500).json({ error: 'å¯¼å‡ºå¤±è´¥' });
   }
 });
 
 app.post('/api/style-color-size/import', (req, res) => {
   try {
     const { records } = req.body;
-    if (!records || !records.length) return res.status(400).json({ error: 'Ã»ÓĞÊı¾İ' });
+    if (!records || !records.length) return res.status(400).json({ error: 'æ²¡æœ‰æ•°æ®' });
     let imported = 0;
     const tx = db.getDb().transaction(() => {
       for (const r of records) {
@@ -5040,7 +5040,7 @@ app.post('/api/style-color-size/import', (req, res) => {
       }
     });
     tx();
-    logOp(req, 'style_color_size', 'import', null, `µ¼Èë ${imported} Ìõ·ÖÉ«·Ö³ßÂë`);
+    logOp(req, 'style_color_size', 'import', null, `å¯¼å…¥ ${imported} æ¡åˆ†è‰²åˆ†å°ºç `);
     res.json({ ok: true, imported });
   } catch (e) {
     console.error('POST /api/style-color-size/import error:', e);
@@ -5048,7 +5048,7 @@ app.post('/api/style-color-size/import', (req, res) => {
   }
 });
 
-// »ñÈ¡×°¹ñÊı¾İ¹©²Ö¿âÑ¡Ôñ£¨¿îºÅ+¹øºÅÁª¶¯£©
+// è·å–è£…æŸœæ•°æ®ä¾›ä»“åº“é€‰æ‹©ï¼ˆæ¬¾å·+é”…å·è”åŠ¨ï¼‰
 app.get('/api/fabric-loading/options', (req, res) => {
   try {
     const { keyword } = req.query
@@ -5067,7 +5067,7 @@ app.get('/api/fabric-loading/options', (req, res) => {
   }
 })
 
-// ---------- ÃæÁÏ×°¹ñÇåµ¥ ----------
+// ---------- é¢æ–™è£…æŸœæ¸…å• ----------
 app.get('/api/fabric-loading', (req, res) => {
   try {
     const { keyword } = req.query;
@@ -5092,7 +5092,7 @@ app.post('/api/fabric-loading', requireRole('admin', 'planning_manager', 'planne
     const result = db.run(
       `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, garment_qty, remark)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'Æ¥', r.loading_date, r.loading_qty || 0, r.garment_qty || 0, r.remark]
+      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'åŒ¹', r.loading_date, r.loading_qty || 0, r.garment_qty || 0, r.remark]
     );
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
@@ -5108,7 +5108,7 @@ app.put('/api/fabric-loading/:id', requireRole('admin', 'planning_manager', 'pla
     if (!existing) return res.status(404).json({ error: 'Not found' });
     db.run(
       `UPDATE fabric_loading_list SET inbound_date=?, supplier=?, customer=?, style_no=?, pot_no=?, fabric_name=?, width=?, weight=?, color=?, qty=?, unit=?, total_pcs=?, unit2=?, loading_date=?, loading_qty=?, remark=? WHERE id=?`,
-      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'Æ¥', r.loading_date, r.loading_qty || 0, r.remark, req.params.id]
+      [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'åŒ¹', r.loading_date, r.loading_qty || 0, r.remark, req.params.id]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -5127,12 +5127,12 @@ app.delete('/api/fabric-loading/:id', requireRole('admin', 'planning_manager', '
   }
 });
 
-// ÅúÁ¿Èë¿â£º´ÓÃæÁÏ×°¹ñÇåµ¥Ñ¡ÖĞ¶àÌõ£¬Ò»¼üÈë¿â
+// æ‰¹é‡å…¥åº“ï¼šä»é¢æ–™è£…æŸœæ¸…å•é€‰ä¸­å¤šæ¡ï¼Œä¸€é”®å…¥åº“
 app.post('/api/fabric-loading/batch-inbound', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ error: 'ÇëÑ¡ÔñÒªÈë¿âµÄ¼ÇÂ¼' });
+      return res.status(400).json({ error: 'è¯·é€‰æ‹©è¦å…¥åº“çš„è®°å½•' });
     }
 
     const today = fmtLocal(new Date()).replace(/-/g, '');
@@ -5142,28 +5142,28 @@ app.post('/api/fabric-loading/batch-inbound', requireRole('admin', 'planning_man
     const txn = db.getDb().transaction(() => {
       for (const id of ids) {
         const record = db.get('SELECT * FROM fabric_loading_list WHERE id = ?', [id]);
-        if (!record) { errors.push(`ID ${id} ²»´æÔÚ`); continue }
+        if (!record) { errors.push(`ID ${id} ä¸å­˜åœ¨`); continue }
 
-        // ¼ì²éÊÇ·ñÒÑ¾­Èë¹ı¿â
+        // æ£€æŸ¥æ˜¯å¦å·²ç»å…¥è¿‡åº“
         const existing = db.get(
           "SELECT id FROM warehouse_inbound WHERE ref_type = 'fabric_loading' AND ref_id = ?",
           [id]
         );
-        if (existing) { errors.push(`${record.style_no} ÒÑÈë¿â`); continue }
+        if (existing) { errors.push(`${record.style_no} å·²å…¥åº“`); continue }
 
-        // Éú³ÉÈë¿âµ¥ºÅ
+        // ç”Ÿæˆå…¥åº“å•å·
         const count = db.get("SELECT COUNT(*) as c FROM warehouse_inbound WHERE order_no LIKE ?", [`RB${today}%`]).c;
         const orderNo = `RB${today}-${String(count + 1 + imported).padStart(3, '0')}`;
 
-        // Ğ´ÈëÈë¿â¼ÇÂ¼
+        // å†™å…¥å…¥åº“è®°å½•
         db.run(`INSERT INTO warehouse_inbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no, loading_qty)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           ['raw_material', 'fabric_loading', id, record.style_no || '', record.color || '', '', record.qty || 0,
            record.inbound_date || fmtLocal(new Date()), '', record.pot_no || '', record.fabric_name || '',
            record.supplier || '', record.customer || '', record.width || '', record.weight || '',
-           record.unit || 'KG', record.total_pcs || 0, record.unit2 || 'Æ¥', record.remark || '', orderNo, record.loading_qty || 0]);
+           record.unit || 'KG', record.total_pcs || 0, record.unit2 || 'åŒ¹', record.remark || '', orderNo, record.loading_qty || 0]);
 
-        // ¸üĞÂ¿â´æ
+        // æ›´æ–°åº“å­˜
         updateInventory('raw_material', record.style_no, record.color, '', record.qty || 0, record);
 
         imported++;
@@ -5172,7 +5172,7 @@ app.post('/api/fabric-loading/batch-inbound', requireRole('admin', 'planning_man
     txn();
 
     broadcastSection('warehouse', db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', ['raw_material']));
-    logOp(req, 'warehouse', 'batch_inbound', null, `ÅúÁ¿Èë¿â ${imported} Ìõ`);
+    logOp(req, 'warehouse', 'batch_inbound', null, `æ‰¹é‡å…¥åº“ ${imported} æ¡`);
 
     res.json({ ok: true, imported, errors });
   } catch (e) {
@@ -5185,25 +5185,25 @@ app.get('/api/fabric-loading/export', async (req, res) => {
   try {
     const rows = db.all('SELECT * FROM fabric_loading_list ORDER BY id');
     const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet('ÃæÁÏ×°¹ñÇåµ¥');
+    const ws = workbook.addWorksheet('é¢æ–™è£…æŸœæ¸…å•');
     ws.columns = [
-      { header: 'Èë¿âÈÕÆÚ', key: 'inbound_date', width: 14 },
-      { header: '¹©Ó¦ÉÌ', key: 'supplier', width: 14 },
-      { header: '¿Í»§', key: 'customer', width: 14 },
-      { header: '¿îºÅ', key: 'style_no', width: 22 },
-      { header: '¹øºÅ', key: 'pot_no', width: 16 },
-      { header: 'ÃæÁÏÃû³Æ', key: 'fabric_name', width: 24 },
-      { header: '·ù¿í', key: 'width', width: 10 },
-      { header: '¿ËÖØ', key: 'weight', width: 10 },
-      { header: 'ÑÕÉ«', key: 'color', width: 18 },
-      { header: 'ÊıÁ¿', key: 'qty', width: 10 },
-      { header: 'µ¥Î»', key: 'unit', width: 8 },
-      { header: '×ÜÆ¥Êı', key: 'total_pcs', width: 10 },
-      { header: 'µ¥Î»2', key: 'unit2', width: 8 },
-      { header: '×°¹ñÈÕÆÚ', key: 'loading_date', width: 14 },
-      { header: '×°¹ñÊıÁ¿', key: 'loading_qty', width: 12 },
-      { header: '³ÉÒÂ¼Æ»®ÊıÁ¿', key: 'garment_qty', width: 12 },
-      { header: '±¸×¢', key: 'remark', width: 20 },
+      { header: 'å…¥åº“æ—¥æœŸ', key: 'inbound_date', width: 14 },
+      { header: 'ä¾›åº”å•†', key: 'supplier', width: 14 },
+      { header: 'å®¢æˆ·', key: 'customer', width: 14 },
+      { header: 'æ¬¾å·', key: 'style_no', width: 22 },
+      { header: 'é”…å·', key: 'pot_no', width: 16 },
+      { header: 'é¢æ–™åç§°', key: 'fabric_name', width: 24 },
+      { header: 'å¹…å®½', key: 'width', width: 10 },
+      { header: 'å…‹é‡', key: 'weight', width: 10 },
+      { header: 'é¢œè‰²', key: 'color', width: 18 },
+      { header: 'æ•°é‡', key: 'qty', width: 10 },
+      { header: 'å•ä½', key: 'unit', width: 8 },
+      { header: 'æ€»åŒ¹æ•°', key: 'total_pcs', width: 10 },
+      { header: 'å•ä½2', key: 'unit2', width: 8 },
+      { header: 'è£…æŸœæ—¥æœŸ', key: 'loading_date', width: 14 },
+      { header: 'è£…æŸœæ•°é‡', key: 'loading_qty', width: 12 },
+      { header: 'æˆè¡£è®¡åˆ’æ•°é‡', key: 'garment_qty', width: 12 },
+      { header: 'å¤‡æ³¨', key: 'remark', width: 20 },
     ];
     ws.getRow(1).font = { bold: true };
     for (const r of rows) {
@@ -5212,7 +5212,7 @@ app.get('/api/fabric-loading/export', async (req, res) => {
         style_no: r.style_no || '', pot_no: r.pot_no || '', fabric_name: r.fabric_name || '',
         width: r.width || '', weight: r.weight || '', color: r.color || '',
         qty: r.qty || 0, unit: r.unit || 'KG', total_pcs: r.total_pcs || 0,
-        unit2: r.unit2 || 'Æ¥', loading_date: r.loading_date || '', loading_qty: r.loading_qty || 0,
+        unit2: r.unit2 || 'åŒ¹', loading_date: r.loading_date || '', loading_qty: r.loading_qty || 0,
         garment_qty: r.garment_qty || 0, remark: r.remark || '',
       });
     }
@@ -5222,21 +5222,21 @@ app.get('/api/fabric-loading/export', async (req, res) => {
     res.end();
   } catch (e) {
     console.error('GET /api/fabric-loading/export error:', e);
-    res.status(500).json({ error: 'µ¼³öÊ§°Ü' });
+    res.status(500).json({ error: 'å¯¼å‡ºå¤±è´¥' });
   }
 });
 
 app.post('/api/fabric-loading/import', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
     const { records } = req.body;
-    if (!records || !records.length) return res.status(400).json({ error: 'Ã»ÓĞÊı¾İ' });
+    if (!records || !records.length) return res.status(400).json({ error: 'æ²¡æœ‰æ•°æ®' });
     let imported = 0;
     const tx = db.getDb().transaction(() => {
       for (const r of records) {
         db.run(
           `INSERT INTO fabric_loading_list (inbound_date, supplier, customer, style_no, pot_no, fabric_name, width, weight, color, qty, unit, total_pcs, unit2, loading_date, loading_qty, garment_qty, remark)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'Æ¥', r.loading_date, r.loading_qty || 0, r.garment_qty || 0, r.remark]
+          [r.inbound_date, r.supplier, r.customer, r.style_no, r.pot_no, r.fabric_name, r.width, r.weight, r.color, r.qty || 0, r.unit || 'KG', r.total_pcs || 0, r.unit2 || 'åŒ¹', r.loading_date, r.loading_qty || 0, r.garment_qty || 0, r.remark]
         );
         imported++;
       }
@@ -5249,7 +5249,7 @@ app.post('/api/fabric-loading/import', requireRole('admin', 'planning_manager', 
   }
 });
 
-// ---------- ²úÄÜÅäÖÃ ----------
+// ---------- äº§èƒ½é…ç½® ----------
 app.get('/api/config/capacity', (req, res) => {
   try {
     res.json(db.all('SELECT * FROM capacity_config'));
@@ -5286,9 +5286,9 @@ app.get('/api/config/system', (req, res) => {
 app.put('/api/config/system/:key', requireRole('admin', 'planning_manager'), (req, res) => {
   try {
     const value = req.body.configValue ?? req.body.config_value;
-    if (value === undefined) return res.status(400).json({ error: '²ÎÊıÖµ²»ÄÜÎª¿Õ' });
+    if (value === undefined) return res.status(400).json({ error: 'å‚æ•°å€¼ä¸èƒ½ä¸ºç©º' });
     db.run('UPDATE system_config SET config_value = ? WHERE config_key = ?', [String(value), req.params.key]);
-    invalidateSystemConfig();  // [¶Î7 C-1] Ë¢ĞÂ»º´æ
+    invalidateSystemConfig();  // [æ®µ7 C-1] åˆ·æ–°ç¼“å­˜
     broadcastSection('systemConfig', db.all('SELECT * FROM system_config'));
     res.json({ ok: true });
   } catch (e) {
@@ -5298,7 +5298,7 @@ app.put('/api/config/system/:key', requireRole('admin', 'planning_manager'), (re
 });
 
 // ============================================================
-// ¹¤×÷ÈÕÀú
+// å·¥ä½œæ—¥å†
 // ============================================================
 app.get('/api/work-modes', (req, res) => {
   try { res.json(db.all('SELECT * FROM work_modes ORDER BY id')); }
@@ -5308,7 +5308,7 @@ app.get('/api/work-modes', (req, res) => {
 app.post('/api/work-modes', (req, res) => {
   try {
     const { name, working_hours, shifts } = req.body;
-    if (!name) return res.status(400).json({ error: 'Ãû³Æ²»ÄÜÎª¿Õ' });
+    if (!name) return res.status(400).json({ error: 'åç§°ä¸èƒ½ä¸ºç©º' });
     const result = db.run('INSERT INTO work_modes (name, working_hours, shifts) VALUES (?,?,?)',
       [name, working_hours || 8, JSON.stringify(shifts || ['08:00-17:00'])]);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -5328,7 +5328,7 @@ app.get('/api/work-calendars', (req, res) => {
 app.post('/api/work-calendars', (req, res) => {
   try {
     const { name, work_mode_id, work_days, start_date, end_date, priority } = req.body;
-    if (!name) return res.status(400).json({ error: 'Ãû³Æ²»ÄÜÎª¿Õ' });
+    if (!name) return res.status(400).json({ error: 'åç§°ä¸èƒ½ä¸ºç©º' });
     const result = db.run('INSERT INTO work_calendars (name, work_mode_id, work_days, start_date, end_date, priority, enabled) VALUES (?,?,?,?,?,?,1)',
       [name, work_mode_id, work_days || '1111100', start_date, end_date, priority || 0]);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -5360,7 +5360,7 @@ app.get('/api/work-calendars/:id/exceptions', (req, res) => {
 app.post('/api/work-calendars/:id/exceptions', (req, res) => {
   try {
     const { exception_date, is_workday, remark } = req.body;
-    if (!exception_date) return res.status(400).json({ error: 'ÈÕÆÚ²»ÄÜÎª¿Õ' });
+    if (!exception_date) return res.status(400).json({ error: 'æ—¥æœŸä¸èƒ½ä¸ºç©º' });
     db.run('INSERT OR REPLACE INTO calendar_exceptions (calendar_id, exception_date, is_workday, remark) VALUES (?,?,?,?)',
       [req.params.id, exception_date, is_workday ? 1 : 0, remark || '']);
     res.json({ ok: true });
@@ -5372,17 +5372,17 @@ app.delete('/api/work-calendars/:calendarId/exceptions/:exceptionId', (req, res)
   catch (e) { console.error('DELETE /api/exceptions error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ÅĞ¶ÏÄ³ÌìÊÇ·ñ¹¤×÷ÈÕ£¨Ç°¶Ë¿ÉÓÃ£©
+// åˆ¤æ–­æŸå¤©æ˜¯å¦å·¥ä½œæ—¥ï¼ˆå‰ç«¯å¯ç”¨ï¼‰
 app.get('/api/workday-check', (req, res) => {
   try {
     const { date } = req.query;
-    if (!date) return res.status(400).json({ error: 'ÈÕÆÚ²»ÄÜÎª¿Õ' });
+    if (!date) return res.status(400).json({ error: 'æ—¥æœŸä¸èƒ½ä¸ºç©º' });
     res.json({ date, isWorkday: db.isWorkday(date) });
   } catch (e) { console.error('GET /api/workday-check error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ============================================================
-// ¸ÊÌØÍ¼×Ö¶ÎÅäÖÃ
+// ç”˜ç‰¹å›¾å­—æ®µé…ç½®
 // ============================================================
 app.get('/api/config/gantt', (req, res) => {
   try {
@@ -5421,14 +5421,14 @@ app.put('/api/config/gantt/:type', (req, res) => {
 });
 
 // ============================================================
-// ²Ù×÷ÈÕÖ¾
+// æ“ä½œæ—¥å¿—
 // ============================================================
 app.get('/api/logs', (req, res) => {
   try {
     const { module: mod, action, operator, page = 1, pageSize = 50 } = req.query;
     let sql = 'SELECT * FROM operation_logs WHERE 1=1';
     const params = [];
-    // [2026-06-18] ·Ç¹ÜÀíÔ±Ö»¿´×Ô¼ºµÄÈÕÖ¾;admin ¿´È«²¿
+    // [2026-06-18] éç®¡ç†å‘˜åªçœ‹è‡ªå·±çš„æ—¥å¿—;admin çœ‹å…¨éƒ¨
     if (req.user.role !== 'admin') {
       sql += ' AND user_id = ?';
       params.push(req.user.id);
@@ -5458,9 +5458,9 @@ const io = new SocketIO(httpServer, {
   pingTimeout: 10000,
 });
 
-// [2026-06-18] Socket.IO ¼øÈ¨: ¹²Ïí express-session ÖĞ¼ä¼ş,´Ó cookie ¶Á session
-// Ö®Ç°ÓÃ Bearer token Ğ£Ñé,Ç°¶Ë useWebSocket Ã»´« token ¡ú Ò»Ö±¶Ï
-// ÏÖÔÚ¸ú axios Ò»Ñù¿¿ session cookie,ÃâÈ¥Ç°¶Ë¶îÍâÅäÖÃ
+// [2026-06-18] Socket.IO é‰´æƒ: å…±äº« express-session ä¸­é—´ä»¶,ä» cookie è¯» session
+// ä¹‹å‰ç”¨ Bearer token æ ¡éªŒ,å‰ç«¯ useWebSocket æ²¡ä¼  token â†’ ä¸€ç›´æ–­
+// ç°åœ¨è·Ÿ axios ä¸€æ ·é  session cookie,å…å»å‰ç«¯é¢å¤–é…ç½®
 io.engine.use(session({
   store: sessionStore,
   secret: SESSION_SECRET,
@@ -5470,7 +5470,7 @@ io.engine.use(session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    // [fix 2026-06-20 S-2] Í¬²½ĞŞ¸´ socket.io session cookie
+    // [fix 2026-06-20 S-2] åŒæ­¥ä¿®å¤ socket.io session cookie
     secure: process.env.HTTPS === 'true',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   },
@@ -5480,7 +5480,7 @@ if (AUTH_ENABLED) {
   io.use((socket, next) => {
     const session = socket.request.session;
     if (session && session.user) return next();
-    // Ò²½ÓÊÜ Bearer token(¹©Íâ²¿¹¤¾ß/CLI µ÷ÓÃ)
+    // ä¹Ÿæ¥å— Bearer token(ä¾›å¤–éƒ¨å·¥å…·/CLI è°ƒç”¨)
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
     if (token === API_TOKEN) return next();
     return next(new Error('Unauthorized'));
@@ -5497,22 +5497,22 @@ function broadcastSection(section, data) {
 }
 
 io.on('connection', (socket) => {
-  console.log(`?? ÓÃ»§Á¬½Ó: ${socket.id}`);
+  console.log(`ğŸ”— ç”¨æˆ·è¿æ¥: ${socket.id}`);
 
   socket.emit('initData', db.getFullData());
 
   socket.on('join', (userName) => {
-    socket.userName = userName || 'ÄäÃû';
+    socket.userName = userName || 'åŒ¿å';
     io.emit('userList', Array.from(io.sockets.sockets.values()).map(s => s.userName).filter(Boolean));
   });
 
   socket.on('disconnect', () => {
-    console.log(`?? ÓÃ»§¶Ï¿ª: ${socket.id}`);
+    console.log(`ğŸ”Œ ç”¨æˆ·æ–­å¼€: ${socket.id}`);
     io.emit('userList', Array.from(io.sockets.sockets.values()).map(s => s.userName).filter(Boolean));
   });
 });
 
-// ---------- ÈÕ±¨ ----------
+// ---------- æ—¥æŠ¥ ----------
 app.get('/api/daily', (req, res) => {
   try {
     res.json(db.all('SELECT * FROM daily_reports ORDER BY date DESC'));
@@ -5525,7 +5525,7 @@ app.get('/api/daily', (req, res) => {
 app.post('/api/daily', (req, res) => {
   try {
     const r = req.body;
-    if (!r.styleNo) return res.status(400).json({ error: '¿îºÅ²»ÄÜÎª¿Õ' });
+    if (!r.styleNo) return res.status(400).json({ error: 'æ¬¾å·ä¸èƒ½ä¸ºç©º' });
     const result = db.run('INSERT INTO daily_reports (date, workshop, style_no, color, plan_qty, actual_qty, remark) VALUES (?,?,?,?,?,?,?)',
       [r.date, r.workshop || '', r.styleNo, r.color || '', r.planQty || 0, r.actualQty || 0, r.remark || '']);
     logOp(req, 'daily_reports', 'create', result.lastInsertRowid, r.styleNo, `plan=${r.planQty || 0} actual=${r.actualQty || 0}`);
@@ -5537,7 +5537,7 @@ app.post('/api/daily', (req, res) => {
   }
 });
 
-// ---------- ¿â´æ ----------
+// ---------- åº“å­˜ ----------
 app.get('/api/inventory', (req, res) => {
   try {
     res.json(db.all('SELECT * FROM inventory_snapshots ORDER BY date DESC'));
@@ -5550,7 +5550,7 @@ app.get('/api/inventory', (req, res) => {
 app.post('/api/inventory', (req, res) => {
   try {
     const r = req.body;
-    if (!r.styleNo) return res.status(400).json({ error: '¿îºÅ²»ÄÜÎª¿Õ' });
+    if (!r.styleNo) return res.status(400).json({ error: 'æ¬¾å·ä¸èƒ½ä¸ºç©º' });
     const result = db.run('INSERT INTO inventory_snapshots (date, style_no, color, qty, location, remark) VALUES (?,?,?,?,?,?)',
       [r.date, r.styleNo, r.color || '', r.qty || 0, r.location || '', r.remark || '']);
     broadcastSection('inventory', db.all('SELECT * FROM inventory_snapshots ORDER BY date DESC'));
@@ -5561,18 +5561,18 @@ app.post('/api/inventory', (req, res) => {
   }
 });
 
-// ---------- Ä¿ÊÓ»¯ÅÅ³Ì ----------
+// ---------- ç›®è§†åŒ–æ’ç¨‹ ----------
 app.get('/api/visual-schedule/gantt', (req, res) => {
   try {
-    // ÏÈ¼ÓÔØËùÓĞ³µ¼äºÍ²úÏß
+    // å…ˆåŠ è½½æ‰€æœ‰è½¦é—´å’Œäº§çº¿
     const allWorkshops = db.all('SELECT * FROM workshops ORDER BY sort_order');
     for (const ws of allWorkshops) {
       ws.lines = db.all('SELECT * FROM production_lines WHERE workshop_id = ? ORDER BY sort_order', [ws.id]);
     }
 
-    // ¼ÓÔØËùÓĞ·ìÖÆÅÅ³ÌÊı¾İ
-    // [2026-06-20 fix#ÒµÎñ-P1-7] Ö§³Ö ?from=&to= ·ÖÆ¬,ÏŞÖÆ plan_start ÔÚÇø¼äÄÚ
-    //   ²»´«Ê±±£³ÖÔ­ĞĞÎª(È«±í);´«ÁËÊ±×ß WHERE,±ÜÃâ 50 Ìõ²úÏß * 1 ÄêÊı¾İÈ«Á¿·µ»Ø
+    // åŠ è½½æ‰€æœ‰ç¼åˆ¶æ’ç¨‹æ•°æ®
+    // [2026-06-20 fix#ä¸šåŠ¡-P1-7] æ”¯æŒ ?from=&to= åˆ†ç‰‡,é™åˆ¶ plan_start åœ¨åŒºé—´å†…
+    //   ä¸ä¼ æ—¶ä¿æŒåŸè¡Œä¸º(å…¨è¡¨);ä¼ äº†æ—¶èµ° WHERE,é¿å… 50 æ¡äº§çº¿ * 1 å¹´æ•°æ®å…¨é‡è¿”å›
     const { from, to } = req.query;
     let ganttWhere = "sm.schedule_type = 'sewing'";
     const ganttParams = [];
@@ -5585,9 +5585,9 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       FROM schedule_master sm WHERE ${ganttWhere}
       ORDER BY sm.workshop, sm.line_team, sm.plan_start`, ganttParams);
 
-    // °´ workshop+line_team ½¨Ë÷Òı£¨schedule_master ÖĞ line_team ÊÇ´¿Êı×ÖÈç "20"£¬line_name ÊÇ "20°à"£©
-    // ³µ¼äÃûÓ³Éä£ºÒ»³µ¼ä¡ú1, ¶ş³µ¼ä¡ú2, Èı³µ¼ä¡ú3, ËÄ³µ¼ä¡ú4, Îå³µ¼ä¡ú5
-    const wsNameMap = { 'Ò»³µ¼ä': '1', '¶ş³µ¼ä': '2', 'Èı³µ¼ä': '3', 'ËÄ³µ¼ä': '4', 'Îå³µ¼ä': '5' }
+    // æŒ‰ workshop+line_team å»ºç´¢å¼•ï¼ˆschedule_master ä¸­ line_team æ˜¯çº¯æ•°å­—å¦‚ "20"ï¼Œline_name æ˜¯ "20ç­"ï¼‰
+    // è½¦é—´åæ˜ å°„ï¼šä¸€è½¦é—´â†’1, äºŒè½¦é—´â†’2, ä¸‰è½¦é—´â†’3, å››è½¦é—´â†’4, äº”è½¦é—´â†’5
+    const wsNameMap = { 'ä¸€è½¦é—´': '1', 'äºŒè½¦é—´': '2', 'ä¸‰è½¦é—´': '3', 'å››è½¦é—´': '4', 'äº”è½¦é—´': '5' }
     const taskIndex = {}
     for (const t of allTasks) {
       const wsNorm = wsNameMap[t.workshop] || t.workshop || ''
@@ -5596,7 +5596,7 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       taskIndex[key].push(t)
     }
 
-    // ¼ÓÔØËùÓĞ²úÏßµÄ¿îÊ½·ÖÀà
+    // åŠ è½½æ‰€æœ‰äº§çº¿çš„æ¬¾å¼åˆ†ç±»
     const allCats = db.all('SELECT * FROM line_style_categories ORDER BY line_id, sort_order');
     const catIndex = {}
     for (const c of allCats) {
@@ -5604,7 +5604,7 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       catIndex[c.line_id].push({ name: c.name })
     }
 
-    // ÒÔ³µ¼ä²úÏßÎª¹Ç¼Ü£¬¹ØÁªÅÅ³ÌÊı¾İºÍ·ÖÀà
+    // ä»¥è½¦é—´äº§çº¿ä¸ºéª¨æ¶ï¼Œå…³è”æ’ç¨‹æ•°æ®å’Œåˆ†ç±»
     const workshops = allWorkshops.map(ws => ({
       name: ws.name,
       lines: ws.lines.map(line => {
@@ -5620,16 +5620,16 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
       })
     }))
 
-    // Î´ÅÅ°àÏî£ºmain_plan ÖĞÉĞÎ´ÅÅ³ÌµÄ£¨JOIN styles »ñÈ¡ÑÕÉ«/¹æ¸ñ£©
+    // æœªæ’ç­é¡¹ï¼šmain_plan ä¸­å°šæœªæ’ç¨‹çš„ï¼ˆJOIN styles è·å–é¢œè‰²/è§„æ ¼ï¼‰
     const unscheduled = db.all(`SELECT mp.id as planId, mp.style_no as styleNo, mp.product_name as productName,
       s.color, s.size_spec as sizeSpec, mp.plan_qty as planQty, mp.due_date as dueDate
       FROM main_plan mp
       LEFT JOIN styles s ON mp.style_id = s.id
       WHERE mp.is_scheduled = 0 OR mp.is_scheduled IS NULL
       ORDER BY mp.due_date`);
-    // ¹¤×÷ÈÕÀú£º·µ»Øµ±Ç°ÆôÓÃµÄ¹¤×÷ÈÕÄ£Ê½
+    // å·¥ä½œæ—¥å†ï¼šè¿”å›å½“å‰å¯ç”¨çš„å·¥ä½œæ—¥æ¨¡å¼
     const cal = db.get('SELECT work_days, start_date, end_date FROM work_calendars WHERE enabled = 1 ORDER BY priority DESC LIMIT 1');
-    const workDays = cal ? cal.work_days : '1111100' // Ä¬ÈÏÖÜÒ»~ÖÜÎå
+    const workDays = cal ? cal.work_days : '1111100' // é»˜è®¤å‘¨ä¸€~å‘¨äº”
     res.json({ workshops, unscheduled, workDays });
   } catch (e) {
     console.error('GET /api/visual-schedule/gantt error:', e);
@@ -5653,13 +5653,13 @@ app.get('/api/visual-schedule/date-range', (req, res) => {
 app.post('/api/visual-schedule/assign', (req, res) => {
   try {
     const { planId, workshop, lineTeam } = req.body;
-    if (!planId || !workshop || !lineTeam) return res.status(400).json({ error: '²ÎÊı²»ÍêÕû' });
+    if (!planId || !workshop || !lineTeam) return res.status(400).json({ error: 'å‚æ•°ä¸å®Œæ•´' });
     const plan = db.get('SELECT * FROM main_plan WHERE id = ?', [planId]);
-    if (!plan) return res.status(404).json({ error: '¼Æ»®²»´æÔÚ' });
-    if (plan.is_scheduled) return res.status(400).json({ error: '¸Ã¼Æ»®ÒÑÅÅ°à' });
-    const lineNum = stripLineSuffix(lineTeam)  // [B-12 fix] ÓÃ helper Ìæ´úÉ¢Âä .replace
+    if (!plan) return res.status(404).json({ error: 'è®¡åˆ’ä¸å­˜åœ¨' });
+    if (plan.is_scheduled) return res.status(400).json({ error: 'è¯¥è®¡åˆ’å·²æ’ç­' });
+    const lineNum = stripLineSuffix(lineTeam)  // [B-12 fix] ç”¨ helper æ›¿ä»£æ•£è½ .replace
 
-    // ²é²úÏßÈÕ²úÁ¿(ÓÅÏÈÓÃÍêÕû line_name,fallback Æ´"°à"ºó×º)
+    // æŸ¥äº§çº¿æ—¥äº§é‡(ä¼˜å…ˆç”¨å®Œæ•´ line_name,fallback æ‹¼"ç­"åç¼€)
     const lineId = db.get(
       'SELECT id FROM production_lines WHERE line_name IN (?, ?)',
       [lineTeam, lineNameWithSuffix(lineNum)]
@@ -5670,18 +5670,18 @@ app.post('/api/visual-schedule/assign', (req, res) => {
       dailyTarget = cat?.daily_output || 0;
     }
 
-    // ²é¸Ã²úÏß×îºóÒ»¸öÈÎÎñµÄ½áÊøÈÕÆÚ£¬ĞÂÈÎÎñÅÅÔÚºóÃæ
+    // æŸ¥è¯¥äº§çº¿æœ€åä¸€ä¸ªä»»åŠ¡çš„ç»“æŸæ—¥æœŸï¼Œæ–°ä»»åŠ¡æ’åœ¨åé¢
     const lastTask = db.get(`SELECT plan_end FROM schedule_master
       WHERE schedule_type = 'sewing' AND workshop = ? AND line_team = ?
       ORDER BY plan_end DESC LIMIT 1`, [workshop, lineNum])
 
     const today = fmtLocal(new Date())
-    // ÎŞÈÎÎñ²úÏß´ÓÃ÷Ìì¿ªÊ¼£¨µ±ÌìÅÅ²»ÉÏ£©
+    // æ— ä»»åŠ¡äº§çº¿ä»æ˜å¤©å¼€å§‹ï¼ˆå½“å¤©æ’ä¸ä¸Šï¼‰
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     const tomorrowStr = fmtLocal(tomorrow)
     let sewingStart = tomorrowStr
-    // ÓĞÈÎÎñÔòÅÅÔÚ×îºóÈÎÎñÖ®ºó
+    // æœ‰ä»»åŠ¡åˆ™æ’åœ¨æœ€åä»»åŠ¡ä¹‹å
     if (lastTask && lastTask.plan_end) {
       const nextDay = new Date(lastTask.plan_end + 'T00:00:00')
       nextDay.setDate(nextDay.getDate() + 1)
@@ -5689,18 +5689,18 @@ app.post('/api/visual-schedule/assign', (req, res) => {
       if (nextDayStr > tomorrowStr) sewingStart = nextDayStr
     }
 
-    // ¼ÆËãÏÂÏßÊ±¼ä£º¼Æ»®ÊıÁ¿ / ÈÕ²úÁ¿£¨ÏòÉÏÈ¡Õû£©
+    // è®¡ç®—ä¸‹çº¿æ—¶é—´ï¼šè®¡åˆ’æ•°é‡ / æ—¥äº§é‡ï¼ˆå‘ä¸Šå–æ•´ï¼‰
     let sewingEnd = sewingStart
     if (dailyTarget > 0 && plan.plan_qty > 0) {
       const daysNeeded = Math.ceil(plan.plan_qty / dailyTarget)
-      sewingEnd = db.addWorkdays(sewingStart, daysNeeded - 1) // startËãµÚ1Ìì
+      sewingEnd = db.addWorkdays(sewingStart, daysNeeded - 1) // startç®—ç¬¬1å¤©
     }
 
-    // ¸üĞÂ main_plan
+    // æ›´æ–° main_plan
     db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 1, sewing_start = ?, sewing_end = ? WHERE id = ?',
       [workshop, lineNum, sewingStart, sewingEnd, planId]);
 
-    // ²é¿îÊ½Êı¾İ£¬²åÈë schedule_master
+    // æŸ¥æ¬¾å¼æ•°æ®ï¼Œæ’å…¥ schedule_master
     const style = db.get('SELECT * FROM styles WHERE style_no = ? LIMIT 1', [plan.style_no]);
     if (style && sewingStart <= sewingEnd) {
       db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
@@ -5720,14 +5720,14 @@ app.post('/api/visual-schedule/assign', (req, res) => {
 app.post('/api/visual-schedule/unassign', (req, res) => {
   try {
     const { planId } = req.body;
-    if (!planId) return res.status(400).json({ error: '²ÎÊı²»ÍêÕû' });
-    // planId ÊÇ schedule_master.id£¬ÏÈÈ¡³ö style_id
+    if (!planId) return res.status(400).json({ error: 'å‚æ•°ä¸å®Œæ•´' });
+    // planId æ˜¯ schedule_master.idï¼Œå…ˆå–å‡º style_id
     const sm = db.get('SELECT style_id FROM schedule_master WHERE id = ?', [planId]);
     if (sm && sm.style_id) {
-      // ¸üĞÂ main_plan£ºÇå³ı³µ¼ä/°à×é£¬±ê¼ÇÎ´ÅÅ
+      // æ›´æ–° main_planï¼šæ¸…é™¤è½¦é—´/ç­ç»„ï¼Œæ ‡è®°æœªæ’
       db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 0 WHERE style_id = ?', ['', '', sm.style_id]);
     }
-    // É¾³ı schedule_master ¼ÇÂ¼
+    // åˆ é™¤ schedule_master è®°å½•
     db.run('DELETE FROM schedule_master WHERE id = ?', [planId]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     res.json({ ok: true });
@@ -5737,16 +5737,16 @@ app.post('/api/visual-schedule/unassign', (req, res) => {
   }
 });
 
-// ÒÆ¶¯ÅÅ°à£º´Ó¾É²úÏßÒÆµ½ĞÂ²úÏß£¨È¡Ïû¾ÉÅÅ°à + ÔÚĞÂ²úÏßÖØĞÂÅÅ£©
+// ç§»åŠ¨æ’ç­ï¼šä»æ—§äº§çº¿ç§»åˆ°æ–°äº§çº¿ï¼ˆå–æ¶ˆæ—§æ’ç­ + åœ¨æ–°äº§çº¿é‡æ–°æ’ï¼‰
 app.post('/api/visual-schedule/move', (req, res) => {
   try {
     const { scheduleId, newWorkshop, newLineTeam } = req.body;
-    if (!scheduleId || !newWorkshop || !newLineTeam) return res.status(400).json({ error: '²ÎÊı²»ÍêÕû' });
-    // ²éÔ­ÅÅ³Ì¼ÇÂ¼
+    if (!scheduleId || !newWorkshop || !newLineTeam) return res.status(400).json({ error: 'å‚æ•°ä¸å®Œæ•´' });
+    // æŸ¥åŸæ’ç¨‹è®°å½•
     const sm = db.get('SELECT * FROM schedule_master WHERE id = ?', [scheduleId]);
-    if (!sm) return res.status(404).json({ error: 'ÅÅ³Ì¼ÇÂ¼²»´æÔÚ' });
+    if (!sm) return res.status(404).json({ error: 'æ’ç¨‹è®°å½•ä¸å­˜åœ¨' });
     const newLineNum = stripLineSuffix(newLineTeam);  // [B-12 fix]
-    // ²éĞÂ²úÏßÈÕ²úÁ¿(ÓÅÏÈÓÃÍêÕû line_name,fallback Æ´"°à"ºó×º)
+    // æŸ¥æ–°äº§çº¿æ—¥äº§é‡(ä¼˜å…ˆç”¨å®Œæ•´ line_name,fallback æ‹¼"ç­"åç¼€)
     const lineId = db.get(
       'SELECT id FROM production_lines WHERE line_name IN (?, ?)',
       [newLineTeam, lineNameWithSuffix(newLineNum)]
@@ -5756,7 +5756,7 @@ app.post('/api/visual-schedule/move', (req, res) => {
       const cat = db.get('SELECT daily_output FROM line_style_categories WHERE line_id = ? ORDER BY sort_order LIMIT 1', [lineId.id]);
       dailyTarget = cat?.daily_output || 0;
     }
-    // ²éĞÂ²úÏß×îºóÒ»¸öÈÎÎñµÄ½áÊøÈÕÆÚ
+    // æŸ¥æ–°äº§çº¿æœ€åä¸€ä¸ªä»»åŠ¡çš„ç»“æŸæ—¥æœŸ
     const lastTask = db.get(`SELECT plan_end FROM schedule_master
       WHERE schedule_type = 'sewing' AND workshop = ? AND line_team = ?
       ORDER BY plan_end DESC LIMIT 1`, [newWorkshop, newLineNum]);
@@ -5770,13 +5770,13 @@ app.post('/api/visual-schedule/move', (req, res) => {
       const nextDayStr = fmtLocal(nextDay);
       if (nextDayStr > tomorrowStr) sewingStart = nextDayStr;
     }
-    // ¼ÆËãÏÂÏßÊ±¼ä
+    // è®¡ç®—ä¸‹çº¿æ—¶é—´
     let sewingEnd = sewingStart;
     if (dailyTarget > 0 && sm.plan_qty > 0) {
       const daysNeeded = Math.ceil(sm.plan_qty / dailyTarget);
       sewingEnd = db.addWorkdays(sewingStart, daysNeeded - 1);
     }
-    // P0 °²È«: DELETE+INSERT+UPDATE °üÊÂÎñ,Ê§°Ü»Ø¹ö±ÜÃâ¶ªÊı¾İ
+    // P0 å®‰å…¨: DELETE+INSERT+UPDATE åŒ…äº‹åŠ¡,å¤±è´¥å›æ»šé¿å…ä¸¢æ•°æ®
     const moveTxn = db.getDb().transaction(() => {
       db.run('DELETE FROM schedule_master WHERE id = ?', [scheduleId]);
       if (sewingStart <= sewingEnd) {
@@ -5806,15 +5806,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// [2026-06-19] SPA catch-all: ¶µµ×·Ç /api/ ÇëÇó·µ index.html(vue-router hash Ä£Ê½Êµ¼ÊºÜÉÙ´¥·¢,µ«·À history Ä£Ê½ + Ö±Ë¢ĞÂ)
-// ÅÅ³ı /api /socket.io /assets /node_modules µÈÒÑÖªÇ°×º
+// [2026-06-19] SPA catch-all: å…œåº•é /api/ è¯·æ±‚è¿” index.html(vue-router hash æ¨¡å¼å®é™…å¾ˆå°‘è§¦å‘,ä½†é˜² history æ¨¡å¼ + ç›´åˆ·æ–°)
+// æ’é™¤ /api /socket.io /assets /node_modules ç­‰å·²çŸ¥å‰ç¼€
 app.get(/^\/(?!api|socket\.io|assets|node_modules|favicon\.ico).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// [2026-06-19] ½¡¿µ¼ì²é: UptimeRobot / CI smoke test ÓÃ
-// ±ØĞë·ÅÔÚËùÓĞ catch-all Ö®Ç°,·ñÔò»áÂäµ½ SPA fallback
-// /api/health ÔÚÁ½¸ö auth ÖĞ¼ä¼ş(line 524/540)ÒÑ¼Ó /health »íÃâ,ÃâµÇÂ¼·ÃÎÊ
+// [2026-06-19] å¥åº·æ£€æŸ¥: UptimeRobot / CI smoke test ç”¨
+// å¿…é¡»æ”¾åœ¨æ‰€æœ‰ catch-all ä¹‹å‰,å¦åˆ™ä¼šè½åˆ° SPA fallback
+// /api/health åœ¨ä¸¤ä¸ª auth ä¸­é—´ä»¶(line 524/540)å·²åŠ  /health è±å…,å…ç™»å½•è®¿é—®
 app.get('/api/health', (req, res) => {
   try {
     const row = db.get('SELECT 1 AS ok');
@@ -5831,22 +5831,22 @@ app.get('/api/health', (req, res) => {
 });
 
 // ============================================================
-// È«¾ÖÒì³£¶µµ× [Åú´Î1-ºó¶Ë-P0-1]
+// å…¨å±€å¼‚å¸¸å…œåº• [æ‰¹æ¬¡1-åç«¯-P0-1]
 // ============================================================
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[unhandledRejection]', reason && reason.stack ? reason.stack : reason);
 });
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err && err.stack ? err.stack : err);
-  // ÒÑÖªÖÂÃü´íÎó(Èç DB ÎÄ¼ş±»É¾/´ÅÅÌÂú)¡ú ½ø³ÌÍË³öÓÉ PM2/systemd ÖØÆô
-  // ÕâÀï²»Ö÷¶¯ process.exit,±ÜÃâÓëÁ¬½ÓÇåÀí³åÍ»
+  // å·²çŸ¥è‡´å‘½é”™è¯¯(å¦‚ DB æ–‡ä»¶è¢«åˆ /ç£ç›˜æ»¡)â†’ è¿›ç¨‹é€€å‡ºç”± PM2/systemd é‡å¯
+  // è¿™é‡Œä¸ä¸»åŠ¨ process.exit,é¿å…ä¸è¿æ¥æ¸…ç†å†²çª
 });
 
-// [2026-06-20 Åú´Î2-ÒµÎñ-P0-2] Ëø³¬Ê±×Ô¶¯ÇåÀí
-// supervisor ËøÁË schedule_daily ĞĞºó,Èç¹ûä¯ÀÀÆ÷±ÀÀ£ / ÀëÖ° / Íü½âËø ¡ú dispatcher ÓÀÔ¶±¨²»½øÈ¥
-// ·½°¸:Ã¿ 5 ·ÖÖÓÉ¨ÃèÒ»´Î,Ëø¶¨Ê±¼ä > 2 Ğ¡Ê±µÄËø×Ô¶¯ÊÍ·Å
-// ×¢:locked_at ÊÇ 'YYYY-MM-DD HH:mm:ss' ×Ö·û´®,SQLite ×Ö·û´®±È½ÏÄÜÕıÈ·¹¤×÷
-// [2026-06-20 fix#ºó¶Ë-P1-1] .unref() ·ÀÖ¹×èÈû Node ÓÅÑÅÍË³ö
+// [2026-06-20 æ‰¹æ¬¡2-ä¸šåŠ¡-P0-2] é”è¶…æ—¶è‡ªåŠ¨æ¸…ç†
+// supervisor é”äº† schedule_daily è¡Œå,å¦‚æœæµè§ˆå™¨å´©æºƒ / ç¦»èŒ / å¿˜è§£é” â†’ dispatcher æ°¸è¿œæŠ¥ä¸è¿›å»
+// æ–¹æ¡ˆ:æ¯ 5 åˆ†é’Ÿæ‰«æä¸€æ¬¡,é”å®šæ—¶é—´ > 2 å°æ—¶çš„é”è‡ªåŠ¨é‡Šæ”¾
+// æ³¨:locked_at æ˜¯ 'YYYY-MM-DD HH:mm:ss' å­—ç¬¦ä¸²,SQLite å­—ç¬¦ä¸²æ¯”è¾ƒèƒ½æ­£ç¡®å·¥ä½œ
+// [2026-06-20 fix#åç«¯-P1-1] .unref() é˜²æ­¢é˜»å¡ Node ä¼˜é›…é€€å‡º
 const LOCK_TIMEOUT_HOURS = 2;
 const LOCK_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 setInterval(() => {
@@ -5859,28 +5859,28 @@ setInterval(() => {
       [`-${LOCK_TIMEOUT_HOURS} hours`]
     );
     if (result.changes > 0) {
-      console.log(`[lock-cleanup] ×Ô¶¯ÊÍ·Å ${result.changes} Ìõ¹ıÆÚËø`);
-      // Í¨ÖªËùÓĞ¿Í»§¶Ë:Ëø±ä»¯
+      console.log(`[lock-cleanup] è‡ªåŠ¨é‡Šæ”¾ ${result.changes} æ¡è¿‡æœŸé”`);
+      // é€šçŸ¥æ‰€æœ‰å®¢æˆ·ç«¯:é”å˜åŒ–
       try {
         const daily = db.all("SELECT * FROM schedule_daily WHERE locked_by_user_id IS NOT NULL");
         broadcastSection('schedule_sewing', daily);
-      } catch (_) { /* ¹ã²¥Ê§°Ü²»Ó°ÏìÖ÷Â·¾¶ */ }
+      } catch (_) { /* å¹¿æ’­å¤±è´¥ä¸å½±å“ä¸»è·¯å¾„ */ }
     }
   } catch (e) {
     console.error('[lock-cleanup] error:', e && e.message);
   }
-}, LOCK_CLEANUP_INTERVAL_MS).unref();  // ²»×èÖ¹½ø³ÌÍË³ö
+}, LOCK_CLEANUP_INTERVAL_MS).unref();  // ä¸é˜»æ­¢è¿›ç¨‹é€€å‡º
 
 // ============================================================
 // START
 // ============================================================
 httpServer.listen(PORT, () => {
   console.log(`
-  ¨X¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨[
-  ¨U  ÖÆÒÂ¹¤³§Éú²úÅÅ³ÌÏµÍ³ V2                  ¨U
-  ¨U  Server: http://localhost:${PORT}           ¨U
-  ¨U  WebSocket: ws://localhost:${PORT}          ¨U
-  ¨U  Auth: ${AUTH_ENABLED ? 'ENABLED' : 'DISABLED'}                      ¨U
-  ¨^¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨a
+  â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+  â•‘  åˆ¶è¡£å·¥å‚ç”Ÿäº§æ’ç¨‹ç³»ç»Ÿ V2                  â•‘
+  â•‘  Server: http://localhost:${PORT}           â•‘
+  â•‘  WebSocket: ws://localhost:${PORT}          â•‘
+  â•‘  Auth: ${AUTH_ENABLED ? 'ENABLED' : 'DISABLED'}                      â•‘
+  â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   `);
 });

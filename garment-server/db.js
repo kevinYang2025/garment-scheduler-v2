@@ -1022,8 +1022,8 @@ function seedUsers() {
   const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   if (count > 0) return;
 
-  const adminHash = bcrypt.hashSync('admin123', 12);
-  const defaultHash = bcrypt.hashSync('123456', 12);
+  const adminHash = bcrypt.hashSync('admin123', 10);
+  const defaultHash = bcrypt.hashSync('123456', 10);
 
   const ins = db.prepare(`INSERT INTO users (username, pin, password_hash, display_name, role, workshop, active)
     VALUES (?, ?, ?, ?, ?, ?, 1)`);
@@ -1048,7 +1048,7 @@ function seedUsers() {
     ins.run('sup_sewing_02', null, defaultHash, '缝制主任02', 'supervisor', 'sewing');
 
     // 7 dispatcher(裁/印/绣/模/烫 + 缝制 × 2)
-    const defaultPinHash = bcrypt.hashSync('1234', 12);
+    const defaultPinHash = bcrypt.hashSync('1234', 10);
     ins.run('101', defaultPinHash, null, '裁剪报工员', 'dispatcher', 'cutting');
     ins.run('102', defaultPinHash, null, '印花报工员', 'dispatcher', 'printing');
     ins.run('103', defaultPinHash, null, '刺绣报工员', 'dispatcher', 'embroidery');
@@ -1069,7 +1069,7 @@ function migratePinHashes() {
   for (const u of users) {
     // bcrypt 哈希以 $2a$/$2b$ 开头，长度 60；如果不是哈希格式则为明文
     if (u.pin && !u.pin.startsWith('$2')) {
-      db.prepare('UPDATE users SET pin = ? WHERE id = ?').run(bcrypt.hashSync(u.pin, 12), u.id);
+      db.prepare('UPDATE users SET pin = ? WHERE id = ?').run(bcrypt.hashSync(u.pin, 10), u.id);
       migrated++;
     }
   }
