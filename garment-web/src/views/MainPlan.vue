@@ -238,6 +238,9 @@ function isFirstOfGroup(row) {
 
 // Re-sync column widths when body rows change
 watch(filteredPlans, () => { setTimeout(syncColWidths, 0) })
+// [2026-06-20 fix#前端-P3-3] 监听 form.plan_qty + form.due_date 自动触发 autoCalcDates (debounced)
+// 替代手动 @change + onStyleSelect 双调用,统一由 watch 触发
+watch([() => form.value.plan_qty, () => form.value.due_date], () => scheduleAutoCalc())
 
 async function load() {
   loading.value = true
@@ -305,6 +308,15 @@ async function loadConfig() {
   } catch (e) { /* use defaults */ }
 }
 
+// [2026-06-20 fix#前端-P3-3] autoCalcDates 加 100ms debounce
+// onStyleSelect 设 plan_qty+due_date 会触发 @change=autoCalcDates + onStyleSelect 自己也调一次
+// 改 debounce 把同 tick 内多次合并,避免重复计算
+let _autoCalcTimer = null
+function scheduleAutoCalc() {
+  if (_autoCalcTimer) clearTimeout(_autoCalcTimer)
+  _autoCalcTimer = setTimeout(() => { _autoCalcTimer = null; autoCalcDates() }, 100)
+}
+
 async function autoCalcDates() {
   if (!form.value.due_date) return
   await loadConfig()
@@ -365,7 +377,7 @@ function onStyleSelect(s) {
   selectedStyle.value = s
   form.value.plan_qty = s.plan_qty
   form.value.due_date = s.due_date
-  autoCalcDates()
+  // [2026-06-20 fix#前端-P3-3] 由 watch([plan_qty, due_date]) 自动 scheduleAutoCalc,无需手动调
 }
 
 async function save() {
@@ -740,7 +752,7 @@ onUnmounted(() => {
           </el-col>
           <el-col :span="8">
             <el-form-item label="交期">
-              <el-date-picker v-model="form.due_date" type="date" value-format="YYYY-MM-DD" style="width:100%" @change="autoCalcDates" />
+              <el-date-picker v-model="form.due_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
