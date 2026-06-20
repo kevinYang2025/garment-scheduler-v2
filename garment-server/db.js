@@ -1468,9 +1468,13 @@ function isWorkday(dateStr) {
 }
 
 function addWorkdays(startDate, days) {
+  // [2026-06-20 fix#后端-P1-6] 入参防御 + 循环上限 1000,防异常 plan_qty 触发长循环
+  //   之前 guard=days*3+365,days=1000 → 3365 次循环,每次 isWorkday 查库
+  //   现:days 上限 365,guard 上限 1000
+  days = Math.max(0, Math.min(365, parseInt(days) || 0));
   let current = new Date(startDate + 'T00:00:00');
   let remaining = days;
-  let guard = days * 3 + 365;
+  let guard = 1000;
   while (remaining > 0 && guard-- > 0) {
     current.setDate(current.getDate() + 1);
     const y = current.getFullYear();
