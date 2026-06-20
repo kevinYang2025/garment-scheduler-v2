@@ -5501,7 +5501,8 @@ if (AUTH_ENABLED) {
     if (session && session.user) return next();
     // 也接受 Bearer token(供外部工具/CLI 调用)
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-    if (token === API_TOKEN) return next();
+    // [2026-06-20 fix#后端-P2-6] 用 timingSafeEqual 防时序攻击泄露 token 长度
+    if (typeof token === 'string' && token.length === API_TOKEN.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(API_TOKEN))) return next();
     return next(new Error('Unauthorized'));
   });
 }
