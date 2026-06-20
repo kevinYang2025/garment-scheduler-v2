@@ -5518,6 +5518,18 @@ app.get('/api/workday-check', (req, res) => {
   } catch (e) { console.error('GET /api/workday-check error:', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// 返回当前启用的工作日历数据（前端本地计算 addWorkdays 用）
+app.get('/api/work-calendar/current', (req, res) => {
+  try {
+    const cal = db.get('SELECT work_days, start_date, end_date FROM work_calendars WHERE enabled = 1 ORDER BY priority DESC LIMIT 1');
+    const exceptions = cal ? db.all('SELECT exception_date, is_workday FROM calendar_exceptions WHERE calendar_id = (SELECT id FROM work_calendars WHERE enabled = 1 ORDER BY priority DESC LIMIT 1)') : [];
+    res.json({
+      work_days: cal?.work_days || '1111100',
+      exceptions: exceptions.map(e => ({ date: e.exception_date, is_workday: e.is_workday })),
+    });
+  } catch (e) { console.error('GET /api/work-calendar/current error:', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ============================================================
 // 甘特图字段配置
 // ============================================================
@@ -5785,11 +5797,15 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
     }))
 
     // 未排班项：main_plan 中尚未排程的（JOIN styles 获取颜色/规格）
+    // [2026-06-20 fix#业务-#] 排除 style_id 已在 schedule_master sewing 的:
+    //   当 backup/restore 漏回填 is_scheduled=1 标志位时,这些 plan 在 gantt
+    //   班组里能正常显示(有 master),但底部未排列表会把它们重复算成"未排"
     const unscheduled = db.all(`SELECT mp.id as planId, mp.style_no as styleNo, mp.product_name as productName,
       s.color, s.size_spec as sizeSpec, mp.plan_qty as planQty, mp.due_date as dueDate
       FROM main_plan mp
       LEFT JOIN styles s ON mp.style_id = s.id
-      WHERE mp.is_scheduled = 0 OR mp.is_scheduled IS NULL
+      WHERE (mp.is_scheduled = 0 OR mp.is_scheduled IS NULL)
+        AND mp.style_id NOT IN (SELECT DISTINCT style_id FROM schedule_master WHERE schedule_type='sewing')
       ORDER BY mp.due_date`);
     // 工作日历：返回当前启用的工作日模式
     const cal = db.get('SELECT work_days, start_date, end_date FROM work_calendars WHERE enabled = 1 ORDER BY priority DESC LIMIT 1');
