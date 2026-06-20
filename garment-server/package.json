@@ -2,6 +2,8 @@
   "name": "garment-scheduler",
   "version": "1.0.0",
   "description": "制衣工厂生产排程系统 - 多人协作版",
+  "license": "UNLICENSED",
+  "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
