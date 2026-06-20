@@ -675,9 +675,18 @@ const dict = {
 // 翻译函数
 // mode: 'zh' | 'km' | 'both' (both: 返回 'zh\nkm')
 // params: 可选占位符 {name} {user} 等,在 zh 和 km 中都替换
+// [2026-06-20 fix#业务-P3-3] 缺失 key 检测:每次调用记录到 __missingI18nKeys,开发期 console.warn 一次
+const __missingI18nKeys = new Set()
+export function getMissingI18nKeys() { return [...__missingI18nKeys] }
 export function t(key, mode = 'both', params) {
   const entry = dict[key]
-  if (!entry) return key  // 找不到返回 key 本身 (避免误显示)
+  if (!entry) {
+    if (!__missingI18nKeys.has(key)) {
+      __missingI18nKeys.add(key)
+      if (import.meta.env?.DEV) console.warn(`[i18n] missing key: ${key}`)
+    }
+    return key
+  }
   const apply = (s) => params ? s.replace(/\{(\w+)\}/g, (_, k) => params[k] != null ? params[k] : `{${k}}`) : s
   if (mode === 'zh') return apply(entry.zh)
   if (mode === 'km') return apply(entry.km)
