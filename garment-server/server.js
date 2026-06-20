@@ -1826,6 +1826,10 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
 
       let curDay = '';
       let remain = sec.standard;
+      // [2026-06-20 fix#业务-P1-4 注释] curDay 在 for (sec) 循环内声明,
+      //   三个 secondary 工序(printing/embroidery/template)各自独立 curDay → 已并行
+      // 款式级 curDay 推进是模拟"机器共享":多个款式排队等同一台机器(产能 cap.standard)
+      // 如果未来需要完全"每款式独立"模式,可加 ?parallelLines=true 参数
       for (const item of items) {
         if (!curDay || item.start > curDay) {
           curDay = item.start;
