@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import ExcelTable from '../components/ExcelTable.vue'
@@ -8,10 +8,17 @@ import { useI18n } from '../composables/useI18n'
 import { formatLocal as fmtLocal } from '../utils/date'
 
 const { t } = useI18n()
+const route = useRoute()
 
 const props = defineProps({
-  warehouseType: { type: String, required: true },
+  warehouseType: { type: String, default: '' },
 })
+
+// [2026-06-20 fix#前端-#] 兜底:props 缺失时从 route.params 取
+//   router redirect 配置 params: { type: 'cutting_piece' } 不被部分 Vue Router 版本
+//   继承到目标路由 → props.warehouseType=undefined → API /undefined/... → 400
+const effectiveType = computed(() => props.warehouseType || route.params.type || 'cutting_piece')
+watch(effectiveType, () => { loadAll() })
 
 const router = useRouter()
 const emit = defineEmits(['navigate'])
@@ -30,8 +37,8 @@ const warehouseMeta = {
   finished: { label: '成品库', unit: '件' },
 }
 
-const meta = computed(() => warehouseMeta[props.warehouseType] || { label: '', unit: '' })
-const isFabric = computed(() => props.warehouseType === 'raw_material')
+const meta = computed(() => warehouseMeta[effectiveType.value] || { label: '', unit: '' })
+const isFabric = computed(() => effectiveType.value === 'raw_material')
 
 const currentTab = ref('inventory')
 const inbound = ref([])
@@ -176,7 +183,7 @@ async function searchInventoryStyles(keyword) {
     styleLoading.value = true
     try {
       // [2026-06-20 段13 M-2] keyword+in_stock 全部走后端 SQL(替代 .filter)
-      const { data } = await api.getWarehouseInventory(props.warehouseType, { keyword: keyword || '', in_stock: '1' })
+      const { data } = await api.getWarehouseInventory(effectiveType.value, { keyword: keyword || '', in_stock: '1' })
       outboundStyleOptions.value = Array.isArray(data) ? data : []
     } catch {
       outboundStyleOptions.value = []
@@ -227,7 +234,7 @@ function onFabricSelect(form, val) {
 
 async function loadInbound() {
   try {
-    const { data } = await api.getWarehouseInbound(props.warehouseType)
+    const { data } = await api.getWarehouseInbound(effectiveType.value)
     inbound.value = Array.isArray(data) ? data : []
   } catch {
     ElMessage.error(t('wh.toast.loadInboundFail'))
@@ -236,7 +243,7 @@ async function loadInbound() {
 
 async function loadOutbound() {
   try {
-    const { data } = await api.getWarehouseOutbound(props.warehouseType)
+    const { data } = await api.getWarehouseOutbound(effectiveType.value)
     outbound.value = Array.isArray(data) ? data : []
   } catch {
     ElMessage.error(t('wh.toast.loadOutboundFail'))
@@ -245,7 +252,7 @@ async function loadOutbound() {
 
 async function loadInventory() {
   try {
-    const { data } = await api.getWarehouseInventory(props.warehouseType)
+    const { data } = await api.getWarehouseInventory(effectiveType.value)
     inventory.value = Array.isArray(data) ? data : []
   } catch {
     ElMessage.error(t('wh.toast.loadInvFail'))
@@ -305,7 +312,7 @@ async function saveInbound() {
   try {
     const f = inboundForm.value
     const { data } = await api.createAsn({
-      warehouse_type: props.warehouseType,
+      warehouse_type: effectiveType.value,
       supplier: f.supplier || '',
       expected_date: f.inbound_date || '',
       remark: f.remark || '',
@@ -346,7 +353,7 @@ async function saveOutbound() {
   try {
     const f = outboundForm.value
     const { data } = await api.createDn({
-      warehouse_type: props.warehouseType,
+      warehouse_type: effectiveType.value,
       customer: f.customer || '',
       ship_date: f.outbound_date || '',
       remark: f.remark || '',
@@ -407,7 +414,7 @@ function onOutboundStyleChange(val) {
 
 // Export
 function doExport(sheet) {
-  api.downloadFile(`/warehouse/${props.warehouseType}/export`, sheet ? { sheet } : null, `${props.warehouseType}-inventory.xlsx`)
+  api.downloadFile(`/warehouse/${effectiveType.value}/export`, sheet ? { sheet } : null, `${effectiveType.value}-inventory.xlsx`)
 }
 
 // Import
@@ -459,7 +466,7 @@ async function confirmImport() {
   if (!importPreview.value?.length) return
   importing.value = true
   try {
-    const { data } = await api.importWarehouse(props.warehouseType, importPreview.value)
+    const { data } = await api.importWarehouse(effectiveType.value, importPreview.value)
     ElMessage.success(t('wh.toast.importOk', null, { count: data.imported }))
     importDialogVisible.value = false
     importPreview.value = null
@@ -471,7 +478,7 @@ async function confirmImport() {
   importing.value = false
 }
 
-watch(() => props.warehouseType, loadAll)
+watch(() => effectiveType.value, loadAll)
 onMounted(loadAll)
 </script>
 
@@ -487,7 +494,7 @@ onMounted(loadAll)
       </div>
       <div class="header-actions">
         <el-button
-          v-if="hasPermission(`warehouse:${warehouseType}:inbound`)"
+          v-if="hasPermission(`warehouse:${effectiveType}:inbound`)"
           type="primary"
           size="large"
           @click="openInbound"
@@ -495,7 +502,7 @@ onMounted(loadAll)
           {{ t('wh.inboundBtn') }}
         </el-button>
         <el-button
-          v-if="hasPermission(`warehouse:${warehouseType}:outbound`)"
+          v-if="hasPermission(`warehouse:${effectiveType}:outbound`)"
           type="warning"
           size="large"
           @click="openOutbound"

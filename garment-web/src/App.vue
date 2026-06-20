@@ -223,6 +223,9 @@ const roleBilingual = computed(() => {
 
 // ==================== 事件处理 ====================
 function enterModule(name) {
+  // [2026-06-20 fix#前端-#] warehouse 是 redirect 路由,需带 params 才能进 cutting_piece
+  //   router.push({ name }) 只跳名字不传 params,redirect 时 params 空 → /warehouse/undefined → 400
+  if (name === 'warehouse') return router.push({ name: 'warehouse-detail', params: { type: 'cutting_piece' } })
   router.push({ name })
 }
 function goHome() {

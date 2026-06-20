@@ -1,5 +1,8 @@
 <template>
   <div class="sewing-dispatch-home">
+    <button class="back-btn" @click="$router.push({ name: 'dispatch' })">
+      <span style="margin-right:4px">←</span> {{ t('common.back') }}
+    </button>
     <div class="sdh-header">
       <h2 class="sdh-title" style="white-space: pre-line">{{ t('nav.sewingDispatch') }}</h2>
       <p class="sdh-desc" style="white-space: pre-line">{{ t('sewingDispatch.selectDesc') }}</p>
@@ -38,6 +41,21 @@ const workshops = computed(() => [
 
 <style scoped>
 .sewing-dispatch-home { max-width: 800px; padding: 40px 20px; }
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0;
+  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color .15s;
+}
+.back-btn:hover { color: var(--primary, #6e3ff3); }
 .sdh-header { text-align: center; margin-bottom: 40px; }
 .sdh-title { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 6px; }
 .sdh-desc { font-size: 14px; color: #6b7280; }
