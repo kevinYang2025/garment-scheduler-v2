@@ -82,9 +82,9 @@ async function loadScheduleStyles() {
 async function loadRecords() {
   loading.value = true
   try {
-    const { data } = await api.getActual('secondary')
+    // [2026-06-20 段14 M-2] secondary_type 走后端 SQL(替代 .filter)
+    const { data } = await api.getActual('secondary', '', undefined, config.value.name)
     records.value = (data || [])
-      .filter(r => r.secondary_type === config.value.name)
       .sort((a, b) => (b.production_date || '').localeCompare(a.production_date || ''))
   } catch (e) {
     console.error('加载报工记录失败:', e)
