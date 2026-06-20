@@ -15,7 +15,7 @@ const emit = defineEmits(['navigate'])
 const auth = useAuthStore()
 const { t, setMode, mode } = useI18n()
 
-const stats = ref({ styles: 0, mainPlan: 0, workshops: 0, lines: 0, busyLines: 0 })
+const stats = ref({ styles: 0, mainPlan: 0, workshops: 0, lines: 0, busyLines: 0, cutPieces: 0, cutPiecesInbound: 0, cutPiecesOutbound: 0 })
 const achievementData = ref(null)
 const mainPlanData = ref([])
 const productionLines = ref([])
@@ -52,12 +52,15 @@ function onOverlayClick() { openMenu.value = null }
 
 async function loadData() {
   try {
-    const [stylesRes, planRes, linesRes, workshopsRes, achRes] = await Promise.all([
+    const [stylesRes, planRes, linesRes, workshopsRes, achRes, whRes, ibRes, obRes] = await Promise.all([
       api.getStyles(''),
       api.getMainPlan(),
       api.getProductionLines(),
       api.getWorkshops(),
       api.getAchievementRate().catch(() => ({ data: null })),
+      api.getWarehouseInventory('cutting_piece').catch(() => ({ data: [] })),
+      api.getWarehouseInbound('cutting_piece').catch(() => ({ data: [] })),
+      api.getWarehouseOutbound('cutting_piece').catch(() => ({ data: [] })),
     ])
     stats.value.styles = stylesRes.data?.length || 0
     stats.value.mainPlan = planRes.data?.length || 0
@@ -68,6 +71,16 @@ async function loadData() {
     stats.value.lines = linesRes.data?.length || 0
     stats.value.busyLines = linesRes.data?.filter(l => l.status === '生产中')?.length || 0
     achievementData.value = achRes.data
+    // [2026-06-19] 裁片库统计
+    const inv = whRes.data || []
+    const today = new Date().toISOString().slice(0, 10)
+    stats.value.cutPieces = inv.reduce((s, r) => s + (r.current_qty || 0), 0)
+    stats.value.cutPiecesInbound = (ibRes.data || [])
+      .filter(r => (r.inbound_date || '').slice(0, 10) === today)
+      .reduce((s, r) => s + (r.qty || 0), 0)
+    stats.value.cutPiecesOutbound = (obRes.data || [])
+      .filter(r => (r.outbound_date || '').slice(0, 10) === today)
+      .reduce((s, r) => s + (r.qty || 0), 0)
   } catch { /* ignore */ }
 }
 
@@ -87,7 +100,7 @@ const processRateOption = computed(() => {
   ].map(c => ({ ...c, label: t(c.labelKey) }))
   const pieTipFmt = t('entry.pie.tooltip', 'zh')
   return {
-    tooltip: { trigger: 'axis', formatter: (params) => {
+    tooltip: { trigger: 'axis', appendToBody: true, formatter: (params) => {
       let h = `<b>${params[0].axisValue}</b><br/>`
       params.forEach(p => { h += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
       return h
@@ -113,7 +126,7 @@ const sewingWorkshopOption = computed(() => {
   const suffix = t('entry.workshopSuffix', 'zh')
   const wssLabel = wss.map(w => w + suffix)
   return {
-    tooltip: { trigger: 'axis', formatter: (params) => {
+    tooltip: { trigger: 'axis', appendToBody: true, formatter: (params) => {
       let h = `<b>${params[0].axisValue}</b><br/>`
       params.forEach(p => { h += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
       return h
@@ -173,7 +186,7 @@ const weekday = computed(() => {
 })
 const serviceStatus = computed(() => ({ color: '#22c55e', labelKey: 'entry.welcome.ok' }))
 
-// 4 张模块卡
+// 5 张模块卡(第二行 4+1,新增加 裁片库)
 const moduleCards = computed(() => [
   {
     key: 'basicData', labelKey: 'nav.group.basicData', bg: 'linear-gradient(135deg, #fda4af, #fb7185)',
@@ -195,6 +208,13 @@ const moduleCards = computed(() => [
     labelAKey: 'entry.moduleCard.todayDispatch', valueA: '+232', typeA: 'up',
     labelBKey: 'entry.moduleCard.defectRate', valueB: '1.2%', typeB: 'down',
     progColorA: '#fb923c', progColorB: '#ef4444', progAW: 80, progBW: 20
+  },
+  {
+    key: 'warehouse', labelKey: 'nav.warehouse', bg: 'linear-gradient(135deg, #14b8a6, #0d9488)',
+    main: stats.value.cutPieces, mainUnitKey: 'entry.unit.piece',
+    labelAKey: 'entry.moduleCard.inbound', valueA: '+' + stats.value.cutPiecesInbound, typeA: 'up',
+    labelBKey: 'entry.moduleCard.outbound', valueB: '-' + stats.value.cutPiecesOutbound, typeB: 'down',
+    progColorA: '#14b8a6', progColorB: '#fbbf24', progAW: 65, progBW: 35
   },
   {
     key: 'config', labelKey: 'nav.group.settings', bg: 'linear-gradient(135deg, #6366f1, #4338ca)',
@@ -614,7 +634,8 @@ onMounted(loadData)
   flex: 1;
   padding: 12px 16px 16px;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
+  position: relative;
 }
 .panel-chart { width: 100%; height: 100% !important; min-height: 140px; }
 .panel-empty { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 140px; color: #a1a1aa; font-size: 13px; }
@@ -648,7 +669,7 @@ onMounted(loadData)
 
 .row-modules {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   flex: 1;
   min-height: 0;
@@ -726,6 +747,9 @@ onMounted(loadData)
 }
 .mod-fab:hover { transform: scale(1.08); }
 
+@media (max-width: 1400px) {
+  .row-modules { grid-template-columns: repeat(5, 1fr); }
+}
 @media (max-width: 1100px) {
   .row-workbench { grid-template-columns: 1fr 1fr; }
   .wb-user-card { grid-column: 1 / -1; }

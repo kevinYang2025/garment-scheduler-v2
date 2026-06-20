@@ -21,6 +21,7 @@ const columns = [
   { field: 'size_spec', label: '规格', width: 80, type: 'text' },
   { field: 'color', label: '颜色', width: 150, type: 'text' },
   { field: 'plan_qty', label: '原单量', width: 100, type: 'number' },
+  { field: 'cutting_param', label: '裁剪参数', width: 100, type: 'number' },
 ]
 
 // 编辑
@@ -237,6 +238,11 @@ function cancelEdit() {
   editForm.value = {}
 }
 async function saveEdit() {
+  // [2026-06-19] 裁剪参数必须 ≥ 原单数
+  if (parseInt(editForm.value.cutting_param) > 0 && parseInt(editForm.value.cutting_param) < parseInt(editForm.value.plan_qty)) {
+    ElMessage.error('裁剪参数不能小于原单量')
+    return
+  }
   try {
     await api.put(`/style-color-size/${editForm.value.id}`, editForm.value)
     ElMessage.success('修改成功')
@@ -266,13 +272,18 @@ const createForm = ref({})
 function openCreate() {
   createForm.value = {
     order_date: '', style_no: '', due_date: '', product_name: '',
-    size_spec: '', color: '', plan_qty: 0,
+    size_spec: '', color: '', plan_qty: 0, cutting_param: 0,
   }
   createDialogVisible.value = true
 }
 
 async function doCreate() {
   if (!createForm.value.style_no) { ElMessage.warning('请输入款式'); return }
+  // [2026-06-19] 裁剪参数必须 ≥ 原单数
+  if (parseInt(createForm.value.cutting_param) > 0 && parseInt(createForm.value.cutting_param) < parseInt(createForm.value.plan_qty)) {
+    ElMessage.error('裁剪参数不能小于原单量')
+    return
+  }
   try {
     await api.post('/style-color-size', createForm.value)
     ElMessage.success('新增成功')
@@ -299,7 +310,7 @@ async function doImportParse() {
     const headers = rows[0]
     const headerMap = {
       '订单日期': 'order_date', '款式': 'style_no', '交期': 'due_date',
-      '产品名': 'product_name', '规格': 'size_spec', '颜色': 'color', '原单量': 'plan_qty',
+      '产品名': 'product_name', '规格': 'size_spec', '颜色': 'color', '原单量': 'plan_qty', '裁剪参数': 'cutting_param',
     }
     const colMap = {}
     headers.forEach((h, i) => { if (headerMap[h]) colMap[i] = headerMap[h] })

@@ -16,6 +16,11 @@ const cuttingStyles = ref([])    // 裁剪排程的款式/颜色/尺码选项
 const loading = ref(false)
 const saving = ref(false)
 
+// [2026-06-19] 裁剪完成进度对比(二检已拆独立页,本页只一检 + 进度对比)
+const completionRows = ref([])
+const completionLoading = ref(false)
+const comparisonTab = ref('records') // 'records' | 'progress'
+
 // 录入表单
 const showEntry = ref(false)
 const form = ref(getDefaultForm())
@@ -28,6 +33,8 @@ function getDefaultForm() {
     completed_qty: 0,
     defect_qty: 0,
     remark: '',
+    is_second_inspection: 0,
+    source_type: '',
   }
 }
 
@@ -88,6 +95,7 @@ async function loadRecords() {
 
 function openAdd(prefill) {
   form.value = { ...getDefaultForm() }
+  form.value.is_second_inspection = 0  // 一检固定为 0,二检走独立页
   if (prefill) {
     form.value.style_no = prefill.style_no || ''
     form.value.color = prefill.color || ''
@@ -104,11 +112,45 @@ async function saveEntry() {
     await api.saveActual(form.value)
     ElMessage.success('报工成功')
     showEntry.value = false
+    // [2026-06-19] 报警:实际报工数 < 原单数
+    await checkUnderOrder()
     await loadRecords()
   } catch (e) {
     ElMessage.error('报工失败: ' + (e.response?.data?.error || e.message))
   }
   saving.value = false
+}
+
+async function checkUnderOrder() {
+  try {
+    const { data } = await api.get('/cutting-completion')
+    const list = data || []
+    const styleNo = form.value.style_no
+    const color = form.value.color || ''
+    const sizeSpec = form.value.size_spec || ''
+    const row = list.find(r =>
+      r.style_no === styleNo && (r.color || '') === color && (r.size_spec || '') === sizeSpec
+    )
+    if (row && row.under_order) {
+      ElMessage.warning(
+        `${styleNo} ${color} ${sizeSpec}: 实际报工数 ${row.first_actual + row.second_actual} < 原单数 ${row.order_qty} (裁剪参数 ${row.cutting_param}),请检查`,
+        { duration: 6000 }
+      )
+    }
+  } catch (e) {
+    console.error('检查裁剪进度失败:', e)
+  }
+}
+
+async function loadCompletion() {
+  completionLoading.value = true
+  try {
+    const { data } = await api.get('/cutting-completion')
+    completionRows.value = (data || []).filter(r => r.under_order === 1 || (r.first_actual + r.second_actual) > 0)
+  } catch (e) {
+    console.error('加载裁剪进度失败:', e)
+  }
+  completionLoading.value = false
 }
 
 async function deleteRecord(row) {
@@ -149,6 +191,13 @@ function scrollToTop() {
 onMounted(async () => {
   await Promise.all([loadCuttingStyles(), loadRecords()])
 })
+
+function switchComparisonTab(tab) {
+  comparisonTab.value = tab
+  if (tab === 'progress' && completionRows.value.length === 0) {
+    loadCompletion()
+  }
+}
 </script>
 
 <template>
@@ -163,8 +212,16 @@ onMounted(async () => {
       </div>
     </div>
 
+    <!-- [2026-06-19] 视图切换:报工记录 / 进度对比 -->
+    <div class="mode-bar">
+      <el-radio-group v-model="comparisonTab" size="large" @change="switchComparisonTab">
+        <el-radio-button value="records">{{ t('cuttingDispatch.recordsTab') }}</el-radio-button>
+        <el-radio-button value="progress">{{ t('cuttingDispatch.progressTab') }}</el-radio-button>
+      </el-radio-group>
+    </div>
+
     <!-- 汇总卡片 -->
-    <div class="summary-bar" v-if="records.length">
+    <div class="summary-bar" v-if="records.length && comparisonTab === 'records'">
       <div class="summary-item">
         <span class="summary-value">{{ records.length }}</span>
         <span class="summary-label" style="white-space:pre-line">{{ t('cuttingDispatch.summary.records') }}</span>
@@ -181,8 +238,45 @@ onMounted(async () => {
 
     <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary)"><span style="white-space:pre-line">{{ t('common.loading') }}</span></div>
 
+    <!-- [2026-06-19] 裁剪完成进度对比表 -->
+    <div v-if="comparisonTab === 'progress'" class="excel-wrap">
+      <table class="excel-table" v-loading="completionLoading">
+        <thead>
+          <tr>
+            <th style="min-width:140px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.styleNo') }}</span></th>
+            <th style="min-width:90px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.color') }}</span></th>
+            <th style="min-width:70px"><span style="white-space:pre-line">{{ t('cuttingDispatch.cols.size') }}</span></th>
+            <th style="min-width:90px"><span style="white-space:pre-line">{{ t('cutting.compare.order') }}</span></th>
+            <th style="min-width:90px"><span style="white-space:pre-line">{{ t('cutting.compare.param') }}</span></th>
+            <th style="min-width:90px;background:#dbeafe"><span style="white-space:pre-line">{{ t('cutting.compare.first') }}</span></th>
+            <th style="min-width:90px;background:#fef3c7"><span style="white-space:pre-line">{{ t('cutting.compare.second') }}</span></th>
+            <th style="min-width:90px"><span style="white-space:pre-line">实际合计</span></th>
+            <th style="min-width:80px"><span style="white-space:pre-line">差额</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(r, idx) in completionRows" :key="`${r.style_no}-${r.color}-${r.size_spec}-${idx}`">
+            <td style="font-weight:600">{{ r.style_no }}</td>
+            <td>{{ r.color || '-' }}</td>
+            <td>{{ r.size_spec || '-' }}</td>
+            <td class="num">{{ r.order_qty.toLocaleString() }}</td>
+            <td class="num">{{ r.cutting_param.toLocaleString() }}</td>
+            <td class="num" style="color:#1e40af;font-weight:600">{{ r.first_actual.toLocaleString() }}</td>
+            <td class="num" style="color:#92400e;font-weight:600">{{ r.second_actual.toLocaleString() }}</td>
+            <td class="num" style="font-weight:700">{{ (r.first_actual + r.second_actual).toLocaleString() }}</td>
+            <td class="num" :style="{ color: r.under_order ? 'var(--danger)' : 'var(--success)' }">
+              {{ r.under_order ? '⚠ ' + ((r.first_actual + r.second_actual) - r.order_qty).toLocaleString() : '✓' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="!completionLoading && completionRows.length === 0" style="text-align:center;padding:40px;color:var(--text-tertiary)">
+        暂无报工数据
+      </div>
+    </div>
+
     <!-- 已录入记录表格 -->
-    <div v-else-if="records.length" class="excel-wrap">
+    <div v-else-if="records.length && comparisonTab === 'records'" class="excel-wrap">
       <table class="excel-table">
         <thead>
           <tr>
@@ -217,7 +311,7 @@ onMounted(async () => {
       </table>
     </div>
 
-    <div v-else style="text-align:center;padding:60px;color:var(--text-tertiary);white-space:pre-line">
+    <div v-else-if="comparisonTab === 'records'" style="text-align:center;padding:60px;color:var(--text-tertiary);white-space:pre-line">
       {{ t('cuttingDispatch.empty') }}
     </div>
 
@@ -295,6 +389,8 @@ onMounted(async () => {
 .summary-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .summary-value { font-size: 24px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .summary-label { font-size: 11px; color: var(--text-tertiary); }
+
+.mode-bar { display: flex; align-items: center; margin-bottom: 12px; flex-shrink: 0; }
 
 .excel-wrap {
   flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card);

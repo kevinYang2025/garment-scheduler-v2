@@ -5,12 +5,14 @@ import api from '../api'
 
 const router = useRouter()
 
-const warehouseTypes = [
+// [2026-06-19] F:只显示裁片库,其它库路由保留(直接访问可用)
+const ALL_WAREHOUSE_TYPES = [
   { key: 'raw_material', label: '面料库', icon: '🧵', unit: '米' },
   { key: 'auxiliary', label: '辅料库', icon: '📎', unit: '个/卷' },
   { key: 'cutting_piece', label: '裁片库', icon: '✂️', unit: '片' },
   { key: 'finished', label: '成品库', icon: '📦', unit: '件' },
 ]
+const warehouseTypes = ALL_WAREHOUSE_TYPES.filter(w => w.key === 'cutting_piece')
 
 const summaries = ref({})
 const loading = ref(true)

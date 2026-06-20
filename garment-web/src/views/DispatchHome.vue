@@ -10,6 +10,11 @@
         <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.cuttingDispatch') }}</div>
         <div class="sdh-card-arrow">→</div>
       </div>
+      <div class="sdh-card" @click="$router.push({ name: 'cutting-second-dispatch' })">
+        <div class="sdh-card-icon">✅</div>
+        <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.cuttingSecondDispatch') }}</div>
+        <div class="sdh-card-arrow">→</div>
+      </div>
       <div class="sdh-card" @click="$router.push({ name: 'printing-dispatch' })">
         <div class="sdh-card-icon">🖨️</div>
         <div class="sdh-card-name" style="white-space: pre-line">{{ t('nav.printingDispatch') }}</div>

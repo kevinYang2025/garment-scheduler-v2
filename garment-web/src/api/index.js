@@ -203,6 +203,8 @@ export default {
   // 系统参数
   getSystemConfig: () => api.get('/system-config'),
   updateSystemConfig: (key, value) => api.put(`/system-config/${key}`, { config_value: value }),
+  getSystemParams: () => api.get('/system-params'),
+  updateSystemParam: (key, value, remark) => api.put(`/system-params/${key}`, { value, remark }),
 
   // 排产策略
   getStrategies: () => api.get('/strategies'),

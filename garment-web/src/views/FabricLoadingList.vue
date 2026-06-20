@@ -400,6 +400,62 @@ function scrollToTop() {
   if (el) el.scrollTop = 0
 }
 
+// [2026-06-19] 裁剪参数设置弹窗
+const cutParamDialogVisible = ref(false)
+const cutParamList = ref([])   // 当前款号的所有 color/size 行
+const cutParamStyle = ref('')  // 当前款号
+const cutParamLoading = ref(false)
+
+async function openCutParam(row) {
+  if (!row.style_no) { ElMessage.warning('该行款号为空'); return }
+  cutParamStyle.value = row.style_no
+  cutParamDialogVisible.value = true
+  cutParamLoading.value = true
+  try {
+    const { data } = await api.get('/style-color-size', { params: { style_no: row.style_no } })
+    // 仅显示分色分尺码(已有 row),且不重复
+    cutParamList.value = (data || []).map(r => ({
+      id: r.id,
+      color: r.color,
+      size_spec: r.size_spec,
+      plan_qty: r.plan_qty || 0,
+      cutting_param: r.cutting_param > 0 ? r.cutting_param : (r.plan_qty || 0),
+    }))
+  } catch (e) {
+    ElMessage.error('加载分色分尺码失败')
+    cutParamList.value = []
+  }
+  cutParamLoading.value = false
+}
+
+async function saveCutParam() {
+  // 校验: 全部 cutting_param ≥ plan_qty
+  for (const r of cutParamList.value) {
+    if (parseInt(r.cutting_param) > 0 && parseInt(r.cutting_param) < parseInt(r.plan_qty)) {
+      ElMessage.error(`颜色 ${r.color} 规格 ${r.size_spec} 的裁剪参数不能小于原单量`)
+      return
+    }
+  }
+  cutParamSaving.value = true
+  let ok = 0, fail = 0
+  for (const r of cutParamList.value) {
+    if (!r.id) continue
+    try {
+      await api.put(`/style-color-size/${r.id}`, { cutting_param: parseInt(r.cutting_param) || 0 })
+      ok++
+    } catch (e) { fail++ }
+  }
+  cutParamSaving.value = false
+  if (fail === 0) {
+    ElMessage.success(`已保存 ${ok} 行裁剪参数`)
+    cutParamDialogVisible.value = false
+  } else {
+    ElMessage.warning(`保存 ${ok} 成功, ${fail} 失败`)
+  }
+}
+
+const cutParamSaving = ref(false)
+
 // Drag-to-scroll
 let dragging = false, dragX = 0, dragY = 0, dragSL = 0, dragST = 0, dragWrap = null
 function onDragStart(e) {
@@ -487,13 +543,14 @@ onUnmounted(() => {
                 <span v-else>{{ row[col.field] }}</span>
               </template>
             </td>
-            <td class="action-cell" style="width:120px">
+            <td class="action-cell" style="width:180px">
               <template v-if="editingId === row.id">
                 <el-button size="small" text type="primary" @click="saveEdit">保存</el-button>
                 <el-button size="small" text @click="cancelEdit">取消</el-button>
               </template>
               <template v-else>
                 <el-button size="small" text @click="startEdit(row)">编辑</el-button>
+                <el-button size="small" text @click="openCutParam(row)">裁剪参数</el-button>
                 <el-button size="small" text type="danger" @click="remove(row.id)">删除</el-button>
               </template>
             </td>
@@ -558,6 +615,27 @@ onUnmounted(() => {
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="confirmImport" :loading="importing" :disabled="!importPreview?.length">确认导入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- [2026-06-19] 裁剪参数设置弹窗 -->
+    <el-dialog v-model="cutParamDialogVisible" :title="`裁剪参数 - ${cutParamStyle}`" width="640px" destroy-on-close>
+      <p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px">
+        裁剪参数必须 ≥ 原单量(系统规定裁剪数不能低于原单数)。保存后写入分色分尺码,二次加工排程将按此数计算。
+      </p>
+      <el-table :data="cutParamList" v-loading="cutParamLoading" border size="small" max-height="380">
+        <el-table-column prop="color" label="颜色" width="120" />
+        <el-table-column prop="size_spec" label="规格" width="80" />
+        <el-table-column prop="plan_qty" label="原单量" width="80" align="right" />
+        <el-table-column label="裁剪参数" width="160">
+          <template #default="{ row }">
+            <el-input-number v-model="row.cutting_param" :min="0" size="small" controls-position="right" style="width:100%" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="cutParamDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="cutParamSaving" @click="saveCutParam">保存裁剪参数</el-button>
       </template>
     </el-dialog>
   </div>

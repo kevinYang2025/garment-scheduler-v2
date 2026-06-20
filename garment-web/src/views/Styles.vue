@@ -29,6 +29,7 @@ const columns = [
   { field: 'template_daily_output', label: '模板日产量', width: 90, type: 'number' },
   { field: 'tt_time', label: 'TT时间', width: 80, type: 'text' },
   { field: 'target_daily_output', label: '缝制目标日产量', width: 110, type: 'number' },
+  { field: 'has_special_wash', label: '是否特殊水洗', width: 90, type: 'select', options: ['', '是', '否'] },
   { field: 'remarks', label: '备注', width: 120, type: 'text' },
 ]
 
@@ -124,7 +125,7 @@ const sortState = ref({ field: '', sortBy: 'name', dir: 'asc' })
 
 const precomputedOptions = shallowRef({})
 function computeFilterOptions() {
-  const fields = ['style_no', 'product_name', 'fabric_code', 'plan_qty', 'embroidery', 'embroidery_daily_output', 'printing', 'printing_daily_output', 'ironing_label', 'ironing_daily_output', 'template', 'template_daily_output', 'tt_time', 'target_daily_output', 'remarks']
+  const fields = ['style_no', 'product_name', 'fabric_code', 'plan_qty', 'embroidery', 'embroidery_daily_output', 'printing', 'printing_daily_output', 'ironing_label', 'ironing_daily_output', 'template', 'template_daily_output', 'tt_time', 'target_daily_output', 'has_special_wash', 'remarks']
   const result = {}
   for (const f of fields) {
     const map = {}
@@ -262,7 +263,8 @@ function openCreate() {
     printing: '', printing_daily_output: 0,
     ironing_label: '', ironing_daily_output: 0,
     template: '', template_daily_output: 0,
-    tt_time: '', target_daily_output: 0, remarks: ''
+    tt_time: '', target_daily_output: 0,
+    has_special_wash: 0, remarks: ''
   }
   createDialogVisible.value = true
 }
@@ -512,8 +514,21 @@ onUnmounted(() => {
               <template v-if="editingId === row.id"><input class="inp" v-model.number="editForm.target_daily_output" type="number" min="0" /></template>
               <template v-else><span>{{ row.target_daily_output }}</span></template>
             </td>
+            <!-- 特殊水洗(是否) -->
+            <td :style="{ width: columns[17].width + 'px' }" align="center">
+              <template v-if="editingId === row.id">
+                <select v-model="editForm.has_special_wash" class="inp" style="width:60px">
+                  <option :value="1">是</option>
+                  <option :value="0">否</option>
+                </select>
+              </template>
+              <template v-else>
+                <span v-if="row.has_special_wash" style="color:#ef4444;font-weight:600">是</span>
+                <span v-else style="color:#9ca3af">否</span>
+              </template>
+            </td>
             <!-- 备注 -->
-            <td class="text-left" :style="{ width: columns[17].width + 'px' }">
+            <td class="text-left" :style="{ width: columns[18].width + 'px' }">
               <template v-if="editingId === row.id"><input class="inp" v-model="editForm.remarks" /></template>
               <template v-else><span>{{ row.remarks }}</span></template>
             </td>
@@ -578,6 +593,17 @@ onUnmounted(() => {
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="TT时间"><el-input v-model="createForm.tt_time" placeholder="请输入TT时间" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="缝制目标日产量"><el-input-number v-model="createForm.target_daily_output" :min="0" style="width:100%" /></el-form-item></el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="是否特殊水洗">
+              <el-select v-model="createForm.has_special_wash" style="width:100%">
+                <el-option label="是" :value="1" />
+                <el-option label="否" :value="0" />
+              </el-select>
+              <span style="margin-left:12px;color:var(--text-tertiary);font-size:12px">选"是"后裁剪排期自动前置</span>
+            </el-form-item>
+          </el-col>
         </el-row>
         <el-form-item label="备注"><el-input v-model="createForm.remarks" type="textarea" :rows="2" placeholder="请输入备注" /></el-form-item>
       </el-form>

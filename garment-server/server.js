@@ -811,15 +811,15 @@ app.post('/api/styles', requireRole('admin', 'planning_manager', 'planner'), (re
     if (s.id) {
       const existing = db.get('SELECT id FROM styles WHERE id = ?', [s.id]);
       if (!existing) return res.status(404).json({ error: '款式不存在' });
-      db.run(`UPDATE styles SET style_no=?,product_name=?,style_category=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,remarks=? WHERE id=?`,
-        [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'', s.id]);
+      db.run(`UPDATE styles SET style_no=?,product_name=?,style_category=?,fabric_code=?,plan_qty=?,due_date=?,order_date=?,embroidery=?,embroidery_daily_output=?,printing=?,printing_daily_output=?,ironing_label=?,ironing_daily_output=?,template=?,template_daily_output=?,tt_time=?,target_daily_output=?,has_special_wash=?,remarks=? WHERE id=?`,
+        [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, parseInt(s.has_special_wash) || 0, s.remarks||'', s.id]);
       broadcastSection('styles', db.searchStyles(''));
       logOp(req, 'styles', 'update', s.id, s.style_no);
       return res.json({ ok: true, id: s.id });
     }
-    const result = db.run(`INSERT INTO styles (style_no, product_name, style_category, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, remarks)
+    const result = db.run(`INSERT INTO styles (style_no, product_name, style_category, fabric_code, plan_qty, due_date, order_date, embroidery, embroidery_daily_output, printing, printing_daily_output, ironing_label, ironing_daily_output, template, template_daily_output, tt_time, target_daily_output, has_special_wash, remarks)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, s.remarks||'']);
+      [s.style_no, s.product_name, s.style_category||'', s.fabric_code, s.plan_qty || 0, s.due_date, s.order_date||'', s.embroidery||'', s.embroidery_daily_output||0, s.printing||'', s.printing_daily_output||0, s.ironing_label||'', s.ironing_daily_output||0, s.template||'', s.template_daily_output||0, s.tt_time||'', s.target_daily_output||0, parseInt(s.has_special_wash) || 0, s.remarks||'']);
     broadcastSection('styles', db.searchStyles(''));
     logOp(req, 'styles', 'create', result.lastInsertRowid, s.style_no);
     res.json({ ok: true, id: result.lastInsertRowid });
@@ -1364,6 +1364,22 @@ app.put('/api/system-config/:key', requireRole('admin', 'planning_manager'), (re
   } catch (e) { sendError(res, 'PUT /api/system-config/:key', e); }
 });
 
+// [2026-06-19] 通用系统参数(system_params, 区别于 system_config 排程常量)
+app.get('/api/system-params', requireRole('admin', 'planning_manager', 'planner', 'dispatcher', 'supervisor'), (req, res) => {
+  try { res.json(db.listSystemParams()); } catch (e) { sendError(res, 'GET /api/system-params', e); }
+});
+
+app.put('/api/system-params/:key', requireRole('admin', 'planning_manager'), (req, res) => {
+  try {
+    const { key } = req.params;
+    const { value, remark } = req.body;
+    if (value === undefined) return res.status(400).json({ error: 'value 必填' });
+    db.setSystemParam(key, value, remark || '');
+    logOp(req, 'system_params', 'update', null, key, `value=${value}`);
+    res.json({ ok: true, key, value: String(value) });
+  } catch (e) { sendError(res, 'PUT /api/system-params/:key', e); }
+});
+
 // ---------- 预排产算法 ----------
 app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager', 'planner'), (req, res) => {
   try {
@@ -1378,7 +1394,9 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     const IRONING_BUFFER = parseInt(cfg.ironing_buffer_days) || 3;
     const MAX_SEWING_LINES = parseInt(cfg.max_sewing_lines) || 49;
     const DEFAULT_DAILY_TARGET = parseInt(cfg.default_daily_target) || 500;
-    const WORKSHOP_MULTI = parseInt(cfg.workshop_category_multiplier) || 3;
+    // [2026-06-19] 删除 workshop_category_multiplier，直接用班组数作为上限
+    // [2026-06-19] 特殊水洗前置天数 — 款式 has_special_wash=1 时裁剪提前 N 天
+    const SPECIAL_WASH_DAYS = parseInt(db.getSystemParam('special_wash_days')) || 7;
 
     // 1. 获取所有数据
     const loadingList = db.all('SELECT * FROM fabric_loading_list');
@@ -1441,16 +1459,30 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
     }
 
     // ========== Step 1: 裁剪 ==========
+    // [2026-06-19] 裁剪排序：同/近 cutting_start 时，二次加工 + 特殊水洗优先级高
+    function cuttingPriority(sn) {
+      const s = styleMap[sn];
+      if (!s) return 0;
+      const secondary = (s.printing || s.embroidery || s.template) ? 1 : 0;
+      const specialWash = parseInt(s.has_special_wash) > 0 ? 1 : 0;
+      return secondary + specialWash;  // 0=普通, 1=二次加工或特殊水洗, 2=两者都有
+    }
     const cuttingItems = styleNos.map(sn => {
       const li = loadingInfo[sn];
+      const s = styleMap[sn];
+      const offset = s && parseInt(s.has_special_wash) > 0 ? -SPECIAL_WASH_DAYS : 0;
       return {
         style_no: sn,
         qty: getQty(sn),
-        cutting_start: li ? addDays(li.loading_date, LOADING_TO_ARRIVAL + FABRIC_INSPECTION) : '',
+        cutting_start: li ? addDays(li.loading_date, LOADING_TO_ARRIVAL + FABRIC_INSPECTION + offset) : '',
       };
     }).filter(item => item.cutting_start && item.qty > 0);
 
-    cuttingItems.sort((a, b) => a.cutting_start.localeCompare(b.cutting_start) || a.style_no.localeCompare(b.style_no));
+    cuttingItems.sort((a, b) => {
+      const priDiff = cuttingPriority(b.style_no) - cuttingPriority(a.style_no);
+      if (priDiff !== 0) return priDiff;
+      return a.cutting_start.localeCompare(b.cutting_start) || a.style_no.localeCompare(b.style_no);
+    });
 
     const cuttingStandard = cap.cutting || 60000;
     let currentDay = '';
@@ -1640,8 +1672,8 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       const fullLimit = MAX_SEWING_LINES - totalLinesAssigned;
       let catLimit = fullLimit;
       if (styleCategory) {
-        const catRows = db.all("SELECT id FROM sewing_workshop_tree WHERE category = ? AND type = 'category'", [styleCategory]);
-        const totalCatSlots = catRows.length * WORKSHOP_MULTI;
+        const catRows = db.all("SELECT id FROM line_style_categories WHERE name = ?", [styleCategory]);
+        const totalCatSlots = catRows.length; // 直接用班组数，不乘倍率
         const catUsed = categoryUsed[styleCategory] || 0;
         catLimit = Math.min(totalCatSlots - catUsed, fullLimit);
       }
@@ -2217,7 +2249,7 @@ function getSecondaryDailyPlan(secType, req, res) {
     for (const style of activeStyles) {
       const mp = planMap[style.style_no];
       const colorSizes = db.all(
-        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
+        'SELECT color, size_spec, plan_qty, cutting_param FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
         [style.style_no]
       );
       const totalOrderQty = colorSizes.reduce((s, cs) => s + (cs.plan_qty || 0), 0) || style.plan_qty;
@@ -2232,12 +2264,14 @@ function getSecondaryDailyPlan(secType, req, res) {
         due_date: style.due_date || '',
       });
 
-      const csList = colorSizes.length ? colorSizes : [{ color: '', size_spec: '', plan_qty: style.plan_qty }];
+      const csList = colorSizes.length ? colorSizes : [{ color: '', size_spec: '', plan_qty: style.plan_qty, cutting_param: style.plan_qty }];
       const workingDays = Math.floor((new Date(mp.sec_end + 'T00:00:00') - new Date(mp.sec_start + 'T00:00:00')) / 86400000) + 1;
 
       for (const cs of csList) {
         if (cs.plan_qty <= 0) continue;
-        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
+        // [2026-06-19] 排程计算用裁剪参数(原单数仍显示,cutting_param 默认 = order_qty)
+        const cutParam = parseInt(cs.cutting_param) > 0 ? parseInt(cs.cutting_param) : cs.plan_qty;
+        const dailyTarget = workingDays > 0 ? Math.ceil(cutParam / workingDays) : 0;
 
         // 实际产量(从 actual_production 读,过滤 schedule_type=secondary 且匹配 secondary_type)
         const actuals = db.all(
@@ -2251,6 +2285,18 @@ function getSecondaryDailyPlan(secType, req, res) {
         const actualMap = {};
         for (const a of actuals) actualMap[a.production_date] = a.qty || 0;
 
+        // [2026-06-19] 裁剪二检 A品数(从 actual_production 读 is_second_inspection=1 + source_type=此类型)
+        const siActuals = db.all(
+          `SELECT production_date, SUM(completed_qty) as qty
+           FROM actual_production
+           WHERE style_no = ? AND color = ? AND size_spec = ?
+             AND schedule_type = 'cutting' AND is_second_inspection = 1 AND source_type = ?
+           GROUP BY production_date`,
+          [style.style_no, cs.color || '', cs.size_spec || '', secType]
+        );
+        const siMap = {};
+        for (const a of siActuals) siMap[a.production_date] = a.qty || 0;
+
         // 计划覆盖(从专用表 schedule_plan_overrides 读[B-01 fix])
         const overrides = db.all(
           `SELECT production_date, qty
@@ -2262,7 +2308,7 @@ function getSecondaryDailyPlan(secType, req, res) {
         for (const o of overrides) overrideMap[o.production_date] = o.qty;
 
         const dateData = [];
-        let totalPlan = 0, totalActual = 0;
+        let totalPlan = 0, totalActual = 0, totalSecondInspection = 0;
         for (const date of dateRange) {
           let planQty = 0;
           if (overrideMap[date] != null) {
@@ -2271,15 +2317,17 @@ function getSecondaryDailyPlan(secType, req, res) {
             const sd2 = new Date(mp.sec_start + 'T00:00:00');
             const cd = new Date(date + 'T00:00:00');
             const dayIdx = Math.floor((cd - sd2) / 86400000);
-            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
-            const remainder = cs.plan_qty % dailyTarget;
+            const fullDays = Math.floor(cutParam / dailyTarget);
+            const remainder = cutParam % dailyTarget;
             if (dayIdx < fullDays) planQty = dailyTarget;
             else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
           }
           const actualQty = actualMap[date] || 0;
+          const siQty = siMap[date] || 0;
           totalPlan += planQty;
           totalActual += actualQty;
-          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
+          totalSecondInspection += siQty;
+          dateData.push({ date, plan: planQty, actual: actualQty, secondInspection: siQty, diff: actualQty - planQty });
         }
 
         rows.push({
@@ -2288,9 +2336,11 @@ function getSecondaryDailyPlan(secType, req, res) {
           color: cs.color || '',
           size_spec: cs.size_spec || '',
           order_qty: cs.plan_qty,
+          cutting_param: cutParam,
           [`${secType}_start`]: mp.sec_start,
           [`${secType}_end`]: mp.sec_end,
           totalPlan, totalActual, totalDiff: totalActual - totalPlan,
+          totalSecondInspection,
           dateData,
         });
       }
@@ -2833,16 +2883,26 @@ app.post('/api/actual', (req, res) => {
     const r = req.body;
     if (!r.style_no) return res.status(400).json({ error: '款号不能为空' });
     if (!r.production_date) return res.status(400).json({ error: '日期不能为空' });
+    // [2026-06-19] 二检必须指定 source_type
+    if (parseInt(r.is_second_inspection) > 0 && !r.source_type) {
+      return res.status(400).json({ error: '二检报工必须选择来源(印花/刺绣)' });
+    }
 
-    const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [r.schedule_type, r.secondary_type || '', r.style_id || 0, r.style_no, r.color, r.size_spec, r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '', r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '']);
+    const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time, is_second_inspection, source_type)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [r.schedule_type, r.secondary_type || '', r.style_id || 0, r.style_no, r.color, r.size_spec, r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '', r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '',
+       parseInt(r.is_second_inspection) || 0, r.source_type || '']);
 
-    syncActualToDaily(r);
+    const inserted = { id: result.lastInsertRowid, ...r };
+    // [2026-06-19] 报工完成 → 自动入裁片库
+    db.recordCutPiecesInbound(inserted);
+
+    syncActualToDaily(inserted);
     // 自动重算任务状态
     if (r.style_id) {
       db.recalcTaskStatus(r.style_id);
     }
+    logOp(req, 'actual_production', 'create', inserted.id, r.style_no, `qty=${r.completed_qty || 0} ${r.schedule_type}`);
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
@@ -2904,18 +2964,29 @@ app.get('/api/actual/:id', (req, res) => {
   }
 });
 
-app.put('/api/actual/:id', (req, res) => {
+app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
   try {
     const r = req.body;
     const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: '记录不存在' });
 
+    // [2026-06-20] 跨车间拦截:supervisor 只能改自己车间的报工,dispatcher 只能改自己车间的报工
+    const u = req.user;
+    if (u.role !== 'admin') {
+      const needWorkshop = SCHEDULE_TYPE_WORKSHOP[existing.schedule_type];
+      if (needWorkshop && u.workshop !== needWorkshop) {
+        return res.status(403).json({ error: '无权操作其他车间的报工' });
+      }
+    }
+
     const oldStyleId = existing.style_id;
     const newStyleId = r.style_id || oldStyleId;
+    const newIsSecond = r.is_second_inspection != null ? parseInt(r.is_second_inspection) : parseInt(existing.is_second_inspection);
+    const newSourceType = r.source_type != null ? r.source_type : (existing.source_type || '');
 
     db.run(`UPDATE actual_production SET schedule_type=?, secondary_type=?, style_id=?, style_no=?, color=?, size_spec=?,
       production_date=?, completed_qty=?, defect_qty=?, workshop=?, line_team=?, remark=?,
-      worker_name=?, start_time=?, end_time=? WHERE id=?`,
+      worker_name=?, start_time=?, end_time=?, is_second_inspection=?, source_type=? WHERE id=?`,
       [r.schedule_type || existing.schedule_type, r.secondary_type ?? existing.secondary_type,
        newStyleId, r.style_no || existing.style_no,
        r.color ?? existing.color, r.size_spec ?? existing.size_spec,
@@ -2923,11 +2994,23 @@ app.put('/api/actual/:id', (req, res) => {
        r.defect_qty ?? existing.defect_qty, r.workshop ?? existing.workshop,
        r.line_team ?? existing.line_team, r.remark ?? existing.remark,
        r.worker_name ?? existing.worker_name, r.start_time ?? existing.start_time,
-       r.end_time ?? existing.end_time, req.params.id]);
+       r.end_time ?? existing.end_time,
+       newIsSecond, newSourceType, req.params.id]);
+
+    // [2026-06-19] 如果二检标记/数量变了 → 回滚旧入库并按新值重入
+    const oldIsSecond = parseInt(existing.is_second_inspection) || 0;
+    const oldQty = parseInt(existing.completed_qty) || 0;
+    const newQty = r.completed_qty != null ? parseInt(r.completed_qty) : oldQty;
+    if (oldIsSecond !== newIsSecond || oldQty !== newQty) {
+      db.rollbackCutPiecesInbound(existing);
+      const updated = { ...existing, ...r, is_second_inspection: newIsSecond, source_type: newSourceType, completed_qty: newQty };
+      db.recordCutPiecesInbound(updated);
+    }
 
     syncActualToDaily({ ...existing, ...r, style_id: newStyleId });
     if (newStyleId) db.recalcTaskStatus(newStyleId);
     if (oldStyleId && oldStyleId !== newStyleId) db.recalcTaskStatus(oldStyleId);
+    logOp(req, 'actual_production', 'update', req.params.id, existing.style_no, `qty: ${oldQty}→${newQty} ${existing.schedule_type}`);
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true });
   } catch (e) {
@@ -2940,6 +3023,13 @@ app.delete('/api/actual/:id', (req, res) => {
   try {
     const existing = db.get('SELECT * FROM actual_production WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: '记录不存在' });
+
+    // [2026-06-19] 已出库则拒
+    const check = db.checkActualDeletable(existing);
+    if (!check.ok) return res.status(400).json({ error: check.error });
+
+    // [2026-06-19] 回滚裁片库入库
+    db.rollbackCutPiecesInbound(existing);
 
     db.run('DELETE FROM actual_production WHERE id = ?', [req.params.id]);
 
@@ -2970,11 +3060,14 @@ app.post('/api/actual/batch', (req, res) => {
     const styleIds = new Set();
     for (const r of records) {
       if (!r.style_no || !r.production_date) continue;
-      const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      const result = db.run(`INSERT INTO actual_production (schedule_type, secondary_type, style_id, style_no, color, size_spec, production_date, completed_qty, defect_qty, workshop, line_team, remark, worker_name, start_time, end_time, is_second_inspection, source_type)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [r.schedule_type || '', r.secondary_type || '', r.style_id || 0, r.style_no, r.color || '', r.size_spec || '',
          r.production_date, r.completed_qty || 0, r.defect_qty || 0, r.workshop || '',
-         r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '']);
+         r.line_team || '', r.remark || '', r.worker_name || '', r.start_time || '', r.end_time || '',
+         parseInt(r.is_second_inspection) || 0, r.source_type || '']);
+      // [2026-06-19] 报工完成 → 自动入裁片库
+      db.recordCutPiecesInbound({ id: result.lastInsertRowid, ...r });
       syncActualToDaily(r);
       if (r.style_id) styleIds.add(r.style_id);
       inserted++;
@@ -3060,6 +3153,34 @@ app.get('/api/dispatch-alerts', (req, res) => {
     res.json(rows);
   } catch (e) {
     console.error('GET /api/dispatch-alerts error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// [2026-06-19] 裁剪完成度对比：实际报工数 vs 裁剪参数 vs 原单数
+// 用于 CuttingDispatch 报警：实际 < 原单数 红色提示
+app.get('/api/cutting-completion', (req, res) => {
+  try {
+    const rows = db.all(`
+      SELECT
+        scs.style_no, scs.color, scs.size_spec,
+        scs.plan_qty AS order_qty,
+        scs.cutting_param,
+        COALESCE(SUM(CASE WHEN ap.schedule_type = 'cutting' AND COALESCE(ap.is_second_inspection, 0) = 0 THEN ap.completed_qty ELSE 0 END), 0) AS first_actual,
+        COALESCE(SUM(CASE WHEN ap.schedule_type = 'cutting' AND COALESCE(ap.is_second_inspection, 0) = 1 THEN ap.completed_qty ELSE 0 END), 0) AS second_actual,
+        CASE WHEN scs.plan_qty > 0 AND
+          COALESCE(SUM(CASE WHEN ap.schedule_type = 'cutting' AND COALESCE(ap.is_second_inspection, 0) = 0 THEN ap.completed_qty ELSE 0 END), 0) < scs.plan_qty
+          THEN 1 ELSE 0 END AS under_order
+      FROM style_color_size scs
+      LEFT JOIN actual_production ap
+        ON ap.style_no = scs.style_no AND ap.color = scs.color AND ap.size_spec = scs.size_spec
+      WHERE scs.plan_qty > 0
+      GROUP BY scs.style_no, scs.color, scs.size_spec
+      ORDER BY under_order DESC, scs.style_no
+    `);
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /api/cutting-completion error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -3488,7 +3609,7 @@ app.post('/api/warehouse/:type/outbound', (req, res) => {
       }
 
       const result = db.run(`INSERT INTO warehouse_outbound (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, outbound_date, operator, pot_no, fabric_name, supplier, customer, width, weight, unit, total_pcs, unit2, remark, order_no)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [req.params.type, r.ref_type || '', r.ref_id, r.style_no, r.color, r.size_spec, r.qty, r.outbound_date, r.operator || '',
          r.pot_no || '', r.fabric_name || '', r.supplier || '', r.customer || '', r.width || '', r.weight || '', r.unit || 'KG', r.total_pcs || 0, r.unit2 || '匹', r.remark || '', orderNo]);
       updateInventory(req.params.type, r.style_no, r.color, r.size_spec, -r.qty, r);
@@ -3917,9 +4038,13 @@ app.get('/api/style-color-size', (req, res) => {
 app.post('/api/style-color-size', (req, res) => {
   try {
     const r = req.body;
+    // [2026-06-19] 裁剪参数必须 ≥ 原单数
+    if (parseInt(r.cutting_param) > 0 && parseInt(r.cutting_param) < parseInt(r.plan_qty)) {
+      return res.status(400).json({ error: '裁剪参数不能小于原单量' });
+    }
     const result = db.run(
-      'INSERT INTO style_color_size (order_date, style_no, due_date, product_name, size_spec, color, plan_qty) VALUES (?,?,?,?,?,?,?)',
-      [r.order_date || '', r.style_no || '', r.due_date || '', r.product_name || '', r.size_spec || '', r.color || '', r.plan_qty || 0]
+      'INSERT INTO style_color_size (order_date, style_no, due_date, product_name, size_spec, color, plan_qty, cutting_param) VALUES (?,?,?,?,?,?,?,?)',
+      [r.order_date || '', r.style_no || '', r.due_date || '', r.product_name || '', r.size_spec || '', r.color || '', r.plan_qty || 0, r.cutting_param || r.plan_qty || 0]
     );
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {
@@ -3931,9 +4056,12 @@ app.post('/api/style-color-size', (req, res) => {
 app.put('/api/style-color-size/:id', (req, res) => {
   try {
     const r = req.body;
+    if (parseInt(r.cutting_param) > 0 && parseInt(r.cutting_param) < parseInt(r.plan_qty)) {
+      return res.status(400).json({ error: '裁剪参数不能小于原单量' });
+    }
     db.run(
-      'UPDATE style_color_size SET order_date=?, style_no=?, due_date=?, product_name=?, size_spec=?, color=?, plan_qty=? WHERE id=?',
-      [r.order_date || '', r.style_no || '', r.due_date || '', r.product_name || '', r.size_spec || '', r.color || '', r.plan_qty || 0, req.params.id]
+      'UPDATE style_color_size SET order_date=?, style_no=?, due_date=?, product_name=?, size_spec=?, color=?, plan_qty=?, cutting_param=? WHERE id=?',
+      [r.order_date || '', r.style_no || '', r.due_date || '', r.product_name || '', r.size_spec || '', r.color || '', r.plan_qty || 0, r.cutting_param || r.plan_qty || 0, req.params.id]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -4485,6 +4613,7 @@ app.post('/api/daily', (req, res) => {
     if (!r.styleNo) return res.status(400).json({ error: '款号不能为空' });
     const result = db.run('INSERT INTO daily_reports (date, workshop, style_no, color, plan_qty, actual_qty, remark) VALUES (?,?,?,?,?,?,?)',
       [r.date, r.workshop || '', r.styleNo, r.color || '', r.planQty || 0, r.actualQty || 0, r.remark || '']);
+    logOp(req, 'daily_reports', 'create', result.lastInsertRowid, r.styleNo, `plan=${r.planQty || 0} actual=${r.actualQty || 0}`);
     broadcastSection('dailyReports', db.all('SELECT * FROM daily_reports ORDER BY date DESC'));
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (e) {

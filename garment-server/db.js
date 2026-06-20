@@ -398,6 +398,14 @@ function createTables() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
+    -- 系统参数（key/value 通用配置）
+    CREATE TABLE IF NOT EXISTS system_params (
+      key TEXT PRIMARY KEY,
+      value TEXT DEFAULT '',
+      remark TEXT DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     -- 工作日历
     CREATE TABLE IF NOT EXISTS work_calendars (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -686,6 +694,18 @@ function migrateStyles() {
   // 迁移：产线-款式分类加日产量字段(autoSchedule 用)
   try { db.prepare("ALTER TABLE line_style_categories ADD COLUMN daily_output INTEGER DEFAULT 0").run() } catch {}
 
+  // [2026-06-19] 一次性迁移:把仓库类型 cut_pieces 统一改为 cutting_piece(对齐 whNames + 现有 API)
+  try {
+    const r1 = db.prepare(`UPDATE warehouse_inbound SET warehouse_type = 'cutting_piece' WHERE warehouse_type = 'cut_pieces'`).run();
+    const r2 = db.prepare(`UPDATE warehouse_inventory SET warehouse_type = 'cutting_piece' WHERE warehouse_type = 'cut_pieces'`).run();
+    const r3 = db.prepare(`UPDATE warehouse_outbound SET warehouse_type = 'cutting_piece' WHERE warehouse_type = 'cut_pieces'`).run();
+    if (r1.changes || r2.changes || r3.changes) {
+      console.log(`✅ cut_pieces → cutting_piece 迁移: inbound=${r1.changes} inventory=${r2.changes} outbound=${r3.changes}`);
+    }
+  } catch (e) {
+    console.warn('cut_pieces 迁移跳过:', e.message);
+  }
+
   // [B-01 fix] 一次性迁移:把旧的 plan_override_<type> 行从 actual_production 复制到 schedule_plan_overrides
   // 完成后不删除旧行(保留审计);新代码不再读旧位置
   try {
@@ -757,6 +777,42 @@ function migrateUserColumns() {
       console.log('✅ users 加 display_name_km 字段');
     }
   } catch (e) { console.log('users avatar/bilingual migration skip:', e.message); }
+
+  // [2026-06-19] 特殊水洗 + 裁剪二检 + 裁剪参数 + system_params
+  try {
+    const sCols = db.prepare("PRAGMA table_info('styles')").all().map(c => c.name);
+    if (!sCols.includes('has_special_wash')) {
+      db.prepare("ALTER TABLE styles ADD COLUMN has_special_wash INTEGER DEFAULT 0").run();
+      console.log('✅ styles 加 has_special_wash 字段');
+    }
+
+    const scsCols = db.prepare("PRAGMA table_info('style_color_size')").all().map(c => c.name);
+    if (!scsCols.includes('cutting_param')) {
+      db.prepare("ALTER TABLE style_color_size ADD COLUMN cutting_param INTEGER DEFAULT 0").run();
+      console.log('✅ style_color_size 加 cutting_param 字段');
+    }
+    // backfill: cutting_param 默认 = plan_qty
+    db.prepare("UPDATE style_color_size SET cutting_param = plan_qty WHERE cutting_param = 0 AND plan_qty > 0").run();
+
+    const apCols = db.prepare("PRAGMA table_info('actual_production')").all().map(c => c.name);
+    if (!apCols.includes('is_second_inspection')) {
+      db.prepare("ALTER TABLE actual_production ADD COLUMN is_second_inspection INTEGER DEFAULT 0").run();
+      console.log('✅ actual_production 加 is_second_inspection 字段');
+    }
+    if (!apCols.includes('source_type')) {
+      db.prepare("ALTER TABLE actual_production ADD COLUMN source_type TEXT DEFAULT ''").run();
+      console.log('✅ actual_production 加 source_type 字段');
+    }
+
+    // system_params 默认值
+    const paramCount = db.prepare("SELECT COUNT(*) as c FROM system_params WHERE key = ?").get('special_wash_days');
+    if (!paramCount || paramCount.c === 0) {
+      db.prepare("INSERT INTO system_params (key, value, remark) VALUES (?, ?, ?)").run(
+        'special_wash_days', '7', '特殊水洗前置天数（裁剪排期前置）'
+      );
+      console.log('✅ system_params 初始化 special_wash_days=7');
+    }
+  } catch (e) { console.log('2026-06-19 migration skip:', e.message); }
 }
 
 function seedDefaultData() {
@@ -868,18 +924,15 @@ function seedDefaultData() {
 // [2026-06-19] system_config 独立 seed:每次启动 OR REPLACE,新增参数可即时生效
 function seedSystemConfig() {
   const insCfg = db.prepare('INSERT OR REPLACE INTO system_config (config_key, config_value, description) VALUES (?, ?, ?)');
-  insCfg.run('shipping_buffer_days', '5', '出货前缓冲天数');
-  insCfg.run('picking_days', '3', '挑片天数');
+  insCfg.run('shipping_buffer_days', '5', '缝制到出货缓冲天数');
+  insCfg.run('picking_days', '3', '裁剪1检转运时间');
   insCfg.run('line_change_days', '0.5', '换线时间（天）');
-  insCfg.run('cutting_daily_capacity', '30000', '裁剪日产能');
   insCfg.run('loading_to_arrival_days', '15', '装柜到货天数');
   insCfg.run('fabric_inspection_days', '9', '面料检验天数');
-  insCfg.run('sewing_buffer_days', '15', '缝制出货前缓冲天数');
   insCfg.run('sewing_remind_days', '10', '缝制提前提醒天数');
   insCfg.run('ironing_buffer_days', '3', '烫标完成缓冲天数');
   insCfg.run('max_sewing_lines', '49', '全厂缝制线数上限');
   insCfg.run('default_daily_target', '500', '缝制日产量兜底');
-  insCfg.run('workshop_category_multiplier', '3', '缝制车间分类线数倍率');
 }
 
 // [2026-06-18] 用户系统:种子用户(首次启动插入 19 个账号)
@@ -1351,6 +1404,90 @@ function logOperation(module, action, targetId, targetName, detail, userId) {
   } catch (e) { console.error('logOperation error:', e.message); }
 }
 
+// ============================================================
+// [2026-06-19] 裁片库入库 — 报工完成自动入库
+// ============================================================
+// 入库决策:
+//   - 款式有 印花/刺绣 → 入库源 = 裁剪二检 A品 (is_second_inspection=1)
+//   - 款式有 模板      → 入库源 = 模板报工
+//   - 两者都没有        → 入库源 = 裁剪一检 A品 (is_second_inspection=0)
+function recordCutPiecesInbound(actual) {
+  if (!actual || !actual.style_no) return;
+  const st = db.prepare('SELECT printing, embroidery, template FROM styles WHERE style_no = ?').get(actual.style_no);
+  const hasSecondary = !!(st && ((st.printing || '').trim() || (st.embroidery || '').trim()));
+  const hasTemplate  = !!(st && (st.template || '').trim());
+
+  let inboundType = null;
+  if (actual.schedule_type === 'cutting') {
+    const isSecond = parseInt(actual.is_second_inspection) > 0;
+    if (hasSecondary) {
+      if (isSecond) inboundType = 'cutting_2nd';
+    } else if (hasTemplate) {
+      // 模板款不入裁剪一检库,等模板报工
+    } else {
+      if (!isSecond) inboundType = 'cutting_1st';
+    }
+  } else if (actual.schedule_type === 'template') {
+    if (hasTemplate) inboundType = 'template';
+  }
+  if (!inboundType) return;
+
+  const qty = parseInt(actual.completed_qty) || 0;
+  if (qty <= 0) return;
+
+  // 1) 写 audit log
+  db.prepare(`INSERT INTO warehouse_inbound
+    (warehouse_type, ref_type, ref_id, style_no, color, size_spec, qty, inbound_date, operator, remark)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    'cutting_piece', inboundType, actual.id,
+    actual.style_no, actual.color || '', actual.size_spec || '',
+    qty, actual.production_date,
+    actual.worker_name || '', `报工 #${actual.id} 自动入库 (${inboundType})`);
+
+  // 2) UPSERT 库存
+  upsertInventoryDelta('cutting_piece', actual.style_no, actual.color || '', actual.size_spec || '', qty);
+}
+
+function upsertInventoryDelta(warehouseType, styleNo, color, sizeSpec, deltaQty) {
+  const exist = db.prepare(`SELECT id FROM warehouse_inventory
+    WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ''`).get(
+    warehouseType, styleNo, color, sizeSpec);
+  if (exist) {
+    db.prepare(`UPDATE warehouse_inventory SET current_qty = current_qty + ?, updated_at = datetime('now','localtime') WHERE id = ?`)
+      .run(deltaQty, exist.id);
+  } else {
+    db.prepare(`INSERT INTO warehouse_inventory (warehouse_type, style_no, color, size_spec, pot_no, current_qty)
+      VALUES (?, ?, ?, ?, '', ?)`).run(warehouseType, styleNo, color, sizeSpec, deltaQty);
+  }
+}
+
+// 报工删除前置校验：已出库则拒
+function checkActualDeletable(actual) {
+  if (!actual || !actual.style_no) return { ok: true };
+  const inbounds = db.prepare(`SELECT qty FROM warehouse_inbound
+    WHERE warehouse_type = 'cutting_piece' AND ref_id = ?`).all(actual.id);
+  if (inbounds.length === 0) return { ok: true };
+  const inboundQty = inbounds.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+  const inv = db.prepare(`SELECT current_qty FROM warehouse_inventory
+    WHERE warehouse_type = 'cutting_piece' AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ''`).get(
+    actual.style_no, actual.color || '', actual.size_spec || '');
+  const available = inv ? (parseInt(inv.current_qty) || 0) : 0;
+  if (available < inboundQty) {
+    return { ok: false, error: `已被出库无法删除(可用 ${available},需回滚 ${inboundQty})` };
+  }
+  return { ok: true };
+}
+
+// 报工删除回滚：冲账 + 删 audit log
+function rollbackCutPiecesInbound(actual) {
+  const inbounds = db.prepare(`SELECT * FROM warehouse_inbound
+    WHERE warehouse_type = 'cutting_piece' AND ref_id = ?`).all(actual.id);
+  for (const ib of inbounds) {
+    upsertInventoryDelta('cutting_piece', actual.style_no, actual.color || '', actual.size_spec || '', -(parseInt(ib.qty) || 0));
+    db.prepare('DELETE FROM warehouse_inbound WHERE id = ?').run(ib.id);
+  }
+}
+
 module.exports = {
   init, getDb,
   all, get, run,
@@ -1360,4 +1497,30 @@ module.exports = {
   isWorkday, addWorkdays,
   recalcTaskStatus,
   autoSchedule, capacityPrecheck,
+  getSystemParam, setSystemParam, listSystemParams,
+  recordCutPiecesInbound, rollbackCutPiecesInbound, checkActualDeletable,
 };
+
+// [2026-06-19] system_params 通用 key/value 配置读写
+function getSystemParam(key, fallback = '') {
+  try {
+    const row = db.prepare('SELECT value FROM system_params WHERE key = ?').get(key);
+    return row ? row.value : fallback;
+  } catch (e) { return fallback; }
+}
+
+function setSystemParam(key, value, remark = '') {
+  const stmt = db.prepare(`
+    INSERT INTO system_params (key, value, remark, updated_at)
+    VALUES (?, ?, ?, datetime('now','localtime'))
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      remark = COALESCE(NULLIF(excluded.remark, ''), remark),
+      updated_at = datetime('now','localtime')
+  `);
+  return stmt.run(key, String(value), remark);
+}
+
+function listSystemParams() {
+  return db.prepare('SELECT * FROM system_params ORDER BY key').all();
+}
