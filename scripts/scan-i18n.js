@@ -40,10 +40,12 @@ const VUE_GLOB = 'garment-web/src/**/*.{vue,js}'
       // 即:去掉尾部 ' ' 或 ': ' 后查表,匹配则视为已翻译
       let matched = !!dict[text]
       if (!matched) {
-        const trimmed = text.replace(/[:\s]+$/, '')
+        // 同时支持中英文冒号 + 末尾空白
+        const trimmed = text.replace(/[\s:：]+$/, '')
         // 字典里有 '导入失败: {msg}' 的话也算(忽略占位符差异)
         for (const [zhText, key] of Object.entries(dict)) {
-          if (zhText === trimmed || zhText === text || zhText.startsWith(trimmed + ':')) {
+          const trimmedZh = zhText.replace(/[\s:：]+$/, '').replace(/:\s*\{[^}]+\}$/, '')
+          if (trimmedZh === trimmed || zhText === text || trimmedZh.startsWith(trimmed)) {
             matched = true
             break
           }
