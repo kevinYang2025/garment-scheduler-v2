@@ -5539,8 +5539,19 @@ if (AUTH_ENABLED) {
 }
 
 // [fix#13] Safe broadcast
+// [2026-06-20 fix#后端-P2-3] section 名白名单 + 字符限制,防 req.params 污染 broadcast section
+const ALLOWED_BROADCAST_SECTIONS = new Set([
+  'styles', 'productionLines', 'mainPlan', 'actual', 'warehouse', 'capacityConfig',
+  'systemConfig', 'dailyReports', 'inventory', 'schedule_cutting', 'schedule_sewing',
+  'schedule_printing', 'schedule_embroidery', 'schedule_ironing', 'schedule_template',
+  'schedule_secondary', 'asn', 'dn', 'users',
+]);
 function broadcastSection(section, data) {
   try {
+    if (!ALLOWED_BROADCAST_SECTIONS.has(section)) {
+      console.error(`[broadcastSection] 拒绝未知 section: ${section}`);
+      return;
+    }
     io.emit('sectionUpdate', { section, data });
   } catch (e) {
     console.error('broadcastSection error:', e);
