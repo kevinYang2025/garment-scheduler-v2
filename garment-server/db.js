@@ -47,6 +47,13 @@ function getDb() {
   return db;
 }
 
+// [2026-06-20 fix#业务-P3-4] 测试用:注入 :memory: db 实例,避免污染真实 data.sqlite
+function _setDbForTest(instance) {
+  db = instance;
+  // 同时清理 prepared statement 缓存(绑旧 db)
+  if (typeof __cachedPrepare !== 'undefined' && __cachedPrepare) __cachedPrepare = new WeakMap();
+}
+
 // [2026-06-20 fix#后端-P1-2] per-Database prepared statement 缓存
 // better-sqlite3 的 .prepare() 每次都新建 Statement,SQL 不变时复用更快
 // 用 WeakMap 绑到 rawDb 实例,事务/多连接不会互相干扰
@@ -1665,6 +1672,7 @@ module.exports = {
   getSystemParam, setSystemParam, listSystemParams,
   recordCutPiecesInbound, rollbackCutPiecesInbound, checkActualDeletable,
   fmtLocal,  // [2026-06-20 fix#业务-P3-4] 暴露 fmtLocal 便于单元测试
+  _setDbForTest,  // 测试用注入 :memory: db
 };
 
 // [2026-06-19] system_params 通用 key/value 配置读写
