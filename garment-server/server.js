@@ -821,6 +821,15 @@ function validateWarehouseRecord(r, type) {
   return errors;
 }
 
+// [2026-06-20 fix#后端-P2-2] warehouse :type 白名单,避免 SQL 注入 + 未知类型查表
+const ALLOWED_WAREHOUSE_TYPES = ['fabric', 'cutting_piece', 'accessory', 'finished'];
+function warehouseTypeGuard(req, res, next) {
+  if (!ALLOWED_WAREHOUSE_TYPES.includes(req.params.type)) {
+    return res.status(400).json({ error: `warehouse_type 不合法,允许: ${ALLOWED_WAREHOUSE_TYPES.join(', ')}` });
+  }
+  next();
+}
+
 // Handle unique constraint violations with 409
 function handleUniqueError(e, res) {
   if (e.message && e.message.includes('UNIQUE constraint failed')) {
@@ -4439,7 +4448,7 @@ app.post('/api/schedule/daily/actual/:id/unlock', (req, res) => {
 });
 
 // ---------- 仓库管理 ----------
-app.get('/api/warehouse/:type/inbound', (req, res) => {
+app.get('/api/warehouse/:type/inbound', warehouseTypeGuard, (req, res) => {
   try {
     res.json(db.all('SELECT * FROM warehouse_inbound WHERE warehouse_type = ? ORDER BY inbound_date DESC', [req.params.type]));
   } catch (e) {
@@ -4448,7 +4457,7 @@ app.get('/api/warehouse/:type/inbound', (req, res) => {
   }
 });
 
-app.post('/api/warehouse/:type/inbound', (req, res) => {
+app.post('/api/warehouse/:type/inbound', warehouseTypeGuard, (req, res) => {
   try {
     const r = req.body;
     const errors = validateWarehouseRecord(r, req.params.type);
@@ -4473,7 +4482,7 @@ app.post('/api/warehouse/:type/inbound', (req, res) => {
   }
 });
 
-app.get('/api/warehouse/:type/outbound', (req, res) => {
+app.get('/api/warehouse/:type/outbound', warehouseTypeGuard, (req, res) => {
   try {
     res.json(db.all('SELECT * FROM warehouse_outbound WHERE warehouse_type = ? ORDER BY outbound_date DESC', [req.params.type]));
   } catch (e) {
@@ -4482,7 +4491,7 @@ app.get('/api/warehouse/:type/outbound', (req, res) => {
   }
 });
 
-app.post('/api/warehouse/:type/outbound', (req, res) => {
+app.post('/api/warehouse/:type/outbound', warehouseTypeGuard, (req, res) => {
   try {
     const r = req.body;
     const errors = validateWarehouseRecord(r, req.params.type);
@@ -4517,7 +4526,7 @@ app.post('/api/warehouse/:type/outbound', (req, res) => {
   }
 });
 
-app.get('/api/warehouse/:type/inventory', (req, res) => {
+app.get('/api/warehouse/:type/inventory', warehouseTypeGuard, (req, res) => {
   try {
     const { keyword, in_stock } = req.query;
     let sql = 'SELECT * FROM warehouse_inventory WHERE warehouse_type = ?';
@@ -4539,7 +4548,7 @@ app.get('/api/warehouse/:type/inventory', (req, res) => {
 });
 
 // ---------- 仓库导出 ----------
-app.get('/api/warehouse/:type/export', async (req, res) => {
+app.get('/api/warehouse/:type/export', warehouseTypeGuard, async (req, res) => {
   try {
     const whType = req.params.type;
     const sheet = req.query.sheet; // inventory | inbound | outbound | undefined=全部
@@ -4596,7 +4605,7 @@ app.get('/api/warehouse/:type/export', async (req, res) => {
 });
 
 // ---------- 仓库导入 ----------
-app.post('/api/warehouse/:type/import', (req, res) => {
+app.post('/api/warehouse/:type/import', warehouseTypeGuard, (req, res) => {
   try {
     const whType = req.params.type;
     const { records } = req.body;
