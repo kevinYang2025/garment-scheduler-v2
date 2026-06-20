@@ -2173,26 +2173,15 @@ app.post('/api/schedule/sewing-daily-plan/actual', requireRole('dispatcher', 'su
     // 原代码硬编码 'sewing' 导致 secondary 详情页写入污染 sewing 数据,修复为 secondary
     const scheduleType = secondary_type ? 'secondary' : 'sewing';
 
-    // 检查是否已存在
-    const existing = db.get(
-      `SELECT id FROM actual_production
-       WHERE style_no = ? AND color = ? AND size_spec = ? AND production_date = ? AND schedule_type = ?`,
-      [style_no, color || '', size_spec || '', production_date, scheduleType]
+    // [2026-06-20 Z-07] 用 UPSERT 替代 SELECT-then-INSERT,杜绝并发竞态
+    // 依赖 idx_actual_production_unique UNIQUE 索引
+    db.run(
+      `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty)
+       VALUES (?, 0, ?, ?, ?, ?, ?)
+       ON CONFLICT(style_no, color, size_spec, production_date, schedule_type, secondary_type, is_second_inspection)
+       DO UPDATE SET completed_qty = excluded.completed_qty, recorded_at = datetime('now','localtime')`,
+      [scheduleType, style_no, color || '', size_spec || '', production_date, completed_qty || 0]
     );
-
-    if (existing) {
-      db.run(
-        `UPDATE actual_production SET completed_qty = ?, recorded_at = datetime('now','localtime')
-         WHERE id = ?`,
-        [completed_qty || 0, existing.id]
-      );
-    } else {
-      db.run(
-        `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty)
-         VALUES (?, 0, ?, ?, ?, ?, ?)`,
-        [scheduleType, style_no, color || '', size_spec || '', production_date, completed_qty || 0]
-      );
-    }
     logOp(req, 'actual_production', 'upsert', null, style_no, `qty=${completed_qty || 0} ${scheduleType}`);
     res.json({ ok: true });
   } catch (e) {

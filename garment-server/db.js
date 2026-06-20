@@ -574,6 +574,13 @@ function migrateStyles() {
     if (!scols2.includes('progress_pct')) {
       db.prepare("ALTER TABLE schedule_master ADD COLUMN progress_pct REAL DEFAULT 0").run();
     }
+    // [2026-06-20 Z-15] 裁剪一/二检完成标志 + 时间戳
+    if (!scols2.includes('first_inspection_completed_at')) {
+      db.prepare("ALTER TABLE schedule_master ADD COLUMN first_inspection_completed_at TEXT DEFAULT ''").run();
+    }
+    if (!scols2.includes('second_inspection_completed_at')) {
+      db.prepare("ALTER TABLE schedule_master ADD COLUMN second_inspection_completed_at TEXT DEFAULT ''").run();
+    }
   } catch (e) { console.log('schedule_master task_status migration skip:', e.message); }
 
   // 迁移：扩展 actual_production 表
@@ -668,6 +675,53 @@ function migrateStyles() {
     }
   }
 
+  // [2026-06-20 Z-07] actual_production 加 UNIQUE 索引,防 sewing-daily-plan/actual 竞态
+  // 1) dedup 历史重复(保留最大 id)
+  // 2) 创建 UNIQUE 索引
+  try {
+    const dups = db.prepare(`
+      SELECT style_no, color, size_spec, production_date, schedule_type, secondary_type, COALESCE(is_second_inspection,0) AS sii, COUNT(*) c
+      FROM actual_production
+      GROUP BY style_no, color, size_spec, production_date, schedule_type, secondary_type, sii
+      HAVING c > 1
+    `).all();
+    if (dups.length > 0) {
+      const dedupTxn = db.transaction(() => {
+        let removed = 0;
+        for (const d of dups) {
+          const rows = db.prepare(`
+            SELECT id FROM actual_production
+            WHERE style_no = ? AND color = ? AND size_spec = ? AND production_date = ?
+              AND schedule_type = ? AND secondary_type = ?
+              AND COALESCE(is_second_inspection,0) = ?
+            ORDER BY id DESC
+          `).all(d.style_no, d.color, d.size_spec, d.production_date, d.schedule_type, d.secondary_type, d.sii);
+          // 保留第一行(最大 id,最新),删除其余
+          for (let i = 1; i < rows.length; i++) {
+            db.prepare('DELETE FROM actual_production WHERE id = ?').run(rows[i].id);
+            removed++;
+          }
+        }
+        return removed;
+      });
+      const removed = dedupTxn();
+      console.log(`✅ actual_production dedup: 删除 ${removed} 条重复记录 (${dups.length} 组)`);
+    }
+    // 创建 UNIQUE 索引(若不存在)
+    const idxExists = db.prepare(`
+      SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_actual_production_unique'
+    `).get();
+    if (!idxExists) {
+      db.prepare(`
+        CREATE UNIQUE INDEX idx_actual_production_unique
+        ON actual_production(style_no, color, size_spec, production_date, schedule_type, secondary_type, is_second_inspection)
+      `).run();
+      console.log('✅ 创建 UNIQUE INDEX idx_actual_production_unique');
+    }
+  } catch (e) {
+    console.log('actual_production UNIQUE index migration skip:', e.message);
+  }
+
   // 迁移：仓库表添加面料库扩展字段
   const whFields = ['pot_no', 'fabric_name', 'supplier', 'customer', 'width', 'weight', 'unit', 'total_pcs', 'unit2', 'remark']
   for (const tbl of ['warehouse_inbound', 'warehouse_outbound', 'warehouse_inventory']) {
@@ -690,9 +744,19 @@ function migrateStyles() {
 
   // 迁移：产线加日产量字段
   try { db.prepare("ALTER TABLE production_lines ADD COLUMN daily_output INTEGER DEFAULT 0").run() } catch {}
+  // [2026-06-20 Z-12] 把 NULL 强制置 0,防御历史数据
+  try { db.prepare("UPDATE production_lines SET daily_output = 0 WHERE daily_output IS NULL").run() } catch {}
 
   // 迁移：产线-款式分类加日产量字段(autoSchedule 用)
   try { db.prepare("ALTER TABLE line_style_categories ADD COLUMN daily_output INTEGER DEFAULT 0").run() } catch {}
+  // [2026-06-20 Z-12] 把 NULL 强制置 0,防御历史数据
+  try { db.prepare("UPDATE line_style_categories SET daily_output = 0 WHERE daily_output IS NULL").run() } catch {}
+
+  // [2026-06-20 Z-12] styles 表 5 个 daily_output 字段同样兜底
+  const styleDailyFields = ['target_daily_output', 'embroidery_daily_output', 'printing_daily_output', 'ironing_daily_output', 'template_daily_output'];
+  for (const f of styleDailyFields) {
+    try { db.prepare(`UPDATE styles SET ${f} = 0 WHERE ${f} IS NULL`).run() } catch {}
+  }
 
   // [2026-06-19] 一次性迁移:把仓库类型 cut_pieces 统一改为 cutting_piece(对齐 whNames + 现有 API)
   try {
@@ -1141,8 +1205,31 @@ function recalcTaskStatus(masterId) {
       taskStatus = 'IN_PROGRESS';
     }
 
-    db.prepare('UPDATE schedule_master SET task_status = ?, progress_pct = ? WHERE id = ?')
-      .run(taskStatus, progressPct, masterId);
+    // [2026-06-20 Z-15] 裁剪一/二检完成检测:
+    // cutting schedule_master 当 sum(actual is_second_inspection=0) >= plan_qty → 一检完成
+    //                                  is_second_inspection=1) >= plan_qty → 二检完成
+    // 仅在 schedule_type='cutting' 时生效
+    // 注: actual_production.style_id 经常为 0(写入时未填),所以用 style_no 匹配
+    let firstAt = '';
+    let secondAt = '';
+    if (master.schedule_type === 'cutting' && planQty > 0 && master.style_no) {
+      const firstActual = db.prepare(
+        "SELECT COALESCE(SUM(completed_qty), 0) as total FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = 'cutting' AND COALESCE(is_second_inspection, 0) = 0"
+      ).get(master.style_no, master.color || '', master.size_spec || '');
+      const secondActual = db.prepare(
+        "SELECT COALESCE(SUM(completed_qty), 0) as total FROM actual_production WHERE style_no = ? AND color = ? AND size_spec = ? AND schedule_type = 'cutting' AND COALESCE(is_second_inspection, 0) = 1"
+      ).get(master.style_no, master.color || '', master.size_spec || '');
+      if ((firstActual.total || 0) >= planQty) {
+        // 已写过则保留,否则写入当前时间
+        firstAt = master.first_inspection_completed_at || db.prepare("SELECT datetime('now','localtime') as t").get().t;
+      }
+      if ((secondActual.total || 0) >= planQty) {
+        secondAt = master.second_inspection_completed_at || db.prepare("SELECT datetime('now','localtime') as t").get().t;
+      }
+    }
+
+    db.prepare('UPDATE schedule_master SET task_status = ?, progress_pct = ?, first_inspection_completed_at = COALESCE(NULLIF(?, \'\'), first_inspection_completed_at), second_inspection_completed_at = COALESCE(NULLIF(?, \'\'), second_inspection_completed_at) WHERE id = ?')
+      .run(taskStatus, progressPct, firstAt, secondAt, masterId);
   } catch (e) { console.error('recalcTaskStatus error:', e.message); }
 }
 
