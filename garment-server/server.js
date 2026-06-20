@@ -3607,7 +3607,11 @@ app.post('/api/schedule/cutting/import', async (req, res) => {
           if (mode === 'skip' && chkDup.get(styleNo, color, sizeSpec, planStart)) { skipped++; continue; }
           if (mode === 'overwrite') {
             const dup = chkDup.get(styleNo, color, sizeSpec, planStart);
-            if (dup) { db.run('DELETE FROM schedule_master WHERE id=?', [dup.id]); }
+            if (dup) {
+              // [2026-06-20 fix#后端-P2-5/业务-P2-7] 先删 daily 避免孤儿
+              db.run('DELETE FROM schedule_daily WHERE master_id=?', [dup.id]);
+              db.run('DELETE FROM schedule_master WHERE id=?', [dup.id]);
+            }
           }
           const info = insMaster.run(
             parseInt(r.style_id) || 0, styleNo,
@@ -5775,6 +5779,8 @@ app.post('/api/visual-schedule/unassign', (req, res) => {
       db.run('UPDATE main_plan SET workshop = ?, line_team = ?, is_scheduled = 0 WHERE style_id = ?', ['', '', sm.style_id]);
     }
     // 删除 schedule_master 记录
+    // [2026-06-20 fix#后端-P2-5/业务-P2-7] 先删 daily 避免孤儿
+    db.run('DELETE FROM schedule_daily WHERE master_id = ?', [planId]);
     db.run('DELETE FROM schedule_master WHERE id = ?', [planId]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
     res.json({ ok: true });
@@ -5825,6 +5831,8 @@ app.post('/api/visual-schedule/move', (req, res) => {
     }
     // P0 安全: DELETE+INSERT+UPDATE 包事务,失败回滚避免丢数据
     const moveTxn = db.getDb().transaction(() => {
+      // [2026-06-20 fix#后端-P2-5/业务-P2-7] 先删 daily 避免孤儿
+      db.run('DELETE FROM schedule_daily WHERE master_id = ?', [scheduleId]);
       db.run('DELETE FROM schedule_master WHERE id = ?', [scheduleId]);
       if (sewingStart <= sewingEnd) {
         db.run(`INSERT INTO schedule_master (schedule_type, style_id, style_no, product_name, color, size_spec,
