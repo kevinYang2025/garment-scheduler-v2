@@ -1160,15 +1160,25 @@ app.put('/api/production-lines/:id', (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: '无效状态' });
     }
-    const existing = db.get('SELECT * FROM production_lines WHERE id = ?', [req.params.id]);
-    if (!existing) return res.status(404).json({ error: 'Not found' });
-    const oldStatus = existing.status;
-    if (oldStatus !== status) {
-      db.run('UPDATE production_lines SET status = ? WHERE id = ?', [status, req.params.id]);
-      db.run('INSERT INTO production_line_events (line_id, event_type, old_status, new_status, remark) VALUES (?,?,?,?,?)',
-        [req.params.id, 'status_change', oldStatus, status, req.body.remark || '']);
-      logOp(req, 'production_lines', 'status_change', req.params.id, existing.line_name, `${oldStatus}→${status}`);
-    }
+    // [2026-06-20 fix#业务-P2-8] SELECT+UPDATE+event+logOp 包事务,防同 line 并发覆盖丢事件
+    let changed = false;
+    let oldStatus = null;
+    let lineName = '';
+    const lineTxn = db.getDb().transaction(() => {
+      const existing = db.get('SELECT * FROM production_lines WHERE id = ?', [req.params.id]);
+      if (!existing) return;
+      oldStatus = existing.status;
+      lineName = existing.line_name;
+      if (oldStatus !== status) {
+        db.run('UPDATE production_lines SET status = ? WHERE id = ?', [status, req.params.id]);
+        db.run('INSERT INTO production_line_events (line_id, event_type, old_status, new_status, remark) VALUES (?,?,?,?,?)',
+          [req.params.id, 'status_change', oldStatus, status, req.body.remark || '']);
+        changed = true;
+      }
+    });
+    lineTxn();
+    if (!oldStatus) return res.status(404).json({ error: 'Not found' });
+    if (changed) logOp(req, 'production_lines', 'status_change', req.params.id, lineName, `${oldStatus}→${status}`);
     broadcastSection('productionLines', db.all('SELECT * FROM production_lines ORDER BY sort_order'));
     res.json({ ok: true });
   } catch (e) {
