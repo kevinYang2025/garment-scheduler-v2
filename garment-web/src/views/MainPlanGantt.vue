@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '../api'
+import { viewWindow } from '../utils/date'
 
 const plans = ref([])
 const loading = ref(true)
@@ -21,25 +22,14 @@ const todayStr = (() => {
   return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`
 })()
 
-// 日期列表：今天前2周 ~ 后6周，随 weekOffset 滚动
-const dates = computed(() => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const start = new Date(today)
-  start.setDate(start.getDate() - 14 + weekOffset.value * 14)
-  const end = new Date(today)
-  end.setDate(end.getDate() + 42 + weekOffset.value * 14)
-  const result = []
-  const cur = new Date(start)
-  while (cur <= end) {
-    const y = cur.getFullYear()
-    const m = String(cur.getMonth() + 1).padStart(2, '0')
-    const d = String(cur.getDate()).padStart(2, '0')
-    result.push(`${y}-${m}-${d}`)
-    cur.setDate(cur.getDate() + 1)
-  }
-  return result
-})
+// 日期列表：今天前2周 ~ 后6周，随 weekOffset 滚动 (步长 14 天 = 2 周)
+const dates = computed(() => viewWindow(todayDate(), 14, 42, weekOffset.value * 14))
+
+function todayDate() {
+  const t = new Date()
+  t.setHours(0, 0, 0, 0)
+  return t
+}
 
 const datesWidth = computed(() => dates.value.length * 28)
 

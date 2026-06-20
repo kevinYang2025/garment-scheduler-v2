@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import StylePicker from '../components/StylePicker.vue'
 import DailyScheduleTable from '../components/DailyScheduleTable.vue'
+import { viewBounds } from '../utils/date'
 
 const props = defineProps({
   scheduleType: String,
@@ -164,20 +165,14 @@ function shiftCuttingWeek(dir) { cuttingViewOffset.value += dir * 7 }
 // 可见日期列（滚动窗口：今天前一周 ~ 今天后三周）
 const visibleSewingDates = computed(() => {
   if (!sewingDateRange.value.length) return []
-  const d = new Date(today + 'T00:00:00')
-  const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
-  const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
-  const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
-  return sewingDateRange.value.filter(date => date >= fmt(ws) && date <= fmt(we))
+  const [ws, we] = viewBounds(today, 7, 21, viewOffset.value)
+  return sewingDateRange.value.filter(date => date >= ws && date <= we)
 })
 
 const visibleCuttingDates = computed(() => {
   if (!cuttingDateRange.value.length) return []
-  const d = new Date(today + 'T00:00:00')
-  const ws = new Date(d); ws.setDate(ws.getDate() - 7 + cuttingViewOffset.value)
-  const we = new Date(d); we.setDate(we.getDate() + 21 + cuttingViewOffset.value)
-  const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
-  return cuttingDateRange.value.filter(date => date >= fmt(ws) && date <= fmt(we))
+  const [ws, we] = viewBounds(today, 7, 21, cuttingViewOffset.value)
+  return cuttingDateRange.value.filter(date => date >= ws && date <= we)
 })
 
 const sewingDateRangeLabel = computed(() => {

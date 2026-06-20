@@ -5,7 +5,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import { useVirtualScroll } from './useVirtualScroll'
-import { todayLocal } from '../utils/date'
+import { todayLocal, viewWindow } from '../utils/date'
 import { getSecondaryTypeConfig } from '../constants/secondaryTypes'
 import { useAuthStore } from '../stores/auth'
 import { canEditActual } from '../utils/permissions'
@@ -85,16 +85,7 @@ export function useSecPlanDetail(secType, options = {}) {
   function shiftWeek(dir) { viewOffset.value += dir * 7 }
 
   const today = todayLocal()  // [F-01 fix] 用本地日期工具
-  const visibleDates = computed(() => {
-    const d = new Date(today + 'T00:00:00')
-    const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
-    const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
-    const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-    const dates = []
-    const cur = new Date(ws)
-    while (cur <= we) { dates.push(fmt(cur)); cur.setDate(cur.getDate() + 1) }
-    return dates
-  })
+  const visibleDates = computed(() => viewWindow(today, 7, 21, viewOffset.value))
 
   const dateRangeLabel = computed(() => {
     if (!visibleDates.value.length) return ''

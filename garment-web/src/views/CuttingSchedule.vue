@@ -9,6 +9,7 @@ import { useVirtualScroll } from '../composables/useVirtualScroll'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
 import api from '../api'
+import { viewWindow, dateRange } from '../utils/date'
 
 const rows = shallowRef([])
 const dailyMap = shallowRef({})
@@ -120,14 +121,7 @@ const dateCols = computed(() => {
     if (r.cutting_end && (!max || r.cutting_end > max)) max = r.cutting_end
   }
   if (!min || !max) return []
-  const sd = new Date(min + 'T00:00:00'), ed = new Date(max + 'T00:00:00')
-  const days = Math.floor((ed - sd) / 86400000) + 1
-  const cols = []
-  for (let i = 0; i < days; i++) {
-    const dt = new Date(sd); dt.setDate(dt.getDate() + i)
-    cols.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`)
-  }
-  return cols
+  return dateRange(min, max)
 })
 
 // [2026-06-20 S-2] 后端已返回 dateData,前端直接读取,不再重复计算
@@ -285,19 +279,7 @@ const today = computed(() => {
 const viewOffset = ref(0)
 function shiftWeek(dir) { viewOffset.value += dir * 7 }
 
-const visibleDateCols = computed(() => {
-  const d = new Date(today.value + 'T00:00:00')
-  const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
-  const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
-  const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
-  const result = []
-  const cur = new Date(ws)
-  while (cur <= we) {
-    result.push(fmt(cur))
-    cur.setDate(cur.getDate() + 1)
-  }
-  return result
-})
+const visibleDateCols = computed(() => viewWindow(today.value, 7, 21, viewOffset.value))
 
 const dateRangeLabel = computed(() => {
   if (!visibleDateCols.value.length) return ''

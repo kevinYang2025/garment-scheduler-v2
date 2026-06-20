@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { viewWindow } from '../utils/date'
 
 const props = defineProps({ db: Object })
 const router = useRouter()
@@ -100,25 +101,14 @@ function buildTooltip(task) {
     .join('\n')
 }
 
-// 日期列表：今天前1周 ~ 后3周，随 weekOffset 滚动
-const dates = computed(() => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const start = new Date(today)
-  start.setDate(start.getDate() - 7 + weekOffset.value * 7)
-  const end = new Date(today)
-  end.setDate(end.getDate() + 21 + weekOffset.value * 7)
-  const result = []
-  const cur = new Date(start)
-  while (cur <= end) {
-    const y = cur.getFullYear()
-    const m = String(cur.getMonth() + 1).padStart(2, '0')
-    const d = String(cur.getDate()).padStart(2, '0')
-    result.push(`${y}-${m}-${d}`)
-    cur.setDate(cur.getDate() + 1)
-  }
-  return result
-})
+// 日期列表：今天前1周 ~ 后3周，随 weekOffset 滚动 (步长 7 天 = 1 周)
+const dates = computed(() => viewWindow(todayDate(), 7, 21, weekOffset.value * 7))
+
+function todayDate() {
+  const t = new Date()
+  t.setHours(0, 0, 0, 0)
+  return t
+}
 
 // 日期行总宽度（px），确保 tasks-area 与之等宽
 const datesWidth = computed(() => dates.value.length * 28)

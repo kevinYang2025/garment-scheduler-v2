@@ -9,6 +9,7 @@ import DateFilter from '../components/DateFilter.vue'
 import TextFilter from '../components/TextFilter.vue'
 import NumberFilter from '../components/NumberFilter.vue'
 import StylePicker from '../components/StylePicker.vue'
+import { addDays, formatLocal, viewBounds, dateRange } from '../utils/date'
 
 const router = useRouter()
 
@@ -35,9 +36,7 @@ function cancelEdit() {
 function calcPlanEnd(start, qty, daily) {
   if (!start || !qty || !daily) return ''
   const days = Math.ceil(qty / daily)
-  const d = new Date(start + 'T00:00:00')
-  d.setDate(d.getDate() + days - 1)
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  return formatLocal(addDays(new Date(start + 'T00:00:00'), days - 1))
 }
 
 // 编辑时自动计算缝制结束
@@ -159,17 +158,7 @@ const dateCols = computed(() => {
     if (m.plan_end && (!max || m.plan_end > max)) max = m.plan_end
   }
   if (!min || !max) return []
-  const sd = new Date(min + 'T00:00:00'), ed = new Date(max + 'T00:00:00')
-  const days = Math.floor((ed - sd) / 86400000) + 1
-  const cols = []
-  for (let i = 0; i < days; i++) {
-    const dt = new Date(sd); dt.setDate(dt.getDate() + i)
-    const y = dt.getFullYear()
-    const mo = String(dt.getMonth() + 1).padStart(2, '0')
-    const d = String(dt.getDate()).padStart(2, '0')
-    cols.push(`${y}-${mo}-${d}`)
-  }
-  return cols
+  return dateRange(min, max)
 })
 
 const groups = computed(() => {
@@ -282,11 +271,7 @@ const viewOffset = ref(0)
 function shiftWeek(dir) { viewOffset.value += dir * 7 }
 
 const visibleDateCols = computed(() => {
-  const d = new Date(today.value + 'T00:00:00')
-  const ws = new Date(d); ws.setDate(ws.getDate() - 7 + viewOffset.value)
-  const we = new Date(d); we.setDate(we.getDate() + 21 + viewOffset.value)
-  const wsStr = `${ws.getFullYear()}-${String(ws.getMonth()+1).padStart(2,'0')}-${String(ws.getDate()).padStart(2,'0')}`
-  const weStr = `${we.getFullYear()}-${String(we.getMonth()+1).padStart(2,'0')}-${String(we.getDate()).padStart(2,'0')}`
+  const [wsStr, weStr] = viewBounds(today.value, 7, 21, viewOffset.value)
   return dateCols.value.filter(c => c >= wsStr && c <= weStr)
 })
 
