@@ -159,7 +159,10 @@ app.use(session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // [fix 2026-06-20 S-2] secure 必须配合 HTTPS,否则 localhost HTTP 下不发 Set-Cookie
+    // 之前 NODE_ENV=production 强制 secure=true → 浏览器/curl 都拿不到 cookie → API 全 401
+    // 改用 HTTPS 环境变量判断(部署时设 HTTPS=true 即可)
+    secure: process.env.HTTPS === 'true',
     maxAge: 7 * 24 * 60 * 60 * 1000  // 7 天免登
   }
 }));
@@ -1384,11 +1387,14 @@ app.get('/api/main-plan', (req, res) => {
   try {
     // [2026-06-20 M-1] 支持 page/limit/sort/dir 简单分页参数
     // 不传 page/limit 时返回全部(向后兼容)
-    const page = Math.max(1, parseInt(req.query.page) || 0);
-    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 0));
-    if (!page && !limit) {
+    // [fix 2026-06-20 S-3] 之前 Math.max(1, 0)=1 导致无参时也走分页且 limit=1,
+    // 修复: 先判断是否有 query,再 parse
+    const hasPaging = req.query.page !== undefined || req.query.limit !== undefined;
+    if (!hasPaging) {
       return res.json(db.all('SELECT * FROM main_plan'));
     }
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
     const total = db.get('SELECT COUNT(*) as c FROM main_plan').c;
     const rows = db.all(`SELECT * FROM main_plan ORDER BY id DESC LIMIT ? OFFSET ?`, [limit, offset]);
@@ -2403,6 +2409,139 @@ app.post('/api/schedule/sewing-daily-plan/actual', requireRole('dispatcher', 'su
     res.json({ ok: true });
   } catch (e) {
     console.error('POST /api/schedule/sewing-daily-plan/actual error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// [2026-06-20 fix P0-1/P0-2] 裁剪每日计划(与 sewing-daily-plan 对称)
+// ScheduleView.vue cutting 模式调 GET/POST 这两个端点
+app.get('/api/schedule/cutting-daily-plan', (req, res) => {
+  try {
+    const plans = db.all(`
+      SELECT id, style_no, product_name, plan_qty, cutting_start, cutting_end
+      FROM main_plan
+      WHERE cutting_start IS NOT NULL AND cutting_end IS NOT NULL
+      ORDER BY cutting_start, style_no
+    `);
+
+    if (!plans.length) return res.json({ plans: [], dateRange: [], rows: [] });
+
+    // 计算整体日期范围(限制在今天前后合理范围,与 sewing 对齐)
+    let minDate = null, maxDate = null;
+    for (const p of plans) {
+      if (!minDate || p.cutting_start < minDate) minDate = p.cutting_start;
+      if (!maxDate || p.cutting_end > maxDate) maxDate = p.cutting_end;
+    }
+    const _today3 = new Date(); const _ty3 = _today3.getFullYear(); const _tm3 = String(_today3.getMonth()+1).padStart(2,'0'); const _td3 = String(_today3.getDate()).padStart(2,'0');
+    const _todayStr3 = `${_ty3}-${_tm3}-${_td3}`;
+    const _cs3 = new Date(_todayStr3 + 'T00:00:00'); _cs3.setDate(_cs3.getDate() - 30);
+    const _ce3 = new Date(_todayStr3 + 'T00:00:00'); _ce3.setDate(_ce3.getDate() + 60);
+    const sd = new Date(minDate + 'T00:00:00') < _cs3 ? _cs3 : new Date(minDate + 'T00:00:00');
+    const ed = new Date(maxDate + 'T00:00:00') > _ce3 ? _ce3 : new Date(maxDate + 'T00:00:00');
+    const dayCount = Math.floor((ed - sd) / 86400000) + 1;
+    const dateRange = [];
+    for (let i = 0; i < dayCount; i++) {
+      const dt = new Date(sd);
+      dt.setDate(dt.getDate() + i);
+      dateRange.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
+    }
+
+    const rows = [];
+    for (const plan of plans) {
+      const colorSizes = db.all(
+        'SELECT color, size_spec, plan_qty FROM style_color_size WHERE style_no = ? ORDER BY color, size_spec',
+        [plan.style_no]
+      );
+
+      if (!colorSizes.length) {
+        colorSizes.push({ color: '', size_spec: '', plan_qty: plan.plan_qty });
+      }
+
+      const workingDays = Math.floor((new Date(plan.cutting_end + 'T00:00:00') - new Date(plan.cutting_start + 'T00:00:00')) / 86400000) + 1;
+
+      for (const cs of colorSizes) {
+        const dailyTarget = workingDays > 0 ? Math.ceil(cs.plan_qty / workingDays) : 0;
+
+        // 裁剪实际产量: schedule_type='cutting' 且不是二检
+        const actuals = db.all(
+          `SELECT production_date, SUM(completed_qty) as qty
+           FROM actual_production
+           WHERE style_no = ? AND color = ? AND size_spec = ?
+           AND schedule_type = 'cutting' AND COALESCE(is_second_inspection, 0) = 0
+           GROUP BY production_date`,
+          [plan.style_no, cs.color || '', cs.size_spec || '']
+        );
+        const actualMap = {};
+        for (const a of actuals) { actualMap[a.production_date] = a.qty || 0; }
+
+        const dateData = [];
+        let totalPlan = 0, totalActual = 0;
+        for (const date of dateRange) {
+          let planQty = 0;
+          if (date >= plan.cutting_start && date <= plan.cutting_end && dailyTarget > 0) {
+            const sd2 = new Date(plan.cutting_start + 'T00:00:00');
+            const cd = new Date(date + 'T00:00:00');
+            const dayIdx = Math.floor((cd - sd2) / 86400000);
+            const fullDays = Math.floor(cs.plan_qty / dailyTarget);
+            const remainder = cs.plan_qty % dailyTarget;
+            if (dayIdx < fullDays) planQty = dailyTarget;
+            else if (dayIdx === fullDays && remainder > 0) planQty = remainder;
+          }
+          const actualQty = actualMap[date] || 0;
+          totalPlan += planQty;
+          totalActual += actualQty;
+          dateData.push({ date, plan: planQty, actual: actualQty, diff: actualQty - planQty });
+        }
+
+        rows.push({
+          style_no: plan.style_no,
+          product_name: plan.product_name,
+          color: cs.color || '',
+          size_spec: cs.size_spec || '',
+          order_qty: cs.plan_qty,
+          cutting_start: plan.cutting_start,
+          cutting_end: plan.cutting_end,
+          totalPlan,
+          totalActual,
+          totalDiff: totalActual - totalPlan,
+          dateData,
+        });
+      }
+    }
+
+    res.json({ plans, dateRange, rows });
+  } catch (e) {
+    console.error('GET /api/schedule/cutting-daily-plan error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/schedule/cutting-daily-plan/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, res) => {
+  try {
+    const { style_no, color, size_spec, production_date, completed_qty } = req.body;
+    if (!style_no || !production_date) {
+      return res.status(400).json({ error: '款号和日期不能为空' });
+    }
+
+    // [fix 2026-06-20] 裁剪报工走通用 validateActualPayload (负数/NaN/超 plan_qty*2/未来日期)
+    // 注意:validateActualPayload 返回 null 表示通过,否则返回 {status, body}
+    const validation = validateActualPayload({ style_no, production_date, completed_qty });
+    if (validation) {
+      return res.status(validation.status).json(validation.body);
+    }
+
+    // [fix 2026-06-20 Z-07] UPSERT,与 sewing 路径对齐
+    db.run(
+      `INSERT INTO actual_production (schedule_type, style_id, style_no, color, size_spec, production_date, completed_qty, is_second_inspection)
+       VALUES ('cutting', 0, ?, ?, ?, ?, ?, 0)
+       ON CONFLICT(style_no, color, size_spec, production_date, schedule_type, secondary_type, is_second_inspection)
+       DO UPDATE SET completed_qty = excluded.completed_qty, recorded_at = datetime('now','localtime')`,
+      [style_no, color || '', size_spec || '', production_date, completed_qty || 0]
+    );
+    logOp(req, 'actual_production', 'upsert_cutting', null, style_no, `qty=${completed_qty || 0}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/schedule/cutting-daily-plan/actual error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -5188,7 +5327,8 @@ io.engine.use(session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // [fix 2026-06-20 S-2] 同步修复 socket.io session cookie
+    secure: process.env.HTTPS === 'true',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   },
 }));

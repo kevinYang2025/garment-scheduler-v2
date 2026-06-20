@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart, BarChart, LineChart } from 'echarts/charts'
@@ -236,10 +236,74 @@ const recentPlans = computed(() => {
   return plans.slice(0, 8)
 })
 
-const workshopLines = computed(() => {
-  const lines = props.db?.productionLines || []
-  return lines.slice(0, 10)
+// 订单统计图表
+const orderStatsMode = ref('week')
+const orderStatsData = ref(null)
+
+async function loadOrderStats() {
+  try {
+    const { data } = await api.getOrderStats(orderStatsMode.value)
+    orderStatsData.value = data
+  } catch { /* ignore */ }
+}
+
+watch(orderStatsMode, loadOrderStats)
+
+const orderChartOption = computed(() => {
+  if (!orderStatsData.value) return {}
+  const { labels, received, completed } = orderStatsData.value
+  return {
+    tooltip: { trigger: 'axis', appendToBody: true },
+    legend: { data: ['接收订单', '完成订单'], bottom: 0, textStyle: { fontSize: 10 } },
+    grid: { left: 40, right: 16, top: 10, bottom: 40 },
+    xAxis: { type: 'category', data: labels, axisLabel: { color: '#a1a1aa', fontSize: 10 } },
+    yAxis: { type: 'value', axisLabel: { color: '#a1a1aa', fontSize: 10 }, splitLine: { lineStyle: { color: '#f3f4f6' } } },
+    series: [
+      { name: '接收订单', type: 'bar', data: received, itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] }, barMaxWidth: 24 },
+      { name: '完成订单', type: 'bar', data: completed, itemStyle: { color: '#22c55e', borderRadius: [4, 4, 0, 0] }, barMaxWidth: 24 },
+    ],
+  }
 })
+
+// 产线状态详情（5个车间分页）
+const lineStatusData = ref({})
+const activeWorkshopTab = ref(0)
+const workshopTabNames = ['一车间', '二车间', '三车间', '四车间', '五车间']
+
+async function loadLineStatus() {
+  try {
+    const { data } = await api.getLineStatus()
+    const map = {}
+    if (Array.isArray(data)) {
+      for (const ws of data) map[ws.workshop] = ws.lines || []
+    }
+    lineStatusData.value = map
+  } catch { /* ignore */ }
+}
+
+const currentWorkshopLines = computed(() => {
+  const name = workshopTabNames[activeWorkshopTab.value]
+  return lineStatusData.value[name] || []
+})
+
+// 前置车间生产状态
+const secondaryStatusData = ref({})
+const activeSecondaryTab = ref('cutting')
+const secondaryTabConfig = [
+  { key: 'cutting', label: '裁剪', color: '#ef4444' },
+  { key: 'printing', label: '印花', color: '#f59e0b' },
+  { key: 'embroidery', label: '刺绣', color: '#22c55e' },
+  { key: 'template', label: '模板', color: '#3b82f6' },
+  { key: 'ironing', label: '烫标', color: '#8b5cf6' },
+]
+const currentSecondaryItems = computed(() => secondaryStatusData.value[activeSecondaryTab.value] || [])
+
+async function loadSecondaryStatus() {
+  try {
+    const { data } = await api.getSecondaryStatus()
+    secondaryStatusData.value = data || {}
+  } catch { /* ignore */ }
+}
 
 async function loadAchievementRate() {
   loadingAchievement.value = true
@@ -264,6 +328,9 @@ function getKpiIcon(name) {
 
 onMounted(() => {
   loadAchievementRate()
+  loadLineStatus()
+  loadSecondaryStatus()
+  loadOrderStats()
 })
 </script>
 
@@ -335,26 +402,64 @@ onMounted(() => {
 
     <!-- 原有图表 -->
     <div class="charts-row">
-      <!-- Pie Chart: 产能分布 -->
-      <div class="chart-card">
-        <div class="chart-header">
-          <div class="chart-title-area">
-            <div class="chart-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+      <!-- 前置车间生产状态 -->
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title-area">
+            <div class="table-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
             </div>
-            <span class="chart-title">车间产能分布</span>
+            <span class="table-title">前置车间生产状态</span>
           </div>
-          <span class="chart-subtitle">{{ stats.workshops }} 个车间 / {{ stats.lines }} 条产线</span>
         </div>
-        <div class="chart-body-pie">
-          <v-chart :option="pieOption" :autoresize="true" style="height: 220px; width: 100%;" />
-          <div class="pie-legend">
-            <div v-for="(w, i) in (db?.workshops || [])" :key="w.id" class="legend-item">
-              <span class="legend-dot" :style="{ background: ['#6e3ff3','#3b82f6','#22c55e','#f59e0b','#ef4444','#ec4899','#14b8a6','#8b5cf6'][i % 8] }"></span>
-              <span class="legend-name">{{ w.name }}</span>
-              <span class="legend-value">{{ (db?.productionLines || []).filter(l => l.workshop_id === w.id).length }}</span>
-            </div>
-          </div>
+        <div class="ws-tabs">
+          <button
+            v-for="tab in secondaryTabConfig"
+            :key="tab.key"
+            class="ws-tab"
+            :class="{ active: activeSecondaryTab === tab.key }"
+            :style="activeSecondaryTab === tab.key ? { borderBottomColor: tab.color, color: tab.color } : {}"
+            @click="activeSecondaryTab = tab.key"
+          >{{ tab.label }}</button>
+        </div>
+        <div class="table-body">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>款号</th>
+                <th>品名</th>
+                <th style="text-align:right">计划数</th>
+                <th style="text-align:right">已完成</th>
+                <th style="text-align:right">进度</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in currentSecondaryItems" :key="item.style_no + (item.color || '')">
+                <td class="cell-name">{{ item.style_no }}</td>
+                <td class="cell-muted">{{ item.product_name }}</td>
+                <td style="text-align:right">{{ item.plan_qty.toLocaleString() }}</td>
+                <td style="text-align:right">{{ item.completed.toLocaleString() }}</td>
+                <td style="text-align:right">
+                  <div class="progress-cell">
+                    <div class="progress-bar-mini">
+                      <div class="progress-fill" :style="{ width: Math.min(item.progress, 100) + '%', background: item.progress >= 80 ? '#22c55e' : item.progress >= 50 ? '#f59e0b' : '#ef4444' }"></div>
+                    </div>
+                    <span class="progress-text">{{ item.progress }}%</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="status-badge" :class="{
+                    'status-active': item.status === '已完成',
+                    'status-idle': item.status === '待生产',
+                  }">{{ item.status }}</span>
+                </td>
+              </tr>
+              <tr v-if="!currentSecondaryItems.length">
+                <td colspan="6" class="cell-empty">当前无{{ secondaryTabConfig.find(t => t.key === activeSecondaryTab)?.label }}排程</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -368,28 +473,51 @@ onMounted(() => {
             <span class="table-title">车间产线状态</span>
           </div>
         </div>
+        <!-- 车间页签 -->
+        <div class="ws-tabs">
+          <button
+            v-for="(name, i) in workshopTabNames"
+            :key="name"
+            class="ws-tab"
+            :class="{ active: activeWorkshopTab === i }"
+            @click="activeWorkshopTab = i"
+          >{{ name }}</button>
+        </div>
         <div class="table-body">
           <table class="data-table">
             <thead>
               <tr>
-                <th>#</th>
                 <th>产线</th>
-                <th>车间</th>
+                <th>当前款号</th>
+                <th>品名</th>
+                <th style="text-align:right">计划数</th>
+                <th style="text-align:right">已完成</th>
+                <th style="text-align:right">进度</th>
                 <th>状态</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(line, i) in workshopLines" :key="line.id">
-                <td class="cell-index">{{ i + 1 }}</td>
+              <tr v-for="line in currentWorkshopLines" :key="line.line_name">
                 <td>
                   <div class="cell-with-badge">
-                    <span class="line-badge" :style="{ background: ['#6e3ff3','#3b82f6','#22c55e','#f59e0b'][i % 4] }">
-                      {{ line.line_name?.charAt(0) || 'L' }}
+                    <span class="line-badge" :style="{ background: line.status === '生产中' ? '#22c55e' : line.status === '故障' ? '#ef4444' : '#a1a1aa' }">
+                      {{ line.line_name?.replace(/班$/, '') || '-' }}
                     </span>
-                    <span class="cell-name">{{ line.line_name }}</span>
                   </div>
                 </td>
-                <td class="cell-muted">{{ (db?.workshops || []).find(w => w.id === line.workshop_id)?.name || '-' }}</td>
+                <td class="cell-name">{{ line.style_no || '-' }}</td>
+                <td class="cell-muted">{{ line.product_name || '-' }}</td>
+                <td style="text-align:right">{{ line.plan_qty ? line.plan_qty.toLocaleString() : '-' }}</td>
+                <td style="text-align:right">{{ line.completed ? line.completed.toLocaleString() : '-' }}</td>
+                <td style="text-align:right">
+                  <div v-if="line.plan_qty" class="progress-cell">
+                    <div class="progress-bar-mini">
+                      <div class="progress-fill" :style="{ width: Math.min(line.progress, 100) + '%', background: line.progress >= 80 ? '#22c55e' : line.progress >= 50 ? '#f59e0b' : '#ef4444' }"></div>
+                    </div>
+                    <span class="progress-text">{{ line.progress }}%</span>
+                  </div>
+                  <span v-else class="cell-muted">-</span>
+                </td>
                 <td>
                   <span class="status-badge" :class="{
                     'status-active': line.status === '生产中',
@@ -398,8 +526,8 @@ onMounted(() => {
                   }">{{ line.status }}</span>
                 </td>
               </tr>
-              <tr v-if="!workshopLines.length">
-                <td colspan="4" class="cell-empty">暂无产线数据</td>
+              <tr v-if="!currentWorkshopLines.length">
+                <td colspan="7" class="cell-empty">暂无产线数据</td>
               </tr>
             </tbody>
           </table>
@@ -407,44 +535,24 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 近期计划 -->
+    <!-- 订单统计 -->
     <div class="tables-row">
-      <div class="table-card full-width">
-        <div class="table-header">
-          <div class="table-title-area">
-            <div class="table-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+      <div class="chart-card full-width">
+        <div class="chart-header">
+          <div class="chart-title-area">
+            <div class="chart-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
             </div>
-            <span class="table-title">近期预排总计划</span>
-            <span class="table-count">{{ recentPlans.length }}</span>
+            <span class="chart-title">订单接收 / 完成统计</span>
+          </div>
+          <div class="ws-tabs" style="border:none;padding:0">
+            <button class="ws-tab" :class="{ active: orderStatsMode === 'week' }" @click="orderStatsMode = 'week'">按周</button>
+            <button class="ws-tab" :class="{ active: orderStatsMode === 'month' }" @click="orderStatsMode = 'month'">按月</button>
           </div>
         </div>
-        <div class="table-body">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>款号</th>
-                <th>品名</th>
-                <th>计划数量</th>
-                <th>交期</th>
-                <th>缝制开始</th>
-                <th>缝制结束</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="plan in recentPlans" :key="plan.id">
-                <td class="cell-name">{{ plan.style_no }}</td>
-                <td class="cell-muted">{{ plan.product_name }}</td>
-                <td>{{ plan.plan_qty?.toLocaleString() }}</td>
-                <td>{{ plan.due_date || '-' }}</td>
-                <td>{{ plan.sewing_start || '-' }}</td>
-                <td>{{ plan.sewing_end || '-' }}</td>
-              </tr>
-              <tr v-if="!recentPlans.length">
-                <td colspan="6" class="cell-empty">暂无计划数据</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="chart-body" style="padding: 8px 16px 16px">
+          <v-chart v-if="orderStatsData" :option="orderChartOption" :autoresize="true" style="height: 260px; width: 100%;" />
+          <div v-else class="chart-loading">加载中...</div>
         </div>
       </div>
     </div>
@@ -705,5 +813,57 @@ onMounted(() => {
 .status-error {
   background: #fef2f2;
   color: #ef4444;
+}
+
+/* 车间页签 */
+.ws-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  padding: 0 12px;
+}
+.ws-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all .15s;
+}
+.ws-tab:hover {
+  color: var(--primary, #6e3ff3);
+}
+.ws-tab.active {
+  color: var(--primary, #6e3ff3);
+  border-bottom-color: var(--primary, #6e3ff3);
+}
+
+/* 进度条 */
+.progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.progress-bar-mini {
+  width: 48px;
+  height: 6px;
+  background: #f3f4f6;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s;
+}
+.progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 32px;
+  text-align: right;
 }
 </style>

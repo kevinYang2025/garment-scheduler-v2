@@ -1,5 +1,6 @@
 import axios from 'axios'
 import router from '@/router'
+import { useAuthStore } from '@/stores/auth'
 
 // [2026-06-18] 用户系统:加 withCredentials 让 session cookie 跨请求保持
 const api = axios.create({
@@ -9,8 +10,14 @@ const api = axios.create({
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response && error.response.status === 401) {
+      // [fix 2026-06-20 P1-1] session 失效时先清 auth store / localStorage 再跳 login,
+      // 防止 UI 瞬间拿到旧 user 显示"已登录"但所有 API 持续 401
+      try {
+        const auth = useAuthStore()
+        await auth.logout()
+      } catch { /* store 还没初始化时忽略 */ }
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
         // [fix Y-06] 用 router.push 替代 window.location.href,保留 Pinia 状态和 KeepAlive 缓存
         router.push('/login').catch(() => {})
@@ -147,6 +154,7 @@ export default {
   getAchievementRate: () => api.get('/dashboard/achievement-rate'),
   getLineStatus: () => api.get('/dashboard/line-status'),
   getSecondaryStatus: () => api.get('/dashboard/secondary-status'),
+  getOrderStats: (mode) => api.get('/dashboard/order-stats', { params: { mode: mode || 'week' } }),
   exportSchedule: (scheduleType, secondaryType) => api.get(`/schedule/${scheduleType}/export`, { params: { secondary_type: secondaryType || '' } }),
   importSchedule: (scheduleType, records, mode) => api.post(`/schedule/${scheduleType}/import`, { records, mode }),
 

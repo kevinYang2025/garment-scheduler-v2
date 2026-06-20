@@ -243,7 +243,10 @@ async function load() {
   loading.value = true
   try {
     const { data } = await api.getMainPlan()
-    plans.value = data
+    // [fix 2026-06-20 S-3] 兼容后端两种返回:
+    //   - 无分页参数 → 直接数组
+    //   - 有分页参数 → { rows, total, page, limit }
+    plans.value = Array.isArray(data) ? data : (data.rows || [])
     computeFilterOptions()
   } catch (e) {
     ElMessage.error('加载预排总计划失败')

@@ -307,7 +307,7 @@ function getIcon(name) {
               <div
                 v-if="navItems[name] && isItemVisible(navItems[name]) && !hiddenNavItems.has(name)"
                 class="nav-item"
-                :class="{ active: route.name === name }"
+                :class="{ active: route.name === name || (name === 'warehouse' && route.name === 'warehouse-detail') }"
                 :data-label="navItems[name].label"
                 @click="enterModule(name)"
               >

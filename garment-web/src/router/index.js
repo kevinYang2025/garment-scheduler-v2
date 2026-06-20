@@ -108,8 +108,8 @@ const routes = [
   { path: '/sewing-dispatch', name: 'sewing-dispatch', component: SewingDispatchSelect },
   { path: '/sewing-dispatch/detail', name: 'sewing-dispatch-detail', component: SewingDispatch, props: (route) => ({ workshop: route.query.workshop }) },
 
-  // 仓库
-  { path: '/warehouse', name: 'warehouse', component: WarehouseHome },
+  // 仓库（直接进裁片库详情，跳过卡片页）
+  { path: '/warehouse', name: 'warehouse', redirect: { name: 'warehouse-detail', params: { type: 'cutting_piece' } } },
   { path: '/warehouse/:type', name: 'warehouse-detail', component: WarehouseDetail, props: true },
 
   // 设置

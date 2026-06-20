@@ -105,9 +105,9 @@ const processRateOption = computed(() => {
       params.forEach(p => { h += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
       return h
     }},
-    legend: { data: cfg.map(p => p.label), bottom: 0, textStyle: { fontSize: 10 } },
-    grid: { left: 36, right: 12, top: 10, bottom: 56 },
-    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 45, margin: 10 } },
+    legend: { data: cfg.map(p => p.label), bottom: 0, type: 'scroll', textStyle: { fontSize: 10 }, itemGap: 8, padding: [0, 0, 2, 0] },
+    grid: { left: 36, right: 12, top: 10, bottom: 88 },
+    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 45, margin: 12 } },
     yAxis: { type: 'value', max: 100, axisLabel: { color: '#a1a1aa', fontSize: 10, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#f3f4f6' } } },
     series: cfg.map(p => ({
       name: p.label, type: 'line', smooth: true, symbol: 'none',
@@ -123,20 +123,34 @@ const sewingWorkshopOption = computed(() => {
   const shortDates = dates.map(d => d.slice(5))
   const colors = ['#6e3ff3', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444']
   const wss = Object.keys(sewingByWorkshop)
-  const suffix = t('entry.workshopSuffix', 'zh')
-  const wssLabel = wss.map(w => w + suffix)
+  // 车间名中柬映射
+  const wsNameMap = {
+    '一车间': { zh: '一车间', km: 'រោងចក្រទី១' },
+    '二车间': { zh: '二车间', km: 'រោងចក្រទី២' },
+    '三车间': { zh: '三车间', km: 'រោងចក្រទី៣' },
+    '四车间': { zh: '四车间', km: 'រោងចក្រទី៤' },
+    '五车间': { zh: '五车间', km: 'រោងចក្រទី៥' },
+  }
+  const langMode = mode.value
+  const wssLabel = wss.map(w => {
+    const mapped = wsNameMap[w]
+    if (!mapped) return w
+    if (langMode === 'km') return mapped.km
+    if (langMode === 'zh') return mapped.zh
+    return mapped.zh + ' · ' + mapped.km
+  })
   return {
     tooltip: { trigger: 'axis', appendToBody: true, formatter: (params) => {
       let h = `<b>${params[0].axisValue}</b><br/>`
       params.forEach(p => { h += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
       return h
     }},
-    legend: { data: wssLabel, bottom: 0, textStyle: { fontSize: 10 } },
-    grid: { left: 36, right: 12, top: 10, bottom: 56 },
-    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 45, margin: 10 } },
+    legend: { data: wssLabel, bottom: 0, type: 'scroll', textStyle: { fontSize: 10 }, itemGap: 8, padding: [0, 0, 2, 0] },
+    grid: { left: 36, right: 12, top: 10, bottom: 72 },
+    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 45, margin: 12 } },
     yAxis: { type: 'value', max: 100, axisLabel: { color: '#a1a1aa', fontSize: 10, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#f3f4f6' } } },
     series: wss.map((w, i) => ({
-      name: w + suffix, type: 'line', smooth: true, symbol: 'none',
+      name: wssLabel[i], type: 'line', smooth: true, symbol: 'none',
       lineStyle: { color: colors[i % colors.length], width: 2 },
       itemStyle: { color: colors[i % colors.length] },
       data: sewingByWorkshop[w] || dates.map(() => 0),
