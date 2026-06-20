@@ -119,10 +119,10 @@ async function batchDelete() {
   try {
     await ElMessageBox.confirm(`确定删除选中的 ${selectedIds.value.size} 条记录？`, '批量删除', { type: 'warning' })
     const ids = [...selectedIds.value]
-    let ok = 0, fail = 0
-    for (const id of ids) {
-      try { await api.delete(`/fabric-loading/${id}`); ok++ } catch { fail++ }
-    }
+    // [2026-06-20 fix#前端-P2-6] 并行删除 (Promise.allSettled) 代替串行 await
+    const results = await Promise.allSettled(ids.map(id => api.delete(`/fabric-loading/${id}`)))
+    const ok = results.filter(r => r.status === 'fulfilled').length
+    const fail = results.length - ok
     selectedIds.value = new Set()
     ElMessage.success(`删除完成：${ok} 成功，${fail} 失败`)
     loadRecords()
