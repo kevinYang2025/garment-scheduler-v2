@@ -3407,7 +3407,9 @@ app.get('/api/dispatch-alerts', (req, res) => {
 // 用于 CuttingDispatch 报警：实际 < 原单数 红色提示
 app.get('/api/cutting-completion', (req, res) => {
   try {
-    const rows = db.all(`
+    // [2026-06-20 段10 M-2] mode=active 仅返回未完成或有报工的行(替代前端 .filter)
+    const mode = req.query.mode;
+    let sql = `
       SELECT
         scs.style_no, scs.color, scs.size_spec,
         scs.plan_qty AS order_qty,
@@ -3422,9 +3424,19 @@ app.get('/api/cutting-completion', (req, res) => {
         ON ap.style_no = scs.style_no AND ap.color = scs.color AND ap.size_spec = scs.size_spec
       WHERE scs.plan_qty > 0
       GROUP BY scs.style_no, scs.color, scs.size_spec
-      ORDER BY under_order DESC, scs.style_no
-    `);
-    res.json(rows);
+    `;
+    if (mode === 'active') {
+      // 重复表达式(SQLite HAVING 不支持别名)+ 复用 under_order 表达式
+      sql += ` HAVING (
+        CASE WHEN scs.plan_qty > 0 AND
+          COALESCE(SUM(CASE WHEN ap.schedule_type = 'cutting' AND COALESCE(ap.is_second_inspection, 0) = 0 THEN ap.completed_qty ELSE 0 END), 0) < scs.plan_qty
+          THEN 1 ELSE 0 END = 1
+        OR COALESCE(SUM(CASE WHEN ap.schedule_type = 'cutting' AND COALESCE(ap.is_second_inspection, 0) = 0 THEN ap.completed_qty ELSE 0 END), 0)
+         + COALESCE(SUM(CASE WHEN ap.schedule_type = 'cutting' AND COALESCE(ap.is_second_inspection, 0) = 1 THEN ap.completed_qty ELSE 0 END), 0) > 0
+      )`;
+    }
+    sql += ' ORDER BY under_order DESC, scs.style_no';
+    res.json(db.all(sql));
   } catch (e) {
     console.error('GET /api/cutting-completion error:', e);
     res.status(500).json({ error: 'Internal server error' });

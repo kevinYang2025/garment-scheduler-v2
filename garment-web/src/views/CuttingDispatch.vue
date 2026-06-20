@@ -145,8 +145,9 @@ async function checkUnderOrder() {
 async function loadCompletion() {
   completionLoading.value = true
   try {
-    const { data } = await api.get('/cutting-completion')
-    completionRows.value = (data || []).filter(r => r.under_order === 1 || (r.first_actual + r.second_actual) > 0)
+    // [2026-06-20 段10 M-2] mode=active 后端 HAVING 过滤(替代 .filter)
+    const { data } = await api.get('/cutting-completion', { params: { mode: 'active' } })
+    completionRows.value = data || []
   } catch (e) {
     console.error('加载裁剪进度失败:', e)
   }
