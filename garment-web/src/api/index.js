@@ -81,7 +81,9 @@ export default {
 
   // 预排总计划
   getMainPlan: () => api.get('/main-plan'),
+  getMainPlanStyles: (keyword) => api.get('/main-plan/styles', { params: { keyword: keyword || '' } }),
   getMainPlanGantt: () => api.get('/main-plan/gantt'),
+  getStyleColorSize: (keyword) => api.get('/style-color-size', { params: { keyword: keyword || '' } }),
   saveMainPlan: (plan) => api.post('/main-plan', plan),
   updateMainPlan: (id, data) => api.put(`/main-plan/${id}`, data),
   deleteMainPlan: (id) => api.delete(`/main-plan/${id}`),
@@ -110,7 +112,7 @@ export default {
   confirmTemplatePlan: (data) => api.post('/template-plan-data/confirm', data),
 
   // 实际生产数据
-  getActual: (scheduleType) => api.get('/actual', { params: { scheduleType } }),
+  getActual: (scheduleType, keyword) => api.get('/actual', { params: { scheduleType, keyword: keyword || '' } }),
   getActualById: (id) => api.get(`/actual/${id}`),
   saveActual: (data) => api.post('/actual', data),
   updateActual: (id, data) => api.put(`/actual/${id}`, data),

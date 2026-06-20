@@ -3100,14 +3100,16 @@ function generatePlanRows(masterId, start, end, totalQty) {
 // ---------- 实际生产数据 ----------
 app.get('/api/actual', (req, res) => {
   try {
-    const { scheduleType } = req.query;
-    let rows;
-    if (scheduleType) {
-      rows = db.all('SELECT * FROM actual_production WHERE schedule_type = ? ORDER BY production_date DESC', [scheduleType]);
-    } else {
-      rows = db.all('SELECT * FROM actual_production ORDER BY production_date DESC');
-    }
-    res.json(rows);
+    const { scheduleType, keyword } = req.query;
+    let sql = 'SELECT * FROM actual_production';
+    const wheres = [];
+    const params = [];
+    if (scheduleType) { wheres.push('schedule_type = ?'); params.push(scheduleType); }
+    // [2026-06-20 段8 M-2] 款号模糊,后端 SQL LIKE(替代前端 .filter())
+    if (keyword) { wheres.push(`style_no LIKE ? ESCAPE '\\'`); params.push(`%${escapeLike(keyword)}%`); }
+    if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
+    sql += ' ORDER BY production_date DESC';
+    res.json(db.all(sql, params));
   } catch (e) {
     console.error('GET /api/actual error:', e);
     res.status(500).json({ error: 'Internal server error' });

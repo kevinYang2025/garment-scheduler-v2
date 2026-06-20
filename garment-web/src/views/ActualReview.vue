@@ -76,7 +76,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 import { useI18n } from '../composables/useI18n'
@@ -99,10 +99,15 @@ const workshopNames = computed(() => ({
   sewing: t('actualReview.workshop.sewing'),
 }))
 
-const filteredRows = computed(() => {
-  if (!filterStyle.value) return rows.value
-  const kw = filterStyle.value.toLowerCase()
-  return rows.value.filter(r => (r.style_no || '').toLowerCase().includes(kw))
+const filteredRows = computed(() => rows.value)  // [段8 M-2] 后端已筛,前端不再 filter
+
+// [段8 M-2] 款号变化触发重载,带 350ms 防抖避免连打字连发
+let filterStyleTimer = null
+watch(filterStyle, () => {
+  clearTimeout(filterStyleTimer)
+  filterStyleTimer = setTimeout(() => {
+    if (scheduleType.value) load()
+  }, 350)
 })
 
 function isLockedByOther(row) {
@@ -123,8 +128,12 @@ async function load() {
   }
   loading.value = true
   try {
+    // [2026-06-20 段8 M-2] 款号筛选走后端 SQL LIKE(替代客户端 .filter)
     const r = await api.get('/schedule/daily/actuals', {
-      params: { schedule_type: scheduleType.value }
+      params: {
+        schedule_type: scheduleType.value,
+        style_no: filterStyle.value || ''
+      }
     })
     rows.value = r.data
   } catch (e) {
