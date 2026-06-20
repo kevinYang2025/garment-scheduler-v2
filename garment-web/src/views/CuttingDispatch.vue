@@ -19,6 +19,8 @@ const saving = ref(false)
 // [2026-06-19] 裁剪完成进度对比(二检已拆独立页,本页只一检 + 进度对比)
 const completionRows = ref([])
 const completionLoading = ref(false)
+// [2026-06-20 段17 C-1] 滚动容器 ref(替代 querySelector)
+const bodyRef = ref(null)
 const comparisonTab = ref('records') // 'records' | 'progress'
 
 // 录入表单
@@ -185,8 +187,8 @@ const summaryRows = computed(() => {
 })
 
 function scrollToTop() {
-  const el = document.querySelector('.excel-wrap')
-  if (el) el.scrollTop = 0
+  // [2026-06-20 段17 C-1] 用 ref 替代 querySelector
+  if (bodyRef.value) bodyRef.value.scrollTop = 0
 }
 
 onMounted(async () => {
@@ -240,7 +242,7 @@ function switchComparisonTab(tab) {
     <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary)"><span style="white-space:pre-line">{{ t('common.loading') }}</span></div>
 
     <!-- [2026-06-19] 裁剪完成进度对比表 -->
-    <div v-if="comparisonTab === 'progress'" class="excel-wrap">
+    <div v-if="comparisonTab === 'progress'" ref="bodyRef" class="excel-wrap">
       <table class="excel-table" v-loading="completionLoading">
         <thead>
           <tr>
@@ -277,7 +279,7 @@ function switchComparisonTab(tab) {
     </div>
 
     <!-- 已录入记录表格 -->
-    <div v-else-if="records.length && comparisonTab === 'records'" class="excel-wrap">
+    <div v-else-if="records.length && comparisonTab === 'records'" ref="bodyRef" class="excel-wrap">
       <table class="excel-table">
         <thead>
           <tr>

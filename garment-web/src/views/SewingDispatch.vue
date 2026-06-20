@@ -20,6 +20,8 @@ const loading = ref(false)
 const saving = ref(false)
 
 const showEntry = ref(false)
+// [2026-06-20 段17 C-1] 滚动容器 ref(替代 querySelector)
+const bodyRef = ref(null)
 const form = ref({
   schedule_type: 'sewing',
   style_no: '', product_name: '', color: '', size_spec: '',
@@ -135,8 +137,8 @@ async function deleteRecord(row) {
 }
 
 function scrollToTop() {
-  const el = document.querySelector('.excel-wrap')
-  if (el) el.scrollTop = 0
+  // [2026-06-20 段17 C-1] 用 ref 替代 querySelector
+  if (bodyRef.value) bodyRef.value.scrollTop = 0
 }
 
 onMounted(async () => {
@@ -169,7 +171,7 @@ onMounted(async () => {
 
     <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary)"><span style="white-space:pre-line">{{ t('common.loading') }}</span></div>
 
-    <div v-else-if="records.length" class="excel-wrap">
+    <div v-else-if="records.length" ref="bodyRef" class="excel-wrap">
       <table class="excel-table">
         <thead>
           <tr>

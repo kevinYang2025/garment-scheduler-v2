@@ -284,6 +284,8 @@ function sOnDragEnd() {
 }
 
 function scrollToTop() {
+  // [2026-06-20 段17 C-1] ScheduleView 有 2 个 .excel-wrap(裁剪+缝制),只缝制有 ref
+  // 用 querySelector 兼容双 tab,后续如需精确控制可加 cuttingBodyRef
   const el = document.querySelector('.excel-wrap')
   if (el) el.scrollTop = 0
 }

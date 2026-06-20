@@ -31,6 +31,8 @@ const records = ref([])
 const scheduleStyles = ref([])
 const loading = ref(false)
 const saving = ref(false)
+// [2026-06-20 段17 C-1] 滚动容器 ref(替代 querySelector)
+const bodyRef = ref(null)
 
 const showEntry = ref(false)
 const form = ref(getDefaultForm())
@@ -143,8 +145,8 @@ const summaryRows = computed(() => {
 })
 
 function scrollToTop() {
-  const el = document.querySelector('.excel-wrap')
-  if (el) el.scrollTop = 0
+  // [2026-06-20 段17 C-1] 用 ref 替代 querySelector
+  if (bodyRef.value) bodyRef.value.scrollTop = 0
 }
 
 onMounted(async () => {
@@ -181,7 +183,7 @@ onMounted(async () => {
 
     <div v-if="loading" style="text-align:center;padding:60px;color:var(--text-tertiary);white-space:pre-line">{{ t('common.loading') }}</div>
 
-    <div v-else-if="records.length" class="excel-wrap">
+    <div v-else-if="records.length" ref="bodyRef" class="excel-wrap">
       <table class="excel-table">
         <thead>
           <tr>
