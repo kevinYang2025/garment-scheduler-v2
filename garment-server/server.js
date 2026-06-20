@@ -359,11 +359,17 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
 
 app.get('/api/users', requireRole('admin'), (req, res) => {
   try {
-    const { role, workshop } = req.query;
+    const { role, workshop, keyword } = req.query;
     let sql = 'SELECT id, username, username_km, display_name, display_name_km, role, workshop, active, created_at FROM users WHERE 1=1';
     const params = [];
     if (role) { sql += ' AND role = ?'; params.push(role); }
     if (workshop) { sql += ' AND workshop = ?'; params.push(workshop); }
+    // [2026-06-20 段12 M-2] 关键字模糊,后端 SQL LIKE 替代 UserManagement .filter
+    if (keyword) {
+      sql += ` AND (username LIKE ? ESCAPE '\\' OR username_km LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\' OR display_name_km LIKE ? ESCAPE '\\')`;
+      const k = `%${escapeLike(keyword)}%`;
+      params.push(k, k, k, k);
+    }
     sql += ' ORDER BY id ASC';
     res.json(db.all(sql, params));
   } catch (e) { sendError(res, 'GET /api/users', e); }

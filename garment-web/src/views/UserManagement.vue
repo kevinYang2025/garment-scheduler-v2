@@ -146,7 +146,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import api from '../api'
@@ -208,17 +208,14 @@ function workshopLabel(w) {
 }
 
 // 筛选后数据
-const filteredUsers = computed(() => {
-  return users.value.filter(u => {
-    if (filterRole.value && u.role !== filterRole.value) return false
-    if (filterWorkshop.value && u.workshop !== filterWorkshop.value) return false
-    if (filterName.value) {
-      const kw = filterName.value.toLowerCase()
-      const hay = `${u.username || ''} ${u.username_km || ''} ${u.display_name || ''} ${u.display_name_km || ''}`.toLowerCase()
-      if (!hay.includes(kw)) return false
-    }
-    return true
-  })
+// [2026-06-20 段12 M-2] role/workshop/keyword 全部走后端,前端不再 filter
+const filteredUsers = computed(() => users.value)
+
+// filter 变化触发重载(避免用户改 filterName 时不生效)
+let filterTimer = null
+watch([filterRole, filterWorkshop, filterName], () => {
+  clearTimeout(filterTimer)
+  filterTimer = setTimeout(loadUsers, 300)
 })
 
 // 加载用户列表
@@ -228,6 +225,8 @@ async function loadUsers() {
     const params = {}
     if (filterRole.value) params.role = filterRole.value
     if (filterWorkshop.value) params.workshop = filterWorkshop.value
+    // [2026-06-20 段12 M-2] 关键字走后端 SQL LIKE(替代前端 .filter)
+    if (filterName.value) params.keyword = filterName.value
     const res = await api.get('/users', { params })
     users.value = res.data
   } catch (e) {
