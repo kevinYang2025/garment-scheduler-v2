@@ -1455,26 +1455,37 @@ app.put('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'planner'
     const id = req.params.id;
     const existing = db.get('SELECT * FROM main_plan WHERE id = ?', [id]);
     if (!existing) return res.status(404).json({ error: '计划不存在' });
-    // 未传的字段保留原值
-    const style_id = p.style_id ?? existing.style_id;
-    const style_no = p.style_no ?? existing.style_no;
-    const product_name = p.product_name ?? existing.product_name;
-    const plan_qty = p.plan_qty ?? existing.plan_qty;
-    const due_date = p.due_date ?? existing.due_date;
-    const arrival_date = p.arrival_date ?? existing.arrival_date ?? '';
-    const cutting_start = p.cutting_start ?? existing.cutting_start;
-    const cutting_end = p.cutting_end ?? existing.cutting_end;
-    const secondary_start = p.secondary_start ?? existing.secondary_start;
-    const secondary_end = p.secondary_end ?? existing.secondary_end;
+    // [2026-06-20 段4] PUT 同样走重算,确保 due_date/plan_qty 改动后 cutting/sewing 等日期同步
+    const merged = {
+      style_id: p.style_id ?? existing.style_id,
+      style_no: p.style_no ?? existing.style_no,
+      product_name: p.product_name ?? existing.product_name,
+      plan_qty: p.plan_qty ?? existing.plan_qty,
+      due_date: p.due_date ?? existing.due_date,
+      arrival_date: p.arrival_date ?? existing.arrival_date ?? '',
+    };
+    if (p.due_date !== undefined || p.plan_qty !== undefined) {
+      recalcMainPlanDates(merged);
+    }
+    const style_id = merged.style_id;
+    const style_no = merged.style_no;
+    const product_name = merged.product_name;
+    const plan_qty = merged.plan_qty;
+    const due_date = merged.due_date;
+    const arrival_date = merged.arrival_date;
+    const cutting_start = p.cutting_start ?? merged.cutting_start ?? existing.cutting_start;
+    const cutting_end = p.cutting_end ?? merged.cutting_end ?? existing.cutting_end;
+    const secondary_start = p.secondary_start ?? merged.secondary_start ?? existing.secondary_start;
+    const secondary_end = p.secondary_end ?? merged.secondary_end ?? existing.secondary_end;
     const printing_start = p.printing_start ?? existing.printing_start ?? '';
     const printing_end = p.printing_end ?? existing.printing_end ?? '';
     const embroidery_start = p.embroidery_start ?? existing.embroidery_start ?? '';
     const embroidery_end = p.embroidery_end ?? existing.embroidery_end ?? '';
     const template_start = p.template_start ?? existing.template_start ?? '';
     const template_end = p.template_end ?? existing.template_end ?? '';
-    const sewing_remind_date = p.sewing_remind_date ?? existing.sewing_remind_date;
-    const sewing_start = p.sewing_start ?? existing.sewing_start;
-    const sewing_end = p.sewing_end ?? existing.sewing_end;
+    const sewing_remind_date = p.sewing_remind_date ?? merged.sewing_remind_date ?? existing.sewing_remind_date;
+    const sewing_start = p.sewing_start ?? merged.sewing_start ?? existing.sewing_start;
+    const sewing_end = p.sewing_end ?? merged.sewing_end ?? existing.sewing_end;
     const ironing_start = p.ironing_start ?? existing.ironing_start ?? '';
     const ironing_end = p.ironing_end ?? existing.ironing_end ?? '';
     const conflict_flag = p.conflict_flag ?? existing.conflict_flag ?? 0;
