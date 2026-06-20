@@ -5552,12 +5552,19 @@ app.get('/api/visual-schedule/gantt', (req, res) => {
     }
 
     // 加载所有缝制排程数据
+    // [2026-06-20 fix#业务-P1-7] 支持 ?from=&to= 分片,限制 plan_start 在区间内
+    //   不传时保持原行为(全表);传了时走 WHERE,避免 50 条产线 * 1 年数据全量返回
+    const { from, to } = req.query;
+    let ganttWhere = "sm.schedule_type = 'sewing'";
+    const ganttParams = [];
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) { ganttWhere += ' AND sm.plan_start >= ?'; ganttParams.push(from); }
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(to))   { ganttWhere += ' AND sm.plan_start <= ?'; ganttParams.push(to); }
     const allTasks = db.all(`SELECT sm.id as planId, sm.style_no as styleNo,
       sm.product_name as productName, sm.color, sm.size_spec as sizeSpec,
       sm.plan_qty as planQty, sm.plan_start as sewingStart, sm.plan_end as sewingEnd,
       sm.workshop, sm.line_team
-      FROM schedule_master sm WHERE sm.schedule_type = 'sewing'
-      ORDER BY sm.workshop, sm.line_team, sm.plan_start`);
+      FROM schedule_master sm WHERE ${ganttWhere}
+      ORDER BY sm.workshop, sm.line_team, sm.plan_start`, ganttParams);
 
     // 按 workshop+line_team 建索引（schedule_master 中 line_team 是纯数字如 "20"，line_name 是 "20班"）
     // 车间名映射：一车间→1, 二车间→2, 三车间→3, 四车间→4, 五车间→5
