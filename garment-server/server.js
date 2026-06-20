@@ -3902,7 +3902,19 @@ app.post('/api/warehouse/:type/outbound', (req, res) => {
 
 app.get('/api/warehouse/:type/inventory', (req, res) => {
   try {
-    res.json(db.all('SELECT * FROM warehouse_inventory WHERE warehouse_type = ?', [req.params.type]));
+    const { keyword, in_stock } = req.query;
+    let sql = 'SELECT * FROM warehouse_inventory WHERE warehouse_type = ?';
+    const params = [req.params.type];
+    // [2026-06-20 段13 M-2] 关键字+库存过滤,后端 SQL(替代 WarehouseDetail .filter)
+    if (keyword) {
+      sql += ` AND (style_no LIKE ? ESCAPE '\\' OR color LIKE ? ESCAPE '\\' OR fabric_name LIKE ? ESCAPE '\\')`;
+      const k = `%${escapeLike(keyword)}%`;
+      params.push(k, k, k);
+    }
+    if (in_stock === '1') {
+      sql += ' AND current_qty > 0';
+    }
+    res.json(db.all(sql, params));
   } catch (e) {
     console.error('GET /api/warehouse/inventory error:', e);
     res.status(500).json({ error: 'Internal server error' });

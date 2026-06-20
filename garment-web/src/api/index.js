@@ -153,7 +153,7 @@ export default {
   addWarehouseInbound: (type, data) => api.post(`/warehouse/${type}/inbound`, data),
   getWarehouseOutbound: (type) => api.get(`/warehouse/${type}/outbound`),
   addWarehouseOutbound: (type, data) => api.post(`/warehouse/${type}/outbound`, data),
-  getWarehouseInventory: (type) => api.get(`/warehouse/${type}/inventory`),
+  getWarehouseInventory: (type, params) => api.get(`/warehouse/${type}/inventory`, { params: params || {} }),
   importWarehouse: (type, records) => api.post(`/warehouse/${type}/import`, { records }),
 
   // 目视化排程

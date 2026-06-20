@@ -4,6 +4,10 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import ExcelTable from '../components/ExcelTable.vue'
+import { useI18n } from '../composables/useI18n'
+import { formatLocal as fmtLocal } from '../utils/date'
+
+const { t } = useI18n()
 
 const props = defineProps({
   warehouseType: { type: String, required: true },
@@ -46,97 +50,90 @@ const importPreview = ref(null)
 const importing = ref(false)
 const importSheetFilter = ref('') // ''=全部, 'inventory'|'inbound'|'outbound'
 
-function fmtLocal(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 // --- Column definitions ---
 const inventoryCols = computed(() => isFabric.value
   ? [
-      { field: 'supplier', label: '供应商', width: 120, type: 'text' },
-      { field: 'customer', label: '客户', width: 120, type: 'text' },
-      { field: 'style_no', label: '款号', width: 140, type: 'text' },
-      { field: 'pot_no', label: '锅号', width: 140, type: 'text' },
-      { field: 'fabric_name', label: '面料名称', width: 180, type: 'text' },
-      { field: 'width', label: '幅宽', width: 80, type: 'text' },
-      { field: 'weight', label: '克重', width: 80, type: 'number' },
-      { field: 'color', label: '颜色', width: 120, type: 'text' },
-      { field: 'current_qty', label: '当前库存', width: 100, type: 'number' },
-      { field: 'unit', label: '单位', width: 70, type: 'text' },
-      { field: 'total_pcs', label: '总匹数', width: 80, type: 'number' },
-      { field: 'unit2', label: '单位2', width: 70, type: 'text' },
-      { field: 'updated_at', label: '更新时间', width: 160, type: 'date' },
+      { field: 'supplier', label: t('wh.col.supplier'), width: 120, type: 'text' },
+      { field: 'customer', label: t('wh.col.customer'), width: 120, type: 'text' },
+      { field: 'style_no', label: t('wh.col.styleNo'), width: 140, type: 'text' },
+      { field: 'pot_no', label: t('wh.col.potNo'), width: 140, type: 'text' },
+      { field: 'fabric_name', label: t('wh.col.fabricName'), width: 180, type: 'text' },
+      { field: 'width', label: t('wh.col.width'), width: 80, type: 'text' },
+      { field: 'weight', label: t('wh.col.weight'), width: 80, type: 'number' },
+      { field: 'color', label: t('wh.col.color'), width: 120, type: 'text' },
+      { field: 'current_qty', label: t('wh.col.currentQty'), width: 100, type: 'number' },
+      { field: 'unit', label: t('wh.col.unit'), width: 70, type: 'text' },
+      { field: 'total_pcs', label: t('wh.col.totalPcs'), width: 80, type: 'number' },
+      { field: 'unit2', label: t('wh.col.unit2'), width: 70, type: 'text' },
+      { field: 'updated_at', label: t('wh.col.updatedAt'), width: 160, type: 'date' },
     ]
   : [
-      { field: 'style_no', label: '款号', width: 120, type: 'text' },
-      { field: 'color', label: '颜色', width: 100, type: 'text' },
-      { field: 'size_spec', label: '规格', width: 100, type: 'text' },
-      { field: 'current_qty', label: '当前库存', width: 120, type: 'number' },
-      { field: 'updated_at', label: '更新时间', width: 180, type: 'date' },
+      { field: 'style_no', label: t('wh.col.styleNo'), width: 120, type: 'text' },
+      { field: 'color', label: t('wh.col.color'), width: 100, type: 'text' },
+      { field: 'size_spec', label: t('wh.col.sizeSpec'), width: 100, type: 'text' },
+      { field: 'current_qty', label: t('wh.col.currentQty'), width: 120, type: 'number' },
+      { field: 'updated_at', label: t('wh.col.updatedAt'), width: 180, type: 'date' },
     ]
 )
 
 const inboundCols = computed(() => isFabric.value
   ? [
-      { field: 'inbound_date', label: '入库日期', width: 110, type: 'date' },
-      { field: 'order_no', label: '入库单号', width: 160, type: 'text' },
-      { field: 'supplier', label: '供应商', width: 120, type: 'text' },
-      { field: 'customer', label: '客户', width: 120, type: 'text' },
-      { field: 'style_no', label: '款号', width: 140, type: 'text' },
-      { field: 'pot_no', label: '锅号', width: 140, type: 'text' },
-      { field: 'fabric_name', label: '面料名称', width: 180, type: 'text' },
-      { field: 'width', label: '幅宽', width: 80, type: 'text' },
-      { field: 'weight', label: '克重', width: 80, type: 'number' },
-      { field: 'color', label: '颜色', width: 120, type: 'text' },
-      { field: 'qty', label: '数量', width: 90, type: 'number' },
-      { field: 'unit', label: '单位', width: 70, type: 'text' },
-      { field: 'loading_qty', label: '装柜数量', width: 90, type: 'number' },
-      { field: 'total_pcs', label: '总匹数', width: 80, type: 'number' },
-      { field: 'unit2', label: '单位2', width: 70, type: 'text' },
-      { field: 'remark', label: '备注', width: 150, type: 'text' },
+      { field: 'inbound_date', label: t('wh.col.inboundDate'), width: 110, type: 'date' },
+      { field: 'order_no', label: t('wh.col.orderNo'), width: 160, type: 'text' },
+      { field: 'supplier', label: t('wh.col.supplier'), width: 120, type: 'text' },
+      { field: 'customer', label: t('wh.col.customer'), width: 120, type: 'text' },
+      { field: 'style_no', label: t('wh.col.styleNo'), width: 140, type: 'text' },
+      { field: 'pot_no', label: t('wh.col.potNo'), width: 140, type: 'text' },
+      { field: 'fabric_name', label: t('wh.col.fabricName'), width: 180, type: 'text' },
+      { field: 'width', label: t('wh.col.width'), width: 80, type: 'text' },
+      { field: 'weight', label: t('wh.col.weight'), width: 80, type: 'number' },
+      { field: 'color', label: t('wh.col.color'), width: 120, type: 'text' },
+      { field: 'qty', label: t('wh.col.qty'), width: 90, type: 'number' },
+      { field: 'unit', label: t('wh.col.unit'), width: 70, type: 'text' },
+      { field: 'loading_qty', label: t('wh.col.loadingQty'), width: 90, type: 'number' },
+      { field: 'total_pcs', label: t('wh.col.totalPcs'), width: 80, type: 'number' },
+      { field: 'unit2', label: t('wh.col.unit2'), width: 70, type: 'text' },
+      { field: 'remark', label: t('wh.col.remark'), width: 150, type: 'text' },
     ]
   : [
-      { field: 'inbound_date', label: '日期', width: 120, type: 'date' },
-      { field: 'style_no', label: '款号', width: 120, type: 'text' },
-      { field: 'color', label: '颜色', width: 100, type: 'text' },
-      { field: 'size_spec', label: '规格', width: 100, type: 'text' },
-      { field: 'qty', label: '数量', width: 100, type: 'number' },
-      { field: 'operator', label: '操作人', width: 100, type: 'text' },
+      { field: 'inbound_date', label: t('wh.col.date'), width: 120, type: 'date' },
+      { field: 'style_no', label: t('wh.col.styleNo'), width: 120, type: 'text' },
+      { field: 'color', label: t('wh.col.color'), width: 100, type: 'text' },
+      { field: 'size_spec', label: t('wh.col.sizeSpec'), width: 100, type: 'text' },
+      { field: 'qty', label: t('wh.col.qty'), width: 100, type: 'number' },
+      { field: 'operator', label: t('wh.col.operator'), width: 100, type: 'text' },
     ]
 )
 
 const outboundCols = computed(() => isFabric.value
   ? [
-      { field: 'outbound_date', label: '出库日期', width: 110, type: 'date' },
-      { field: 'order_no', label: '出库单号', width: 160, type: 'text' },
-      { field: 'supplier', label: '供应商', width: 120, type: 'text' },
-      { field: 'customer', label: '客户', width: 120, type: 'text' },
-      { field: 'style_no', label: '款号', width: 140, type: 'text' },
-      { field: 'pot_no', label: '锅号', width: 140, type: 'text' },
-      { field: 'fabric_name', label: '面料名称', width: 180, type: 'text' },
-      { field: 'width', label: '幅宽', width: 80, type: 'text' },
-      { field: 'weight', label: '克重', width: 80, type: 'number' },
-      { field: 'color', label: '颜色', width: 120, type: 'text' },
-      { field: 'qty', label: '数量', width: 90, type: 'number' },
-      { field: 'unit', label: '单位', width: 70, type: 'text' },
-      { field: 'total_pcs', label: '总匹数', width: 80, type: 'number' },
-      { field: 'unit2', label: '单位2', width: 70, type: 'text' },
-      { field: 'remark', label: '备注', width: 150, type: 'text' },
+      { field: 'outbound_date', label: t('wh.col.outboundDate'), width: 110, type: 'date' },
+      { field: 'order_no', label: t('wh.col.orderNo'), width: 160, type: 'text' },
+      { field: 'supplier', label: t('wh.col.supplier'), width: 120, type: 'text' },
+      { field: 'customer', label: t('wh.col.customer'), width: 120, type: 'text' },
+      { field: 'style_no', label: t('wh.col.styleNo'), width: 140, type: 'text' },
+      { field: 'pot_no', label: t('wh.col.potNo'), width: 140, type: 'text' },
+      { field: 'fabric_name', label: t('wh.col.fabricName'), width: 180, type: 'text' },
+      { field: 'width', label: t('wh.col.width'), width: 80, type: 'text' },
+      { field: 'weight', label: t('wh.col.weight'), width: 80, type: 'number' },
+      { field: 'color', label: t('wh.col.color'), width: 120, type: 'text' },
+      { field: 'qty', label: t('wh.col.qty'), width: 90, type: 'number' },
+      { field: 'unit', label: t('wh.col.unit'), width: 70, type: 'text' },
+      { field: 'total_pcs', label: t('wh.col.totalPcs'), width: 80, type: 'number' },
+      { field: 'unit2', label: t('wh.col.unit2'), width: 70, type: 'text' },
+      { field: 'remark', label: t('wh.col.remark'), width: 150, type: 'text' },
     ]
   : [
-      { field: 'outbound_date', label: '日期', width: 120, type: 'date' },
-      { field: 'style_no', label: '款号', width: 120, type: 'text' },
-      { field: 'color', label: '颜色', width: 100, type: 'text' },
-      { field: 'size_spec', label: '规格', width: 100, type: 'text' },
-      { field: 'qty', label: '数量', width: 100, type: 'number' },
-      { field: 'operator', label: '操作人', width: 100, type: 'text' },
+      { field: 'outbound_date', label: t('wh.col.date'), width: 120, type: 'date' },
+      { field: 'style_no', label: t('wh.col.styleNo'), width: 120, type: 'text' },
+      { field: 'color', label: t('wh.col.color'), width: 100, type: 'text' },
+      { field: 'size_spec', label: t('wh.col.sizeSpec'), width: 100, type: 'text' },
+      { field: 'qty', label: t('wh.col.qty'), width: 100, type: 'number' },
+      { field: 'operator', label: t('wh.col.operator'), width: 100, type: 'text' },
     ]
 )
 
-// 款式下拉数据（远程搜索）
+// 款式下拉数据（从裁剪计划获取）
 const styleOptions = ref([])
 const outboundStyleOptions = ref([])
 const styleLoading = ref(false)
@@ -147,7 +144,7 @@ async function searchStyles(keyword) {
   styleSearchTimer = setTimeout(async () => {
     styleLoading.value = true
     try {
-      const { data } = await api.getStyles(keyword || '')
+      const { data } = await api.getMainPlanStyles(keyword || '')
       styleOptions.value = Array.isArray(data) ? data : []
     } catch {
       styleOptions.value = []
@@ -156,18 +153,31 @@ async function searchStyles(keyword) {
   }, 250)
 }
 
+// 颜色/尺码下拉数据（从分色分尺码获取）
+const colorOptions = ref([])
+const sizeOptions = ref([])
+
+async function loadColorSizes(styleNo) {
+  colorOptions.value = []
+  sizeOptions.value = []
+  if (!styleNo) return
+  try {
+    const { data } = await api.getStyleColorSize(styleNo)
+    const rows = Array.isArray(data) ? data : []
+    colorOptions.value = [...new Set(rows.map(r => r.color).filter(Boolean))]
+    sizeOptions.value = [...new Set(rows.map(r => r.size_spec).filter(Boolean))]
+  } catch { /* ignore */ }
+}
+
 // 出库：只搜索有库存的款号
 async function searchInventoryStyles(keyword) {
   clearTimeout(styleSearchTimer)
   styleSearchTimer = setTimeout(async () => {
     styleLoading.value = true
     try {
-      const { data } = await api.getWarehouseInventory(props.warehouseType)
-      const items = Array.isArray(data) ? data : []
-      const filtered = keyword
-        ? items.filter(r => (r.style_no || '').includes(keyword) || (r.color || '').includes(keyword) || (r.fabric_name || '').includes(keyword))
-        : items
-      outboundStyleOptions.value = filtered.filter(r => r.current_qty > 0)
+      // [2026-06-20 段13 M-2] keyword+in_stock 全部走后端 SQL(替代 .filter)
+      const { data } = await api.getWarehouseInventory(props.warehouseType, { keyword: keyword || '', in_stock: '1' })
+      outboundStyleOptions.value = Array.isArray(data) ? data : []
     } catch {
       outboundStyleOptions.value = []
     }
@@ -220,7 +230,7 @@ async function loadInbound() {
     const { data } = await api.getWarehouseInbound(props.warehouseType)
     inbound.value = Array.isArray(data) ? data : []
   } catch {
-    ElMessage.error('加载入库记录失败')
+    ElMessage.error(t('wh.toast.loadInboundFail'))
   }
 }
 
@@ -229,7 +239,7 @@ async function loadOutbound() {
     const { data } = await api.getWarehouseOutbound(props.warehouseType)
     outbound.value = Array.isArray(data) ? data : []
   } catch {
-    ElMessage.error('加载出库记录失败')
+    ElMessage.error(t('wh.toast.loadOutboundFail'))
   }
 }
 
@@ -238,7 +248,7 @@ async function loadInventory() {
     const { data } = await api.getWarehouseInventory(props.warehouseType)
     inventory.value = Array.isArray(data) ? data : []
   } catch {
-    ElMessage.error('加载库存失败')
+    ElMessage.error(t('wh.toast.loadInvFail'))
   }
 }
 
@@ -285,11 +295,11 @@ function openOutbound() {
 
 async function saveInbound() {
   if (!inboundForm.value.style_no) {
-    ElMessage.warning('请选择款号')
+    ElMessage.warning(t('wh.toast.chooseStyle'))
     return
   }
   if (!inboundForm.value.qty || inboundForm.value.qty <= 0) {
-    ElMessage.warning('请输入有效数量')
+    ElMessage.warning(t('wh.toast.enterQty'))
     return
   }
   try {
@@ -313,24 +323,24 @@ async function saveInbound() {
       // 自动确认收货并完成入库
       await api.updateAsnStatus(data.id, { status: 'RECEIVED' })
       await api.updateAsnStatus(data.id, { status: 'COMPLETED' })
-      ElMessage.success('入库成功')
+      ElMessage.success(t('wh.toast.inboundOk'))
       inboundDialogVisible.value = false
       loadAll()
     } else {
-      ElMessage.error(data.error || '入库失败')
+      ElMessage.error(data.error || t('wh.toast.inboundFail'))
     }
   } catch (e) {
-    ElMessage.error('入库失败：' + (e.response?.data?.error || e.message))
+    ElMessage.error(t('wh.toast.inboundFail') + ':' + (e.response?.data?.error || e.message))
   }
 }
 
 async function saveOutbound() {
   if (!outboundForm.value.style_no) {
-    ElMessage.warning('请选择款号')
+    ElMessage.warning(t('wh.toast.chooseStyle'))
     return
   }
   if (!outboundForm.value.qty || outboundForm.value.qty <= 0) {
-    ElMessage.warning('请输入有效数量')
+    ElMessage.warning(t('wh.toast.enterQty'))
     return
   }
   try {
@@ -351,14 +361,14 @@ async function saveOutbound() {
     if (data.ok) {
       // 自动完成发货（扣减库存）
       await api.updateDnStatus(data.id, { status: 'SHIPPED' })
-      ElMessage.success('出库成功')
+      ElMessage.success(t('wh.toast.outboundOk'))
       outboundDialogVisible.value = false
       loadAll()
     } else {
-      ElMessage.error(data.error || '出库失败')
+      ElMessage.error(data.error || t('wh.toast.outboundFail'))
     }
   } catch (e) {
-    ElMessage.error('出库失败：' + (e.response?.data?.error || e.message))
+    ElMessage.error(t('wh.toast.outboundFail') + ':' + (e.response?.data?.error || e.message))
   }
 }
 
@@ -369,6 +379,8 @@ function onStyleChange(form, val) {
     form.color = s.color || form.color || ''
     form.size_spec = s.size_spec || form.size_spec || ''
   }
+  // 加载该款的颜色/尺码选项
+  loadColorSizes(val)
 }
 
 function onOutboundStyleChange(val) {
@@ -387,6 +399,10 @@ function onOutboundStyleChange(val) {
     outboundForm.value.unit2 = s.unit2 || '匹'
     currentInventoryQty.value = s.current_qty || 0
   }
+  // 从库存数据中提取该款的颜色/尺码选项
+  const items = outboundStyleOptions.value.filter(i => i.style_no === val)
+  colorOptions.value = [...new Set(items.map(i => i.color).filter(Boolean))]
+  sizeOptions.value = [...new Set(items.map(i => i.size_spec).filter(Boolean))]
 }
 
 // Export
@@ -428,7 +444,7 @@ async function doImport() {
     }
     importPreview.value = records
   } catch (e) {
-    ElMessage.error('解析Excel失败: ' + e.message)
+    ElMessage.error(t('wh.toast.parseFail') + ': ' + e.message)
   }
   importing.value = false
 }
@@ -445,13 +461,13 @@ async function confirmImport() {
   importing.value = true
   try {
     const { data } = await api.importWarehouse(props.warehouseType, importPreview.value)
-    ElMessage.success(`导入完成: ${data.imported} 条`)
+    ElMessage.success(t('wh.toast.importOk', null, { count: data.imported }))
     importDialogVisible.value = false
     importPreview.value = null
     importFile.value = null
     loadAll()
   } catch (e) {
-    ElMessage.error('导入失败: ' + (e.response?.data?.error || e.message))
+    ElMessage.error(t('wh.toast.importFail') + ': ' + (e.response?.data?.error || e.message))
   }
   importing.value = false
 }
@@ -466,7 +482,7 @@ onMounted(loadAll)
     <div class="detail-header">
       <div class="header-left">
         <el-button text @click="router.back()">
-          <span style="margin-right:4px">←</span> 返回
+          <span style="margin-right:4px">←</span> {{ t('wh.back') }}
         </el-button>
         <h2>{{ meta.label }}</h2>
       </div>
@@ -477,7 +493,7 @@ onMounted(loadAll)
           size="large"
           @click="openInbound"
         >
-          入库
+          {{ t('wh.inboundBtn') }}
         </el-button>
         <el-button
           v-if="hasPermission(`warehouse:${warehouseType}:outbound`)"
@@ -485,28 +501,28 @@ onMounted(loadAll)
           size="large"
           @click="openOutbound"
         >
-          出库
+          {{ t('wh.outboundBtn') }}
         </el-button>
         <el-divider direction="vertical" />
         <el-dropdown @command="doExport" style="margin-right:0">
-          <el-button>导出Excel<el-icon class="el-icon--right"><i class="arrow-down" /></el-icon></el-button>
+          <el-button>{{ t('wh.exportExcel') }}<el-icon class="el-icon--right"><i class="arrow-down" /></el-icon></el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="inventory">导当前 — 库存</el-dropdown-item>
-              <el-dropdown-item command="inbound">导当前 — 入库记录</el-dropdown-item>
-              <el-dropdown-item command="outbound">导当前 — 出库记录</el-dropdown-item>
-              <el-dropdown-item divided command="">全部导出（3个Sheet）</el-dropdown-item>
+              <el-dropdown-item command="inventory">{{ t('wh.export.currentInventory') }}</el-dropdown-item>
+              <el-dropdown-item command="inbound">{{ t('wh.export.currentInbound') }}</el-dropdown-item>
+              <el-dropdown-item command="outbound">{{ t('wh.export.currentOutbound') }}</el-dropdown-item>
+              <el-dropdown-item divided command="">{{ t('wh.export.all') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
         <el-dropdown @command="openImport">
-          <el-button>导入Excel<el-icon class="el-icon--right"><i class="arrow-down" /></el-icon></el-button>
+          <el-button>{{ t('wh.importExcel') }}<el-icon class="el-icon--right"><i class="arrow-down" /></el-icon></el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="inventory">导当前 — 库存</el-dropdown-item>
-              <el-dropdown-item command="inbound">导当前 — 入库记录</el-dropdown-item>
-              <el-dropdown-item command="outbound">导当前 — 出库记录</el-dropdown-item>
-              <el-dropdown-item divided command="">全部导入（自动识别）</el-dropdown-item>
+              <el-dropdown-item command="inventory">{{ t('wh.import.invSheet') }}</el-dropdown-item>
+              <el-dropdown-item command="inbound">{{ t('wh.import.inboundSheet') }}</el-dropdown-item>
+              <el-dropdown-item command="outbound">{{ t('wh.import.outboundSheet') }}</el-dropdown-item>
+              <el-dropdown-item divided command="">{{ t('wh.import.all') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -515,7 +531,7 @@ onMounted(loadAll)
 
     <!-- 标签页 -->
     <el-tabs v-model="currentTab" class="detail-tabs">
-      <el-tab-pane label="动态库存" name="inventory">
+      <el-tab-pane :label="t('wh.tab.inventory')" name="inventory">
         <ExcelTable
           :columns="inventoryCols"
           :data="inventory"
@@ -523,7 +539,7 @@ onMounted(loadAll)
         />
       </el-tab-pane>
 
-      <el-tab-pane label="入库记录" name="inbound">
+      <el-tab-pane :label="t('wh.tab.inbound')" name="inbound">
         <ExcelTable
           :columns="inboundCols"
           :data="inbound"
@@ -531,7 +547,7 @@ onMounted(loadAll)
         />
       </el-tab-pane>
 
-      <el-tab-pane label="出库记录" name="outbound">
+      <el-tab-pane :label="t('wh.tab.outbound')" name="outbound">
         <ExcelTable
           :columns="outboundCols"
           :data="outbound"
@@ -541,17 +557,17 @@ onMounted(loadAll)
     </el-tabs>
 
     <!-- 入库弹窗 -->
-    <el-dialog v-model="inboundDialogVisible" title="入库" :width="isFabric ? '800px' : '480px'">
+    <el-dialog v-model="inboundDialogVisible" :title="t('wh.inboundBtn')" :width="isFabric ? '800px' : '480px'">
       <el-form :model="inboundForm" :label-width="isFabric ? '80px' : '80px'" size="default">
         <!-- 面料库：从装柜数据选择 -->
         <template v-if="isFabric">
-          <el-form-item label="装柜数据">
+          <el-form-item :label="t('wh.col.fabricData')">
             <el-select
               v-model="fabricSelectKey"
               filterable
               remote
               reserve-keyword
-              placeholder="输入款号、锅号或面料名称搜索..."
+              :placeholder="t('wh.form.fabricPh')"
               :remote-method="searchFabricOptions"
               :loading="fabricLoading"
               style="width:100%"
@@ -566,69 +582,81 @@ onMounted(loadAll)
             </el-select>
           </el-form-item>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="款号"><el-input v-model="inboundForm.style_no" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="锅号"><el-input v-model="inboundForm.pot_no" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="面料名称"><el-input v-model="inboundForm.fabric_name" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.styleNo')"><el-input v-model="inboundForm.style_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.potNo')"><el-input v-model="inboundForm.pot_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.fabricName')"><el-input v-model="inboundForm.fabric_name" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="供应商"><el-input v-model="inboundForm.supplier" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="客户"><el-input v-model="inboundForm.customer" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="颜色"><el-input v-model="inboundForm.color" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.supplier')"><el-input v-model="inboundForm.supplier" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.customer')"><el-input v-model="inboundForm.customer" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.color')"><el-input v-model="inboundForm.color" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="6"><el-form-item label="幅宽"><el-input v-model="inboundForm.width" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="克重"><el-input v-model="inboundForm.weight" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="数量" required><el-input-number v-model="inboundForm.qty" :min="0" :precision="1" style="width:100%" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="单位"><el-input v-model="inboundForm.unit" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.width')"><el-input v-model="inboundForm.width" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.weight')"><el-input v-model="inboundForm.weight" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.qty')" required><el-input-number v-model="inboundForm.qty" :min="0" :precision="1" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.unit')"><el-input v-model="inboundForm.unit" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="6"><el-form-item label="总匹数"><el-input-number v-model="inboundForm.total_pcs" :min="0" style="width:100%" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="日期"><el-input v-model="inboundForm.inbound_date" type="date" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="备注"><el-input v-model="inboundForm.remark" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.totalPcs')"><el-input-number v-model="inboundForm.total_pcs" :min="0" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.date')"><el-input v-model="inboundForm.inbound_date" type="date" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item :label="t('wh.col.remark')"><el-input v-model="inboundForm.remark" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="入库单号"><el-input v-model="inboundForm.order_no" disabled /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="当前库存"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="装柜数量"><el-input :model-value="inboundForm.loading_qty" readonly /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.orderNo')"><el-input v-model="inboundForm.order_no" disabled /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.form.currentStock')"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.loadingQty')"><el-input :model-value="inboundForm.loading_qty" readonly /></el-form-item></el-col>
           </el-row>
         </template>
         <!-- 其他仓库：原有表单 -->
         <template v-else>
-          <el-form-item label="款号" required>
-            <el-select v-model="inboundForm.style_no" filterable remote reserve-keyword placeholder="输入款号搜索..." :remote-method="searchStyles" :loading="styleLoading" style="width:100%" @change="onStyleChange(inboundForm, $event)">
-              <el-option v-for="s in styleOptions" :key="s.id" :label="`${s.style_no} - ${s.product_name || ''} ${s.color} ${s.size_spec}`" :value="s.style_no" />
+          <el-form-item :label="t('wh.col.styleNo')" required>
+            <el-select v-model="inboundForm.style_no" filterable remote reserve-keyword :placeholder="t('wh.form.stylePh')" :remote-method="searchStyles" :loading="styleLoading" style="width:100%" @change="onStyleChange(inboundForm, $event)">
+              <el-option v-for="s in styleOptions" :key="s.style_no" :label="`${s.style_no} - ${s.product_name || ''} ${s.due_date || ''}`" :value="s.style_no" />
             </el-select>
           </el-form-item>
           <el-row :gutter="12">
-            <el-col :span="12"><el-form-item label="颜色"><el-input v-model="inboundForm.color" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="规格"><el-input v-model="inboundForm.size_spec" /></el-form-item></el-col>
+            <el-col :span="12">
+              <el-form-item :label="t('wh.col.color')">
+                <el-select v-model="inboundForm.color" filterable allow-create :placeholder="t('wh.col.color')" style="width:100%">
+                  <el-option v-for="c in colorOptions" :key="c" :label="c" :value="c" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="t('wh.col.sizeSpec')">
+                <el-select v-model="inboundForm.size_spec" filterable allow-create :placeholder="t('wh.col.sizeSpec')" style="width:100%">
+                  <el-option v-for="s in sizeOptions" :key="s" :label="s" :value="s" />
+                </el-select>
+              </el-form-item>
+            </el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="12"><el-form-item label="数量" required><el-input-number v-model="inboundForm.qty" :min="1" :precision="0" style="width:100%" /><span class="unit-suffix">{{ meta.unit }}</span></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="日期"><el-input v-model="inboundForm.inbound_date" type="date" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item :label="t('wh.col.qty')" required><el-input-number v-model="inboundForm.qty" :min="1" :precision="0" style="width:100%" /><span class="unit-suffix">{{ meta.unit }}</span></el-form-item></el-col>
+            <el-col :span="12"><el-form-item :label="t('wh.col.date')"><el-input v-model="inboundForm.inbound_date" type="date" /></el-form-item></el-col>
           </el-row>
-          <el-form-item label="操作人"><el-input v-model="inboundForm.operator" placeholder="可选" /></el-form-item>
+          <el-form-item :label="t('wh.col.operator')"><el-input v-model="inboundForm.operator" :placeholder="t('common.optional')" /></el-form-item>
         </template>
       </el-form>
       <template #footer>
-        <el-button v-if="isFabric" @click="goToFabricList" style="margin-right:auto">📑 从装柜清单批量入库</el-button>
-        <el-button @click="inboundDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveInbound">确认入库</el-button>
+        <el-button v-if="isFabric" @click="goToFabricList" style="margin-right:auto">📑 {{ t('wh.form.batchInbound') }}</el-button>
+        <el-button @click="inboundDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveInbound">{{ t('wh.form.confirmInbound') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 出库弹窗 -->
-    <el-dialog v-model="outboundDialogVisible" title="出库" :width="isFabric ? '800px' : '480px'">
+    <el-dialog v-model="outboundDialogVisible" :title="t('wh.outboundBtn')" :width="isFabric ? '800px' : '480px'">
       <el-form :model="outboundForm" :label-width="isFabric ? '80px' : '80px'" size="default">
         <!-- 面料库：从装柜数据选择 -->
         <template v-if="isFabric">
-          <el-form-item label="装柜数据">
+          <el-form-item :label="t('wh.col.fabricData')">
             <el-select
               v-model="fabricSelectKey"
               filterable
               remote
               reserve-keyword
-              placeholder="输入款号、锅号或面料名称搜索..."
+              :placeholder="t('wh.form.fabricPh')"
               :remote-method="searchFabricOptions"
               :loading="fabricLoading"
               style="width:100%"
@@ -643,81 +671,93 @@ onMounted(loadAll)
             </el-select>
           </el-form-item>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="款号"><el-input v-model="outboundForm.style_no" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="锅号"><el-input v-model="outboundForm.pot_no" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="面料名称"><el-input v-model="outboundForm.fabric_name" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.styleNo')"><el-input v-model="outboundForm.style_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.potNo')"><el-input v-model="outboundForm.pot_no" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.fabricName')"><el-input v-model="outboundForm.fabric_name" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="供应商"><el-input v-model="outboundForm.supplier" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="客户"><el-input v-model="outboundForm.customer" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="颜色"><el-input v-model="outboundForm.color" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.supplier')"><el-input v-model="outboundForm.supplier" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.customer')"><el-input v-model="outboundForm.customer" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.color')"><el-input v-model="outboundForm.color" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="6"><el-form-item label="幅宽"><el-input v-model="outboundForm.width" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="克重"><el-input v-model="outboundForm.weight" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="数量" required><el-input-number v-model="outboundForm.qty" :min="0" :precision="1" style="width:100%" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="单位"><el-input v-model="outboundForm.unit" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.width')"><el-input v-model="outboundForm.width" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.weight')"><el-input v-model="outboundForm.weight" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.qty')" required><el-input-number v-model="outboundForm.qty" :min="0" :precision="1" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.unit')"><el-input v-model="outboundForm.unit" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="6"><el-form-item label="总匹数"><el-input-number v-model="outboundForm.total_pcs" :min="0" style="width:100%" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="日期"><el-input v-model="outboundForm.outbound_date" type="date" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="备注"><el-input v-model="outboundForm.remark" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.totalPcs')"><el-input-number v-model="outboundForm.total_pcs" :min="0" style="width:100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item :label="t('wh.col.date')"><el-input v-model="outboundForm.outbound_date" type="date" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item :label="t('wh.col.remark')"><el-input v-model="outboundForm.remark" /></el-form-item></el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="出库单号"><el-input v-model="outboundForm.order_no" disabled /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="当前库存"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.col.orderNo')"><el-input v-model="outboundForm.order_no" disabled /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item :label="t('wh.form.currentStock')"><el-input :model-value="currentInventoryQty" readonly /></el-form-item></el-col>
             <el-col :span="8"></el-col>
           </el-row>
         </template>
         <!-- 其他仓库：原有表单 -->
         <template v-else>
-          <el-form-item label="款号" required>
-            <el-select v-model="outboundForm.style_no" filterable remote reserve-keyword placeholder="输入款号搜索有库存的款..." :remote-method="searchInventoryStyles" :loading="styleLoading" style="width:100%" @change="onOutboundStyleChange($event)">
-              <el-option v-for="s in outboundStyleOptions" :key="s.id" :label="`${s.style_no} - ${s.fabric_name || ''} ${s.color} (库存:${s.current_qty})`" :value="s.style_no" />
+          <el-form-item :label="t('wh.col.styleNo')" required>
+            <el-select v-model="outboundForm.style_no" filterable remote reserve-keyword :placeholder="t('wh.form.outboundStylePh')" :remote-method="searchInventoryStyles" :loading="styleLoading" style="width:100%" @change="onOutboundStyleChange($event)">
+              <el-option v-for="s in outboundStyleOptions" :key="`${s.style_no}_${s.color}_${s.size_spec}`" :label="`${s.style_no} - ${s.color || ''} ${s.size_spec || ''} (${t('wh.col.currentQty')}:${s.current_qty})`" :value="s.style_no" />
             </el-select>
           </el-form-item>
           <el-row :gutter="12">
-            <el-col :span="12"><el-form-item label="颜色"><el-input v-model="outboundForm.color" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="规格"><el-input v-model="outboundForm.size_spec" /></el-form-item></el-col>
+            <el-col :span="12">
+              <el-form-item :label="t('wh.col.color')">
+                <el-select v-model="outboundForm.color" filterable allow-create :placeholder="t('wh.col.color')" style="width:100%">
+                  <el-option v-for="c in colorOptions" :key="c" :label="c" :value="c" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="t('wh.col.sizeSpec')">
+                <el-select v-model="outboundForm.size_spec" filterable allow-create :placeholder="t('wh.col.sizeSpec')" style="width:100%">
+                  <el-option v-for="s in sizeOptions" :key="s" :label="s" :value="s" />
+                </el-select>
+              </el-form-item>
+            </el-col>
           </el-row>
           <el-row :gutter="12">
-            <el-col :span="12"><el-form-item label="数量" required><el-input-number v-model="outboundForm.qty" :min="1" :precision="0" style="width:100%" /><span class="unit-suffix">{{ meta.unit }}</span></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="日期"><el-input v-model="outboundForm.outbound_date" type="date" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item :label="t('wh.col.qty')" required><el-input-number v-model="outboundForm.qty" :min="1" :precision="0" style="width:100%" /><span class="unit-suffix">{{ meta.unit }}</span></el-form-item></el-col>
+            <el-col :span="12"><el-form-item :label="t('wh.col.date')"><el-input v-model="outboundForm.outbound_date" type="date" /></el-form-item></el-col>
           </el-row>
-          <el-form-item label="操作人"><el-input v-model="outboundForm.operator" placeholder="可选" /></el-form-item>
+          <el-form-item :label="t('wh.col.operator')"><el-input v-model="outboundForm.operator" :placeholder="t('common.optional')" /></el-form-item>
         </template>
       </el-form>
       <template #footer>
-        <el-button @click="outboundDialogVisible = false">取消</el-button>
-        <el-button type="warning" @click="saveOutbound">确认出库</el-button>
+        <el-button @click="outboundDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="warning" @click="saveOutbound">{{ t('wh.form.confirmOutbound') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 导入弹窗 -->
-    <el-dialog v-model="importDialogVisible" :title="importSheetFilter ? '导入' + {inventory:'库存',inbound:'入库记录',outbound:'出库记录'}[importSheetFilter] : '导入Excel（全部）'" width="600px">
+    <el-dialog v-model="importDialogVisible" :title="importSheetFilter ? t('wh.importExcel') + t('wh.sheet.' + importSheetFilter) : t('wh.import.allTitle')" width="600px">
       <div v-if="importSheetFilter" style="margin-bottom:8px;font-size:12px;color:var(--primary-dark)">
-        仅导入 Excel 中"{{ {inventory:'库存',inbound:'入库记录',outbound:'出库记录'}[importSheetFilter] }}"Sheet，其他 Sheet 自动跳过
+        {{ t('wh.import.sheetOnly', null, { sheet: t('wh.sheet.' + importSheetFilter) }) }}
       </div>
       <div style="margin-bottom:12px">
         <input type="file" accept=".xlsx,.xls" @change="onImportFileChange" />
         <span v-if="importFile" style="margin-left:8px;color:var(--primary-dark)">{{ importFile.name }}</span>
       </div>
       <div v-if="importFile" style="margin-bottom:12px">
-        <el-button @click="doImport" type="primary" :loading="importing">解析预览</el-button>
+        <el-button @click="doImport" type="primary" :loading="importing">{{ t('wh.import.parsePreview') }}</el-button>
       </div>
       <div v-if="importPreview?.length" style="max-height:300px;overflow:auto">
-        <div style="margin-bottom:4px;font-size:12px;color:var(--text-secondary)">共 {{ importPreview.length }} 条记录</div>
+        <div style="margin-bottom:4px;font-size:12px;color:var(--text-secondary)">{{ t('wh.import.records', null, { count: importPreview.length }) }}</div>
         <el-table :data="importPreview" size="small" border max-height="220">
-          <el-table-column label="Sheet" width="80"><template #default="{row}">{{ row._sheet }}</template></el-table-column>
-          <el-table-column label="款号" width="100"><template #default="{row}">{{ row['款号'] || row.style_no }}</template></el-table-column>
-          <el-table-column label="颜色/规格" width="120"><template #default="{row}">{{ row['颜色'] || row.color }}/{{ row['规格'] || row.size_spec }}</template></el-table-column>
-          <el-table-column label="数量" width="80"><template #default="{row}">{{ row['数量'] || row['当前库存'] || row.qty }}</template></el-table-column>
-          <el-table-column label="日期" width="110"><template #default="{row}">{{ row['入库日期'] || row['出库日期'] || '' }}</template></el-table-column>
+          <el-table-column :label="t('wh.import.colSheet')" width="80"><template #default="{row}">{{ row._sheet }}</template></el-table-column>
+          <el-table-column :label="t('wh.col.styleNo')" width="100"><template #default="{row}">{{ row['款号'] || row.style_no }}</template></el-table-column>
+          <el-table-column :label="t('wh.import.colColorSpec')" width="120"><template #default="{row}">{{ row['颜色'] || row.color }}/{{ row['规格'] || row.size_spec }}</template></el-table-column>
+          <el-table-column :label="t('wh.col.qty')" width="80"><template #default="{row}">{{ row['数量'] || row['当前库存'] || row.qty }}</template></el-table-column>
+          <el-table-column :label="t('wh.col.date')" width="110"><template #default="{row}">{{ row['入库日期'] || row['出库日期'] || '' }}</template></el-table-column>
         </el-table>
       </div>
       <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmImport" :loading="importing" :disabled="!importPreview?.length">确认导入</el-button>
+        <el-button @click="importDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="confirmImport" :loading="importing" :disabled="!importPreview?.length">{{ t('wh.import.confirmImport') }}</el-button>
       </template>
     </el-dialog>
   </div>
