@@ -88,6 +88,10 @@ function validateActualPayload(r, existing = null) {
 // [2026-06-20 段7 C-1] system_config 内存缓存
 // 减少 recalcMainPlanDates / auto-schedule 等热路径的重复 SELECT
 // PUT /api/system-config/:key 和 /api/config/system/:key 后 invalidate
+// [2026-06-20 fix#后端-P3-2] 多进程(PM2 cluster)下 _configCache 不共享
+//   当前 ecosystem.config.js 用 instances=1 fork 模式,缓存一致;若改 cluster mode,
+//   单进程内仍 OK 但 reload 后第一个进程可能与新进程不一致 → 短期可接受(配置低频写)
+//   长期方案:用 SQLite 直接走 db.get() 或用 Redis 集中缓存
 let _configCache = null;
 function getSystemConfig() {
   if (!_configCache) {
