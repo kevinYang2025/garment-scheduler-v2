@@ -255,6 +255,20 @@ const SCHEDULE_TYPE_WORKSHOP = {
   sewing: 'sewing',
 };
 
+// [2026-06-20 fix#业务-P1-3] supervisor 跨车间权限检查
+// 解决:一位 secondary 主任(workshop='secondary')管 3 个二次工序时,允许访问 printing/embroidery/template
+// 同时保持:workshop 直接是 schedule_type 的 supervisor 仍然只能访问本工序
+function userCanAccessWorkshop(user, targetWorkshop) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.role !== 'supervisor') return false;
+  if (!user.workshop) return false;
+  if (user.workshop === targetWorkshop) return true;
+  // secondary 主任管三个二次工序(printing/embroidery/template),但不管 ironing(独立)
+  if (user.workshop === 'secondary' && ['printing', 'embroidery', 'template'].includes(targetWorkshop)) return true;
+  return false;
+}
+
 // [2026-06-20 段15 LOW 清理] requireWorkshopMatch 死代码删除(全文件无引用,角色校验已 inline 在各端点)
 
 // 启动时清一次过期 session
@@ -2401,10 +2415,11 @@ app.post('/api/schedule/sewing-daily-plan/actual', requireRole('dispatcher', 'su
 
     // [2026-06-20] 跨车间拦截:supervisor / dispatcher 必须匹配 secondary_type 对应的车间
     // secondary_type 形如 'printing' / 'embroidery' / 'template' / 'ironing'
+    // [2026-06-20 fix#业务-P1-3] 用 userCanAccessWorkshop 允许 secondary 主任跨 3 工序
     const u = req.user;
     if (u.role !== 'admin') {
       const needWorkshop = secondary_type ? SCHEDULE_TYPE_WORKSHOP[secondary_type] : null;
-      if (needWorkshop && u.workshop !== needWorkshop) {
+      if (needWorkshop && !userCanAccessWorkshop(u, needWorkshop)) {
         return res.status(403).json({ error: '无权操作其他车间的数据' });
       }
     }
@@ -3747,10 +3762,11 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
     if (vErr) return res.status(vErr.status).json(vErr.body);
 
     // [2026-06-20] 跨车间拦截:supervisor 只能改自己车间的报工,dispatcher 只能改自己车间的报工
+    // [2026-06-20 fix#业务-P1-3] 用 userCanAccessWorkshop 允许 secondary 主任跨 3 工序
     const u = req.user;
     if (u.role !== 'admin') {
       const needWorkshop = SCHEDULE_TYPE_WORKSHOP[existing.schedule_type];
-      if (needWorkshop && u.workshop !== needWorkshop) {
+      if (needWorkshop && !userCanAccessWorkshop(u, needWorkshop)) {
         return res.status(403).json({ error: '无权操作其他车间的报工' });
       }
     }
@@ -4269,10 +4285,11 @@ app.get('/api/schedule/daily/actuals', (req, res) => {
     if (!schedule_type) return res.status(400).json({ error: 'schedule_type 必填' });
 
     // 角色 + 车间检查:仅 admin/supervisor 可访问
+    // [2026-06-20 fix#业务-P1-3] 用 userCanAccessWorkshop 允许 secondary 主任跨 3 工序
     if (req.user.role === 'admin') {
       // 通过
     } else if (req.user.role === 'supervisor') {
-      if (req.user.workshop !== SCHEDULE_TYPE_WORKSHOP[schedule_type]) {
+      if (!userCanAccessWorkshop(req.user, SCHEDULE_TYPE_WORKSHOP[schedule_type])) {
         return res.status(403).json({ error: '无权查看其他车间的数据' });
       }
     } else {
@@ -4310,14 +4327,18 @@ app.put('/api/schedule/daily/actual/:id', requireRole('admin', 'supervisor'), (r
       if (!row) return { status: 404, body: { error: '记录不存在' } };
 
       // 角色 + 车间检查:admin 全权,supervisor 限本车间,其他角色拒绝
+      // [2026-06-20 fix#业务-P1-3] 用 userCanAccessWorkshop 允许 secondary 主任跨 3 工序
       const master = db.get('SELECT schedule_type FROM schedule_master WHERE id = ?', [row.master_id]);
       if (!master) return { status: 404, body: { error: 'master 不存在' } };
       if (req.user.role === 'admin') {
         // 通过
       } else if (req.user.role === 'supervisor') {
-        if (req.user.workshop !== SCHEDULE_TYPE_WORKSHOP[master.schedule_type]) {
+        if (!userCanAccessWorkshop(req.user, SCHEDULE_TYPE_WORKSHOP[master.schedule_type])) {
           return { status: 403, body: { error: '无权操作其他车间的数据' } };
         }
+      } else {
+        return { status: 403, body: { error: '该操作仅限车间主任或管理员' } };
+      }
       } else {
         return { status: 403, body: { error: '该操作仅限车间主任或管理员' } };
       }
