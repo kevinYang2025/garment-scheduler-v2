@@ -1,11 +1,13 @@
 // [2026-06-18] 用户系统:vue-router 4 路由表 + 守卫
 // 36 个 view,扁平路由 + 嵌套用 param(secondary/:type 等)
-// 守卫:未登录 → /login;无权限 → /403
+// 守卫:未登录 → /login;无权限 → /403 + ElMessage.warning
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 
 // 静态路由(不按需加载,首次全加载,工厂场景页面不多)
 import Login from '../views/Login.vue'
+import Forbidden from '../views/Forbidden.vue'
 
 // 工作台
 import EntryHome from '../views/EntryHome.vue'
@@ -65,6 +67,7 @@ import UserSettings from '../views/UserSettings.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: Login, meta: { public: true, noAuth: true } },
+  { path: '/403', name: 'forbidden', component: Forbidden, meta: { public: true } },
 
   // 工作台
   { path: '/', name: 'home', component: EntryHome },
@@ -164,7 +167,9 @@ router.beforeEach(async (to) => {
 
   // 角色检查
   if (!checkRole(to, auth.role)) {
-    return { path: '/', query: { forbidden: '1' } }
+    // [2026-06-20] 跳 403 专用页 + toast 提示,而不是之前静默跳首页
+    ElMessage.warning(`无权访问该页面(需要角色: ${to.meta.roles?.join('/') || '更高权限'})`)
+    return { path: '/403', query: { from: to.fullPath } }
   }
 
   return true

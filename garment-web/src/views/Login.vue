@@ -116,11 +116,17 @@ async function onAccountLogin() {
     errorMsg.value = '请输入账号和密码'
     return
   }
+  // [2026-06-20] 密码至少 8 位
+  if (form.password.length < 8) {
+    errorMsg.value = '密码至少 8 位'
+    return
+  }
   const r = await auth.login({ username: form.username, password: form.password })
   if (r.ok) {
     router.replace('/')
   } else {
-    errorMsg.value = r.error
+    // [2026-06-20] 错误文案统一,不区分账号不存在/密码错误,避免账号枚举攻击
+    errorMsg.value = '账号或密码错误'
   }
 }
 
@@ -134,11 +140,17 @@ async function onPinLogin() {
     errorMsg.value = 'PIN 必须是 4 位数字'
     return
   }
+  // [2026-06-20] 工号格式校验(3-5 位数字)
+  if (!/^\d{3,5}$/.test(form.pin_no)) {
+    errorMsg.value = '工号必须是 3-5 位数字'
+    return
+  }
   const r = await auth.login({ pin_no: form.pin_no, pin: form.pin })
   if (r.ok) {
     router.replace('/')
   } else {
-    errorMsg.value = r.error
+    // [2026-06-20] 错误文案统一,不区分工号不存在/PIN 错误,避免账号枚举
+    errorMsg.value = '工号或 PIN 错误'
   }
 }
 </script>
