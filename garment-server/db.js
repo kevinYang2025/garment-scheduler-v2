@@ -13,6 +13,13 @@ function fmtLocal(d) {
   return `${y}-${m}-${day}`;
 }
 
+// [2026-06-20 fix#后端-P3-1] 迁移错误计数器;启动期如有失败,console.error 汇总报告
+let __migrationErrors = 0;
+function trackMigrationError(scope, e) {
+  __migrationErrors++;
+  console.error(`[MIGRATE FAIL] ${scope}: ${e.message}`);
+}
+
 function init() {
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
@@ -29,6 +36,9 @@ function init() {
   seedUsers();
   migratePinHashes();  // [fix] 迁移旧明文 PIN 为 bcrypt 哈希
   seedMainPlan();
+  if (__migrationErrors > 0) {
+    console.error(`[INIT WARNING] ${__migrationErrors} 个迁移失败,详情见上面 [MIGRATE FAIL] 行,请人工介入`);
+  }
   return db;
 }
 
@@ -582,7 +592,7 @@ function migrateStyles() {
     if (!scols.includes('updated_at')) {
       db.prepare("ALTER TABLE schedule_master ADD COLUMN updated_at TEXT DEFAULT ''").run();
     }
-  } catch (e) { console.log('schedule_master migration skip:', e.message); }
+  } catch (e) { trackMigrationError('schedule_master', e); }
 
   // 迁移：添加 priority 字段
   try {
@@ -600,7 +610,7 @@ function migrateStyles() {
     if (!scols2.includes('second_inspection_completed_at')) {
       db.prepare("ALTER TABLE schedule_master ADD COLUMN second_inspection_completed_at TEXT DEFAULT ''").run();
     }
-  } catch (e) { console.log('schedule_master task_status migration skip:', e.message); }
+  } catch (e) { trackMigrationError('schedule_master task_status', e); }
 
   // 迁移：扩展 actual_production 表
   try {
@@ -617,14 +627,14 @@ function migrateStyles() {
     if (!apCols.includes('secondary_type')) {
       db.prepare("ALTER TABLE actual_production ADD COLUMN secondary_type TEXT DEFAULT ''").run();
     }
-  } catch (e) { console.log('actual_production migration skip:', e.message); }
+  } catch (e) { trackMigrationError('actual_production', e); }
 
   try {
     const stcols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
     if (!stcols.includes('priority')) {
       db.prepare("ALTER TABLE styles ADD COLUMN priority INTEGER DEFAULT 3").run();
     }
-  } catch (e) { console.log('styles priority migration skip:', e.message); }
+  } catch (e) { trackMigrationError('styles priority', e); }
 
   // 款式分类字段迁移
   try {
@@ -632,7 +642,7 @@ function migrateStyles() {
     if (!sccols.includes('style_category')) {
       db.prepare("ALTER TABLE styles ADD COLUMN style_category TEXT DEFAULT ''").run();
     }
-  } catch (e) { console.log('style_category migration skip:', e.message); }
+  } catch (e) { trackMigrationError('style_category', e); }
 
   // 装柜清单添加成衣计划数量字段
   try {
@@ -640,14 +650,14 @@ function migrateStyles() {
     if (!flcols.includes('garment_qty')) {
       db.prepare("ALTER TABLE fabric_loading_list ADD COLUMN garment_qty REAL DEFAULT 0").run();
     }
-  } catch (e) { console.log('garment_qty migration skip:', e.message); }
+  } catch (e) { trackMigrationError('garment_qty', e); }
 
   try {
     const mpcols = db.prepare("PRAGMA table_info(main_plan)").all().map(c => c.name);
     if (!mpcols.includes('priority')) {
       db.prepare("ALTER TABLE main_plan ADD COLUMN priority INTEGER DEFAULT 3").run();
     }
-  } catch (e) { console.log('main_plan priority migration skip:', e.message); }
+  } catch (e) { trackMigrationError('main_plan priority', e); }
 
   try {
     const mpcols2 = db.prepare("PRAGMA table_info(main_plan)").all().map(c => c.name);
@@ -664,7 +674,7 @@ function migrateStyles() {
     if (!mpcols2.includes('line_count')) db.prepare("ALTER TABLE main_plan ADD COLUMN line_count INTEGER DEFAULT 1").run();
     if (!mpcols2.includes('line_index')) db.prepare("ALTER TABLE main_plan ADD COLUMN line_index INTEGER DEFAULT 1").run();
     if (!mpcols2.includes('expired')) db.prepare("ALTER TABLE main_plan ADD COLUMN expired INTEGER DEFAULT 0").run();
-  } catch (e) { console.log('main_plan ironing/conflict migration skip:', e.message); }
+  } catch (e) { trackMigrationError('main_plan ironing/conflict', e); }
 
   const cols = db.prepare("PRAGMA table_info(styles)").all().map(c => c.name);
   if (!cols.includes('embroidery')) {
@@ -738,7 +748,7 @@ function migrateStyles() {
       console.log('✅ 创建 UNIQUE INDEX idx_actual_production_unique');
     }
   } catch (e) {
-    console.log('actual_production UNIQUE index migration skip:', e.message);
+    console.log('actual_production UNIQUE index migration skip:', e.message);  // 保留,init 收尾报告
   }
 
   // 迁移：仓库表添加面料库扩展字段
@@ -815,7 +825,7 @@ function migrateStyles() {
       txn();
       console.log(`✅ 迁移 plan_override 数据: ${migrated} 条 → schedule_plan_overrides`);
     }
-  } catch (e) { console.log('plan_override migration skip:', e.message); }
+  } catch (e) { trackMigrationError('plan_override', e); }
 }
 
 // [2026-06-18] 用户系统:为已有表加 user_id / 锁字段
