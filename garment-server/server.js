@@ -102,6 +102,19 @@ function invalidateSystemConfig() { _configCache = null; }
 // [2026-06-18] 日志 helper:从 req 自动取 user_id(替代直接调 db.logOperation)
 // 替换 server.js 中所有 `db.logOperation(` → `logOp(req, ` 即可
 // [2026-06-20 fix#业务-P2-1] 自动附加 IP + UA 到 detail(敏感操作如 PIN/密码重置 便于审计)
+// [2026-06-20 fix#业务-P2-2] 支持 diff 字段:detail 传 {diff: [...]} 时自动转成可读字符串
+function formatDiff(diffs) {
+  if (!diffs || !diffs.length) return '';
+  const parts = diffs.slice(0, 10).map(d => `${d.field}:${d.before}→${d.after}`);
+  if (diffs.length > 10) parts.push(`+${diffs.length - 10}more`);
+  return ` [diff=${parts.join(',')}]`;
+}
+function computeDiff(before, after, fields) {
+  if (!before || !after) return [];
+  return (fields || Object.keys(after))
+    .filter(k => before[k] !== after[k])
+    .map(k => ({ field: k, before: String(before[k] ?? ''), after: String(after[k] ?? '') }));
+}
 function logOp(req, module, action, targetId, targetName, detail) {
   const userId = (req && req.user && req.user.id) || null;
   // 敏感操作:在 detail 末尾追加 [ip=xxx ua=xxx]
@@ -112,7 +125,14 @@ function logOp(req, module, action, targetId, targetName, detail) {
     const ua = (req.headers['user-agent'] || '').slice(0, 80);
     extra = ` [ip=${ip} ua=${ua}]`;
   }
-  db.logOperation(module, action, targetId, targetName, (detail || '') + extra, userId);
+  // detail 可以是字符串 或 {msg, diff}
+  let detailStr;
+  if (detail && typeof detail === 'object' && detail.diff) {
+    detailStr = (detail.msg || '') + formatDiff(detail.diff);
+  } else {
+    detailStr = String(detail || '');
+  }
+  db.logOperation(module, action, targetId, targetName, detailStr + extra, userId);
 }
 
 // ============================================================
@@ -1626,7 +1646,10 @@ app.put('/api/main-plan/:id', requireRole('admin', 'planning_manager', 'planner'
     db.run(`UPDATE main_plan SET style_id=?,style_no=?,product_name=?,plan_qty=?,due_date=?,arrival_date=?,cutting_start=?,cutting_end=?,secondary_start=?,secondary_end=?,printing_start=?,printing_end=?,embroidery_start=?,embroidery_end=?,template_start=?,template_end=?,sewing_remind_date=?,sewing_start=?,sewing_end=?,ironing_start=?,ironing_end=?,conflict_flag=?,pipeline_count=?,is_scheduled=?,workshop=?,line_team=?,line_count=?,line_index=?,expired=? WHERE id=?`,
       [style_id, style_no, product_name, plan_qty, due_date, arrival_date, cutting_start, cutting_end, secondary_start, secondary_end, printing_start, printing_end, embroidery_start, embroidery_end, template_start, template_end, sewing_remind_date, sewing_start, sewing_end, ironing_start, ironing_end, conflict_flag, pipeline_count, is_scheduled, workshop, line_team, line_count, line_index, expired, id]);
     broadcastSection('mainPlan', db.all('SELECT * FROM main_plan'));
-    logOp(req, 'main_plan', 'update', id, style_no);
+    // [2026-06-20 fix#业务-P2-2] 记录 main_plan 字段变更 diff
+    const updated = db.get('SELECT * FROM main_plan WHERE id = ?', [id]);
+    const mainPlanDiff = computeDiff(existing, updated, ['plan_qty', 'due_date', 'arrival_date', 'cutting_start', 'cutting_end', 'sewing_start', 'sewing_end', 'workshop', 'line_team', 'is_scheduled']);
+    logOp(req, 'main_plan', 'update', id, style_no, { msg: '', diff: mainPlanDiff });
     res.json({ ok: true, id });
   } catch (e) {
     console.error('PUT /api/main-plan/:id error:', e);
