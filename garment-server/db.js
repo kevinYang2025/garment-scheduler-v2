@@ -1664,6 +1664,7 @@ module.exports = {
   autoSchedule, capacityPrecheck,
   getSystemParam, setSystemParam, listSystemParams,
   recordCutPiecesInbound, rollbackCutPiecesInbound, checkActualDeletable,
+  fmtLocal,  // [2026-06-20 fix#业务-P3-4] 暴露 fmtLocal 便于单元测试
 };
 
 // [2026-06-19] system_params 通用 key/value 配置读写
