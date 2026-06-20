@@ -2,12 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [master, 'feature/**']
+    branches: [master, develop, 'feature/**', 'fix/**']
   pull_request:
-    branches: [master]
+    branches: [master, develop]
 
 jobs:
-  build:
+  backend-test:
+    name: 后端单元测试
     runs-on: ubuntu-latest
 
     steps:
@@ -18,20 +19,59 @@ jobs:
         with:
           node-version: '20'
 
-      # 前端构建检查
+      - name: Install backend dependencies
+        working-directory: garment-server
+        run: npm install --no-audit --no-fund
+
+      - name: Check backend syntax
+        working-directory: garment-server
+        run: node --check server.js
+
+      - name: Run backend unit tests
+        working-directory: garment-server
+        run: npm test
+
+  frontend-build:
+    name: 前端构建 + i18n 扫描
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install frontend dependencies
         working-directory: garment-web
-        run: npm install
+        run: npm install --no-audit --no-fund
+
+      - name: i18n missing key scan
+        working-directory: garment-web
+        run: npm run scan-i18n
 
       - name: Build frontend
         working-directory: garment-web
         run: npm run build
 
-      # 后端依赖检查
+  backend-validate:
+    name: 后端模块加载 + 迁移 dry-run
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install backend dependencies
         working-directory: garment-server
-        run: npm install
+        run: npm install --no-audit --no-fund
 
-      - name: Check backend syntax
+      # 验证 db.js 能 require 成功 (语法 + 模块依赖)
+      - name: Validate db.js loads
         working-directory: garment-server
-        run: node --check server.js
+        run: node -e "const db = require('./db.js'); console.log('db.js OK, exports:', Object.keys(db).length, 'keys')"
