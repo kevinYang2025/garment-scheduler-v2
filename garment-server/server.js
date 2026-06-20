@@ -3689,8 +3689,10 @@ app.post('/api/actual', requireRole('dispatcher', 'supervisor', 'admin'), (req, 
 
     syncActualToDaily(inserted);
     // 自动重算任务状态
+    // [2026-06-20 fix#业务-P1-11] 接住 recalcTaskStatus 返回值,失败时记入操作日志
     if (r.style_id) {
-      db.recalcTaskStatus(r.style_id);
+      const rc = db.recalcTaskStatus(r.style_id);
+      if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', r.style_id, r.style_no, `err=${rc.error}`);
     }
     logOp(req, 'actual_production', 'create', inserted.id, r.style_no, `qty=${r.completed_qty || 0} ${r.schedule_type}`);
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
@@ -3784,6 +3786,8 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
     const oldQty = parseInt(existing.completed_qty) || 0;
     const newQty = r.completed_qty != null ? parseInt(r.completed_qty) : oldQty;
 
+    // [2026-06-20 fix#业务-P1-11] 收集待 recalc 的 style_id,transaction 提交后调用
+    const recalcIds = new Set();
     // [2026-06-20 批次2-业务-P1-8] UPDATE + 副作用整段包事务
     // 之前 rollbackCutPiecesInbound / recordCutPiecesInbound / syncActualToDaily 都不在事务内
     // 失败会留下不一致状态(库存扣了但 actual 没改 / 反之)
@@ -3812,10 +3816,16 @@ app.put('/api/actual/:id', requireRole('dispatcher', 'supervisor', 'admin'), (re
 
       // syncActualToDaily 内部自带事务(SQLite SAVEPOINT 兼容嵌套)
       syncActualToDaily({ ...existing, ...r, style_id: newStyleId });
-      if (newStyleId) db.recalcTaskStatus(newStyleId);
-      if (oldStyleId && oldStyleId !== newStyleId) db.recalcTaskStatus(oldStyleId);
+      // [2026-06-20 fix#业务-P1-11] 把待 recalc 的 style_id 收集到外层 Set,transaction 外再执行
+      if (newStyleId) recalcIds.add(newStyleId);
+      if (oldStyleId && oldStyleId !== newStyleId) recalcIds.add(oldStyleId);
     });
     updateTxn();
+    // [2026-06-20 fix#业务-P1-11] transaction 提交后再 recalc,失败仅 logOp
+    for (const sid of recalcIds) {
+      const rc = db.recalcTaskStatus(sid);
+      if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', sid, '', `err=${rc.error}`);
+    }
     logOp(req, 'actual_production', 'update', req.params.id, existing.style_no, `qty: ${oldQty}→${newQty} ${existing.schedule_type}`);
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true });
@@ -3835,6 +3845,9 @@ app.delete('/api/actual/:id', requireRole('supervisor', 'admin'), (req, res) => 
     if (!check.ok) return res.status(400).json({ error: check.error });
 
     // P0 安全: 整个删除流程包事务,任一步骤失败回滚
+    // [2026-06-20 fix#业务-P1-11] 收集 style_id 到外层,transaction 外 recalc
+    const delRecalcIds = new Set();
+    if (existing.style_id) delRecalcIds.add(existing.style_id);
     const delTxn = db.getDb().transaction(() => {
       // [2026-06-19] 回滚裁片库入库
       // [2026-06-20 fix#后端-P1-4] 传 rawDb 让 SQL 走当前 transaction
@@ -3849,10 +3862,13 @@ app.delete('/api/actual/:id', requireRole('supervisor', 'admin'), (req, res) => 
         db.run("DELETE FROM schedule_daily WHERE master_id = ? AND schedule_date = ? AND row_type = 'ACTUAL'",
           [m.id, existing.production_date]);
       }
-
-      if (existing.style_id) db.recalcTaskStatus(existing.style_id);
     });
     delTxn();
+    // [2026-06-20 fix#业务-P1-11] transaction 提交后再 recalc
+    for (const sid of delRecalcIds) {
+      const rc = db.recalcTaskStatus(sid);
+      if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', sid, '', `err=${rc.error}`);
+    }
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true });
   } catch (e) {
@@ -3892,9 +3908,14 @@ app.post('/api/actual/batch', requireRole('dispatcher', 'supervisor', 'admin'), 
         if (r.style_id) styleIds.add(r.style_id);
         inserted++;
       }
-      for (const sid of styleIds) db.recalcTaskStatus(sid);
+      // [2026-06-20 fix#业务-P1-11] recalc 移到 transaction 外
     });
     batchTxn();
+    // [2026-06-20 fix#业务-P1-11] transaction 提交后再 recalc,失败仅 logOp
+    for (const sid of styleIds) {
+      const rc = db.recalcTaskStatus(sid);
+      if (!rc.ok) logOp(req, 'recalc_task_status', 'fail', sid, '', `err=${rc.error}`);
+    }
     broadcastSection('actual', db.all('SELECT * FROM actual_production ORDER BY production_date DESC'));
     res.json({ ok: true, inserted });
   } catch (e) {
