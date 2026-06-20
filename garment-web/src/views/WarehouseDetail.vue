@@ -407,8 +407,7 @@ function onOutboundStyleChange(val) {
 
 // Export
 function doExport(sheet) {
-  const params = sheet ? `?sheet=${sheet}` : ''
-  window.open(`/api/warehouse/${props.warehouseType}/export${params}`, '_blank')
+  api.downloadFile(`/warehouse/${props.warehouseType}/export`, sheet ? { sheet } : null, `${props.warehouseType}-inventory.xlsx`)
 }
 
 // Import

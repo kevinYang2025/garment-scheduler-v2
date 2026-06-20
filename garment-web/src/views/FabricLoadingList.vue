@@ -313,7 +313,7 @@ async function doCreate() {
 
 // Export
 async function exportExcel() {
-  window.open('/api/fabric-loading/export', '_blank')
+  api.downloadFile('/fabric-loading/export', null, 'fabric-loading.xlsx')
 }
 
 // Import

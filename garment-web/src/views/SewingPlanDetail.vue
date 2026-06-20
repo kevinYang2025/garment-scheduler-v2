@@ -357,7 +357,7 @@ async function updateDailyActual(masterId, date, val) {
 
 function doExport() {
   const ids = filteredMasters.value.map(m => m.id).join(',')
-  window.open('/api/schedule/sewing/export' + (ids ? '?ids=' + ids : ''), '_blank')
+  api.downloadFile('/schedule/sewing/export', ids ? { ids } : null, 'sewing-schedule.xlsx')
 }
 
 function onImportFileChange(e) { importFile.value = e.target.files[0] }

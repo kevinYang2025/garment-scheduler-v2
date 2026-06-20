@@ -262,7 +262,7 @@ async function remove(id) {
 
 // 导出
 function exportExcel() {
-  window.open('/api/style-color-size/export', '_blank')
+  api.downloadFile('/style-color-size/export', null, 'style-color-size.xlsx')
 }
 
 // 新增

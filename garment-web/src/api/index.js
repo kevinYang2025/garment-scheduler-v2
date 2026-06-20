@@ -250,4 +250,18 @@ export default {
 
   // 操作日志
   getLogs: (params) => api.get('/logs', { params }),
+
+  // [2026-06-20 fix#前端-P2-5] 统一下载 helper,axios 带 cookie + 处理 401 + 触发 blob 下载
+  downloadFile: async (url, params, defaultFilename = 'download.xlsx') => {
+    const res = await api.get(url, { params, responseType: 'blob' });
+    // 从响应头取 filename(后端 setContentDisposition)
+    const cd = res.headers?.['content-disposition'] || '';
+    const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/);
+    const filename = m ? decodeURIComponent(m[1]) : defaultFilename;
+    const blobUrl = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); a.remove(); }, 0);
+  },
 }

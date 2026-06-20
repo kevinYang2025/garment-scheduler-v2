@@ -341,7 +341,7 @@ async function updateDailyActual(r, date, val) {
 }
 
 function doExport() {
-  window.open('/api/schedule/cutting/export', '_blank')
+  api.downloadFile('/schedule/cutting/export', null, 'cutting-schedule.xlsx')
 }
 
 // ============ 新增 / 导入（写 schedule_master，type=cutting） ============
