@@ -1880,23 +1880,14 @@ app.post('/api/main-plan/auto-schedule', requireRole('admin', 'planning_manager'
       const sewingStart = addDays(sewingEnd, -(sewingDays - 1));
 
       // 烫标倒推（仅 ironing_label = '是'）
+      // [2026-06-20 fix#业务-P1-1] 统一 ironing 公式与 recalcMainPlanDates 一致
+      // 之前:auto-schedule 用"从 sewingStart 向前推"算出 ironingEnd,导致与 recalc 的
+      //   "ironing_start = sewing_end + 1, ironing_end = ironing_start + BUFFER-1" 结果互换
+      // 现在:烫标是缝制后工序,ironing_start = sewing_end + 1,ironing_end = sewing_end + IRONING_BUFFER
       let ironingStart = '', ironingEnd = '';
       if (st.ironing_label === '是') {
-        ironingEnd = addDays(sewingStart, -IRONING_BUFFER);
-        const ironingMax = parseInt(st.ironing_daily_output) || 0;
-        const ironingStandard = cap.ironing || 6000;
-        if (ironingMax > 0 && ironingStandard > 0) {
-          let curDay = ironingEnd, remain = ironingStandard, styleRemain = qty;
-          while (styleRemain > 0) {
-            const todayCap = Math.min(ironingMax, remain);
-            if (todayCap <= 0) { curDay = addDays(curDay, -1); remain = ironingStandard; continue; }
-            const produce = Math.min(styleRemain, todayCap);
-            styleRemain -= produce;
-            remain -= produce;
-            if (styleRemain > 0) { curDay = addDays(curDay, -1); remain = ironingStandard; }
-          }
-          ironingStart = curDay;
-        }
+        ironingStart = addDays(sewingEnd, 1);
+        ironingEnd = addDays(sewingEnd, IRONING_BUFFER);
       }
 
       let arrivalDate = li.loading_date ? addDays(li.loading_date, 21) : '';
