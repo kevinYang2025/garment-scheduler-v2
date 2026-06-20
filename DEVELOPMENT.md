@@ -1,142 +1,258 @@
-# 开发规范 — garment-scheduler-v2
+# 开发规范 — garment-scheduler-v2 v1.0.0
 
-## 项目简介
+## 项目结构(分工边界)
 
-制衣工厂生产排程系统 V2，包含：
-- **garment-web** — Vue3前端（Vite）
-- **garment-server** — Node.js后端（Express + SQLite）
-- **garment-scheduler** — Java后端（Spring Boot，备用）
+| 目录 | 职责 | 主要技术 |
+|---|---|---|
+| `garment-server/server.js` | Express 路由 + Socket.IO 推送 | Node.js + Express |
+| `garment-server/db.js` | better-sqlite3 + schema + migration | SQLite WAL |
+| `garment-web/src/views/*.vue` | 业务页面(40+ 视图) | Vue 3 + Element Plus |
+| `garment-web/src/api/index.js` | axios 封装 + 全部 API 方法 | Axios |
+| `garment-web/src/composables/` | 组合式函数 | Vue 3 |
+| `scripts/` | 部署 / 运维 / 扫描脚本 | Shell + Node |
+| `docs/` | 文档 | Markdown |
 
-## 环境搭建
+修改文件前先确认属于哪个目录,避免跨域改动。
+
+---
+
+## 本地开发
+
+### 准备
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/kevinYang2025/garment-scheduler-v2.git
-cd garment-scheduler-v2
-
-# 2. 切到develop分支（日常开发用这个）
-git checkout develop
-
-# 3. 安装依赖
+# 依赖
 cd garment-server && npm install
 cd ../garment-web && npm install
 
-# 4. 启动
-# 终端1：后端
-cd garment-server && node server.js    # http://localhost:3001
+# 后端启动
+cd garment-server && node server.js          # 监听 :3001
 
-# 终端2：前端
-cd garment-web && npm run dev          # http://localhost:5173
+# 前端启动(另一个终端)
+cd garment-web && npm run dev                # 监听 :5173,代理 /api → :3001
 ```
 
-## 分支规范
-
-| 分支 | 用途 | 谁能push |
-|------|------|----------|
-| `master` | 稳定版，只通过PR合并 | 仅管理员 |
-| `develop` | 日常开发集成 | 所有协作者 |
-| `feature/xxx` | 新功能开发 | 开发者本人 |
-| `fix/xxx` | Bug修复 | 开发者本人 |
-
-### 分支命名示例
-
-```
-feature/sewing-inline-edit     # 缝制排程内联编辑
-feature/warehouse-export       # 仓库导出功能
-fix/timezone-date-bug          # 修复时区日期bug
-```
-
-## 开发流程
-
-### 开始新功能
+### Windows 快捷脚本(项目根)
 
 ```bash
-# 1. 确保develop是最新的
-git checkout develop
-git pull origin develop
-
-# 2. 创建功能分支
-git checkout -b feature/你要做的功能
-
-# 3. 开发、测试
-
-# 4. 提交
-git add -A
-git commit -m "feat: 简短描述做了什么"
-
-# 5. 推送到远程
-git push -u origin feature/你要做的功能
-
-# 6. 去GitHub提Pull Request → 合并到develop
+./setup.bat            # 首次安装依赖
+./start.bat            # 先后端再前端
+./start-dev.bat        # 仅开发模式
+./start-frontend.bat   # 仅前端
 ```
 
-### 修复Bug
+### 调试技巧
+
+- **后端日志**: `garment-server/backend-err.log` / `backend-out.log`(生产 pm2 同目录)
+- **前端 devtools**: Vue DevTools + Element Plus 组件审查
+- **数据库**: `sqlite3 garment-server/data.sqlite` 直接查表
+- **Socket.IO**: 浏览器 devtools Network → WS → 看推送事件
+- **API 测试**: `curl -b cookies.txt -c cookies.txt http://localhost:3001/api/auth/login -d '...'`(session cookie 鉴权)
+
+---
+
+## 分支策略
+
+`master` 是发布分支,云端部署前 push 到这里。新改动通过 worktree 临时分支做,改完后合回 master 再清理。
+
+历史分支(`develop` / `feature/*` / `claude/*`)在 v1.0.0 收尾时已全部清理,长期不再保留。
+
+### 日常流程(直接在工作目录)
+
+小改动(v1.0.0 收尾类、文档修订、bug 单点修复)直接在 master 改完 push:
 
 ```bash
-git checkout develop
-git pull origin develop
-git checkout -b fix/bug描述
-# 修复...
-git add -A
-git commit -m "fix: 修复了什么"
-git push -u origin fix/bug描述
-# 提PR合并到develop
+git pull origin master
+# 改文件
+git add <具体文件>     # 别用 -A
+git commit -m "fix: xxx"
+git push origin master
 ```
+
+### 大改动(走 worktree)
+
+涉及多文件、可能要分多次 commit、或者并行多个 agent 改不同模块时,开 worktree 隔离:
+
+```bash
+# 1. 拉新 worktree(在项目根目录)
+git worktree add ../garment-scheduler-v2-<任务名> -b <任务分支名> master
+
+# 2. 在 worktree 里改 + commit
+cd ../garment-scheduler-v2-<任务名>
+# 改文件
+git add <具体文件>
+git commit -m "feat: xxx"
+
+# 3. 拉回 master(快进合并)
+cd ../../garment-scheduler-v2    # 回主项目
+git merge --ff-only <任务分支名>  # 任务分支已包含 master 所有 commit 时才能 ff
+
+# 4. push + 清理
+git push origin master
+git worktree remove ../garment-scheduler-v2-<任务名>
+git branch -d <任务分支名>        # 本地
+git push origin --delete <任务分支名>  # 远程(如曾 push 过)
+```
+
+分支命名:<任务描述>-<短哈希> 之类(Claude Code 自动生成的 `claude/<worktree-id>` 也行,清理时一并删)。
+
+如果将来恢复多人协作,再切回 `develop + feature/* + PR` 模式。
+
+---
 
 ## 提交信息规范
 
-格式：`类型: 简短描述`
+格式:**`type(scope): 简短描述`**(可加段号 + 优先级前缀)
 
-| 类型 | 说明 |
-|------|------|
+### type
+
+| type | 用途 |
+|---|---|
 | `feat` | 新功能 |
-| `fix` | Bug修复 |
-| `style` | 样式调整 |
-| `refactor` | 重构（不改功能） |
+| `fix` | Bug 修复 |
+| `refactor` | 重构(不改功能) |
+| `style` | 样式 / UI 调整 |
 | `docs` | 文档更新 |
+| `chore` | 杂项(清理 / 依赖 / 配置) |
+| `perf` | 性能优化 |
+| `test` | 测试 |
 
-示例：
-```
-feat: 缝制排程支持内联编辑
-fix: 修复日期时区偏移一天的问题
-style: 优化表格hover效果
+### scope(可选)
+
+| scope | 说明 |
+|---|---|
+| `server` | 后端 server.js / db.js |
+| `web` | 前端 .vue / .js |
+| `api` | api/index.js |
+| `i18n` | 国际化文案 |
+| `db` | 数据库 schema / 迁移 |
+| `ops` | 部署 / 运维脚本 |
+| `docs` | docs/ 目录 |
+
+### 前缀约定
+
+内部使用段号追踪问题修复链,提交时可加可不加:
+
+- `fix(段73 业务-P1-#): xxx` — 段号 73 + 业务 P1 优先级
+- `feat(段50 web-P2-#): xxx` — 段号 50 + 前端 P2 优先级
+- `chore: 清理段72 临时调试文件` — 清理
+
+段号是私有序号,只在团队内部使用,不需要追溯或对齐到外部 issue。
+
+### 示例
+
+```bash
+fix(段74 业务-P1-#): MainPlan autoCalcDates 改用工作日历
+feat(段50 web-P2-#): 仓库 sidebar 跳转
+chore: 移除 3 个临时审计报告
+docs: 架构与重构方案 v1
 ```
 
-## 文件分工（避免冲突）
+### 提交粒度
+
+- **小步提交**:每个 commit 单一目的,别攒一堆改动
+- **可回滚**:任何 commit 单独 revert 都不破坏构建
+- **带 Co-Authored-By**:`Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>`
+
+---
+
+## 代码规范
+
+### 后端(Node.js)
+
+- **日期处理**:统一用 `db.js` 的 `fmtLocal()`(UTC+8),禁止 `toISOString().slice(0,10)`
+- **SQL 注入**:全部用 prepared statement(`db.prepare().get/all/run()`)
+- **错误处理**:路由 try-catch,错误日志带 endpoint + 参数
+- **鉴权**:所有 `/api/*` 走 `requireAuth`(白名单: `/api/auth/*` / `/api/health`)
+- **ETag 乐观锁**:更新走 `api.etagPut`(前端) / 后端 `If-Match` 头(后端)
+- **日志**:用 `logOp(req, module, action, ...)` 记操作日志,带 user_id
+- **事务**:多表写操作用 `db.transaction(() => {...})`
+
+### 前端(Vue 3)
+
+- **API 调用**:走 `api/index.js` 封装,禁止直接 `axios.get(...)`
+- **状态**:本地用 `ref` / `computed` / `reactive`,跨页面用 Pinia store 或 URL params
+- **路由**:named route,带 type/schedule_type 时用 `params` 显式传
+- **i18n**:所有用户可见文案走 `$t('key')`,禁止硬编码中文/英文字符串
+- **组件**:Element Plus 优先,自定义组件放 `src/composables/` 或 `src/components/`
+- **样式**:Tailwind 4 utility + Element Plus 主题变量,不要 inline `style="..."`
+- **错误提示**:`ElMessage.error(...)` 统一处理,别用 `alert()`
+- **下载文件**:统一用 `api.downloadFile(url, params)`,别自己写 blob+a.click
+
+### 数据库
+
+- **schema 变更**:在 `db.js` 顶部加 `migrate()` 函数,幂等
+- **索引**:大表(>10000 行)查询字段加索引
+- **外键**:开启 `PRAGMA foreign_keys = ON`
+- **WAL**:`PRAGMA journal_mode = WAL` 已开,不要改
+
+---
+
+## 测试与验证
+
+### 上线前必跑
+
+1. `npm run build`(前端) — 检查能否构建
+2. `node server.js` 启动后端,检查 `backend-err.log` 无错误
+3. `docs/SMOKE-TEST.md` 冒烟清单全部通过
+
+### CI
+
+`.github/workflows/` 三个 job:
+
+- `npm test` — 后端单测
+- `i18n scan` — `scripts/scan-i18n.js`,要求 100% 覆盖
+- `db.js load` — 验证 db.js 能加载无语法错误
+
+任何 commit push 前本地跑过一遍。
+
+### i18n 扫描
+
+```bash
+node scripts/scan-i18n.js
+```
+
+新加文案必须加中英双语 key,扫描器会报漏掉的中文/英文字符串。
+
+---
+
+## 调试常见问题
+
+| 症状 | 排查 |
+|---|---|
+| 前端 404 / API 404 | 检查 vite proxy `server.proxy` + 后端是否在 :3001 |
+| `/api/*` 401 | session cookie 没带,axios `withCredentials: true` 是否保留 |
+| `/api/*` 412 | ETag 冲突,前端 `api.etagPut` 应自动重试,若仍冲突需刷新 |
+| 日期偏一天 | UTC 时区,后端用 `fmtLocal()`,前端别用 `toISOString().slice(0,10)` |
+| 主计划倒推没扣休息日 | `work_calendars` 是否启用 + `calendar_exceptions` 是否有覆盖 |
+| 仓库数据加载失败 | sidebar 跳仓库要带 `params: { type: 'cutting_piece' }`,`WarehouseDetail` 有 effectiveType 兜底 |
+| Socket.IO 断连 | Nginx `proxy_set_header Upgrade $http_upgrade;` 漏配 |
+
+---
+
+## 文件分工(协作者)
 
 | 负责人 | 主要文件 |
 |--------|----------|
-| kevinYang2025 | `garment-web/src/views/*.vue`、`garment-web/src/App.vue` |
+| kevinYang2025 (owner) | `garment-web/src/views/*.vue`、`garment-web/src/App.vue` |
 | Kyle-lmy | `garment-server/server.js`、`garment-server/db.js` |
 
-> 如果需要改对方的文件，先沟通，或者在自己的分支上改完合develop时再处理冲突。
+如果需要改对方的文件,先沟通,或者在自己的分支上改完合 master 时再处理冲突。
 
-## 常用命令速查
-
-```bash
-# 拉取最新代码
-git pull origin develop
-
-# 查看当前分支
-git branch
-
-# 切换分支
-git checkout develop
-
-# 查看提交历史
-git log --oneline -10
-
-# 放弃本地修改
-git checkout -- 文件路径
-
-# 查看谁改了什么
-git blame 文件路径
-```
+---
 
 ## 注意事项
 
-1. **不要直接push到master** — 必须通过PR
-2. **改代码前先pull** — 避免冲突
-3. **小步提交** — 别攒一堆改动一次提交
-4. **提交前检查** — 确保能编译通过（`npm run build`）
-5. **敏感信息不要提交** — `.env`文件已在`.gitignore`中排除
+1. **不要直接 `git add .` / `git add -A`** — 会误把 `.env` / `*.sqlite` / `.scratch/` / 临时调试文件 commit 进去。用 `git status` 先看。
+2. **改 schema 要写迁移** — 别直接 `DROP TABLE` / `ALTER TABLE`,幂等迁移
+3. **生产数据库先备份** — `scripts/backup.sh` 跑一遍再改
+4. **敏感信息不提交** — `.env` / `cookies.txt` 已在 `.gitignore`
+5. **审计报告 / 重构方案不进 master** — 放 `.scratch/` 或 `docs/`,别 commit 根目录 md
+
+---
+
+## 项目状态(2026-06-21)
+
+- v1.0.0 已发布,云端部署待执行
+- 下一步:进入 v2 开发(架构与重构方案见 `架构与重构方案.md`)
+- 单人开发,master 唯一分支
