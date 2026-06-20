@@ -3,11 +3,47 @@ import { computed, ref, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart, BarChart, LineChart } from 'echarts/charts'
-import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
+import { TitleComponent, TooltipComponent, LegendComponent, GridComponent, DataZoomComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import api from '../api'
+import { useLangStore } from '../stores/lang'
+import { t } from '../i18n'
+import dict from '../i18n'
 
-use([CanvasRenderer, PieChart, BarChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
+use([CanvasRenderer, PieChart, BarChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, DataZoomComponent])
+
+const langStore = useLangStore()
+
+// ECharts legend 不渲染 \n,所以按当前语言模式返回单语或带 · 分隔符的双语
+function legendName(key, raw, mode) {
+  const entry = dict[key]
+  if (!entry) return raw || key
+  if (mode === 'km') return entry.km
+  if (mode === 'zh') return entry.zh
+  return `${entry.zh} · ${entry.km}`
+}
+
+// 工序名 → i18n key (按截图上的顺序: 裁剪/印花/刺绣/模板/烫标/缝制)
+const processConfigBase = [
+  { key: 'cutting', i18n: 'dispatch.cutting', color: '#ef4444' },
+  { key: 'printing', i18n: 'dispatch.printing', color: '#f59e0b' },
+  { key: 'embroidery', i18n: 'dispatch.embroidery', color: '#22c55e' },
+  { key: 'template', i18n: 'dispatch.template', color: '#3b82f6' },
+  { key: 'ironing', i18n: 'dispatch.ironing', color: '#8b5cf6' },
+  { key: 'sewing', i18n: 'dispatch.sewing', color: '#6e3ff3' },
+]
+
+// 后端车间名 (1车间/一车间 等) → i18n key,按截图命名约定
+function workshopI18nKey(name) {
+  const s = String(name || '').trim()
+  if (!s) return ''
+  if (s.includes('一') || s.startsWith('1车')) return 'workshopNames.ws1'
+  if (s.includes('二') || s.startsWith('2车')) return 'workshopNames.ws2'
+  if (s.includes('三') || s.startsWith('3车')) return 'workshopNames.ws3'
+  if (s.includes('四') || s.startsWith('4车')) return 'workshopNames.ws4'
+  if (s.includes('五') || s.startsWith('5车')) return 'workshopNames.ws5'
+  return ''
+}
 
 const props = defineProps({ db: Object })
 const emit = defineEmits(['navigate'])
@@ -89,26 +125,45 @@ const processRateOption = computed(() => {
   if (!achievementData.value) return {}
   const { dates, processRates } = achievementData.value
   const shortDates = dates.map(d => d.slice(5)) // MM-DD
-  const processConfig = [
-    { key: 'cutting', label: '裁剪', color: '#ef4444' },
-    { key: 'printing', label: '印花', color: '#f59e0b' },
-    { key: 'embroidery', label: '刺绣', color: '#22c55e' },
-    { key: 'template', label: '模板', color: '#3b82f6' },
-    { key: 'ironing', label: '烫标', color: '#8b5cf6' },
-    { key: 'sewing', label: '缝制', color: '#6e3ff3' },
-  ]
+  const mode = langStore.mode
+  const processConfig = processConfigBase.map(p => ({
+    ...p,
+    // seriesName 用单语,legend 用 formatter 函数动态取 (兼容 both 模式双语横排)
+    label: legendName(p.i18n, p.key, mode),
+    shortLabel: dict[p.i18n]?.zh || p.key,
+  }))
   return {
     tooltip: { trigger: 'axis', formatter: (params) => {
       let html = `<b>${params[0].axisValue}</b><br/>`
-      params.forEach(p => { html += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
+      params.forEach(p => {
+        // 在 tooltip 里显示中文短名 + 数值
+        const item = processConfig.find(c => c.label === p.seriesName)
+        const name = item?.shortLabel || p.seriesName
+        html += `${p.marker} ${name}: ${p.value}%<br/>`
+      })
       return html
     }},
-    legend: { data: processConfig.map(p => p.label), bottom: 0, textStyle: { fontSize: 11 } },
-    grid: { left: 40, right: 20, top: 10, bottom: 60 },
-    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 10, rotate: 45, margin: 12 } },
+    legend: {
+      data: processConfig.map(p => p.shortLabel),  // legend.data 用短名,formatter 再回填双语
+      bottom: 0,
+      type: 'scroll',
+      pageIconColor: '#666',
+      pageTextStyle: { color: '#666' },
+      textStyle: { fontSize: 10, lineHeight: 14 },
+      formatter: (name) => {
+        const item = processConfig.find(p => p.shortLabel === name)
+        return item?.label || name
+      },
+    },
+    grid: { left: 40, right: 20, top: 10, bottom: 110 },
+    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 10, rotate: 45, margin: 18 } },
     yAxis: { type: 'value', max: 100, axisLabel: { color: '#a1a1aa', fontSize: 11, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#f3f4f6', type: 'solid' } } },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, start: 0, end: 100 },
+      { type: 'slider', xAxisIndex: 0, bottom: 60, height: 18, start: 0, end: 100 },
+    ],
     series: processConfig.map(p => ({
-      name: p.label,
+      name: p.shortLabel,  // seriesName 用短名,tooltip formatter 匹配
       type: 'line',
       smooth: true,
       symbol: 'none',
@@ -125,25 +180,53 @@ const sewingWorkshopOption = computed(() => {
   const { dates, sewingByWorkshop } = achievementData.value
   const shortDates = dates.map(d => d.slice(5))
   const colors = ['#6e3ff3', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444']
-  const workshops = Object.keys(sewingByWorkshop)
+  const workshopNames = Object.keys(sewingByWorkshop)
+  const mode = langStore.mode
+  const translated = workshopNames.map(w => {
+    const key = workshopI18nKey(w)
+    return {
+      raw: w,
+      label: legendName(key, w, mode),
+      shortLabel: dict[key]?.zh || w,
+    }
+  })
   return {
     tooltip: { trigger: 'axis', formatter: (params) => {
       let html = `<b>${params[0].axisValue}</b><br/>`
-      params.forEach(p => { html += `${p.marker} ${p.seriesName}: ${p.value}%<br/>` })
+      params.forEach(p => {
+        const item = translated.find(c => c.label === p.seriesName || c.shortLabel === p.seriesName)
+        const name = item?.shortLabel || p.seriesName
+        html += `${p.marker} ${name}: ${p.value}%<br/>`
+      })
       return html
     }},
-    legend: { data: workshops.map(w => w + '车间'), bottom: 0, textStyle: { fontSize: 11 } },
-    grid: { left: 40, right: 20, top: 10, bottom: 60 },
-    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 10, rotate: 45, margin: 12 } },
+    legend: {
+      data: translated.map(w => w.shortLabel),
+      bottom: 0,
+      type: 'scroll',
+      pageIconColor: '#666',
+      pageTextStyle: { color: '#666' },
+      textStyle: { fontSize: 10, lineHeight: 14 },
+      formatter: (name) => {
+        const item = translated.find(w => w.shortLabel === name)
+        return item?.label || name
+      },
+    },
+    grid: { left: 40, right: 20, top: 10, bottom: 110 },
+    xAxis: { type: 'category', data: shortDates, axisLabel: { color: '#a1a1aa', fontSize: 10, rotate: 45, margin: 18 } },
     yAxis: { type: 'value', max: 100, axisLabel: { color: '#a1a1aa', fontSize: 11, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#f3f4f6', type: 'solid' } } },
-    series: workshops.map((w, i) => ({
-      name: w + '车间',
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, start: 0, end: 100 },
+      { type: 'slider', xAxisIndex: 0, bottom: 60, height: 18, start: 0, end: 100 },
+    ],
+    series: translated.map((w, i) => ({
+      name: w.shortLabel,
       type: 'line',
       smooth: true,
       symbol: 'none',
       lineStyle: { color: colors[i % colors.length], width: 2 },
       itemStyle: { color: colors[i % colors.length] },
-      data: sewingByWorkshop[w] || dates.map(() => 0),
+      data: sewingByWorkshop[w.raw] || dates.map(() => 0),
     })),
   }
 })
