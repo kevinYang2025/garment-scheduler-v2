@@ -1,6 +1,10 @@
 node_modules/
 dist/
-garment-server/public/assets/
+# 前端 build 产物(2026-06-20 加入):index.html + assets/ 都是 vite build 输出
+# 部署时跑 npm run build 生成,不入 git
+garment-server/public/
+!garment-server/public/favicon.svg
+!garment-server/public/icons.svg
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
