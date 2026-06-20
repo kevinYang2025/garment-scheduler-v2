@@ -4434,18 +4434,26 @@ app.put('/api/schedule/daily/actual/:id', requireRole('admin', 'supervisor'), (r
 app.post('/api/schedule/daily/actual/:id/unlock', (req, res) => {
   try {
     const { id } = req.params;
-    const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
-    if (!row) return res.status(404).json({ error: '记录不存在' });
-
-    // [2026-06-18] 仅 admin/supervisor 可解锁;且只能解自己锁的(管理员除外)
-    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
-      return res.status(403).json({ error: '该操作仅限车间主任或管理员' });
-    }
-    if (req.user.role !== 'admin' && row.locked_by_user_id !== req.user.id) {
+    // [2026-06-20 fix#后端-P2-7] SELECT 权限检查 + UPDATE 包事务,防 TOCTOU
+    let unlocked = false;
+    const unlockTxn = db.getDb().transaction(() => {
+      const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
+      if (!row) return;
+      // [2026-06-18] 仅 admin/supervisor 可解锁;且只能解自己锁的(管理员除外)
+      if (req.user.role !== 'admin' && req.user.role !== 'supervisor') return;
+      if (req.user.role !== 'admin' && row.locked_by_user_id !== req.user.id) return;
+      db.run('UPDATE schedule_daily SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?', [id]);
+      unlocked = true;
+    });
+    unlockTxn();
+    if (!unlocked) {
+      const row = db.get('SELECT * FROM schedule_daily WHERE id = ?', [id]);
+      if (!row) return res.status(404).json({ error: '记录不存在' });
+      if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+        return res.status(403).json({ error: '该操作仅限车间主任或管理员' });
+      }
       return res.status(403).json({ error: '只能解锁自己锁定的记录' });
     }
-
-    db.run('UPDATE schedule_daily SET locked_by_user_id = NULL, locked_at = NULL WHERE id = ?', [id]);
     logOp(req, 'schedule_daily', 'unlock_actual', id, '', `unlocked by ${req.user.username}`);
     res.json({ ok: true });
   } catch (e) { sendError(res, 'POST /api/schedule/daily/actual/:id/unlock', e); }
