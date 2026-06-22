@@ -1,0 +1,78 @@
+# Phase 1.4 — docker-compose(开发环境)
+# 用途:起 redis:7-alpine,Session store + Socket.IO adapter 共享
+#
+# Phase 10 起追加:
+#   - nginx (反代)
+#   - backend: garment-server-nest (NestJS,镜像构建)
+#   - legacy:  garment-server (Express 旧,Phase 11 下线)
+#   - frontend: garment-web (Vue 构建产物,Nginx 服务)
+#
+# 数据:
+#   - SQLite 文件挂 volume(./garment-server/data.sqlite → /app/data/data.sqlite)
+#   - Redis 数据不持久化(缓存用途,重启即丢,符合 §8.1 配置)
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: garment-redis
+    restart: unless-stopped
+    # §8.1 配置:maxmemory 128mb,appendonly no
+    command: >
+      redis-server
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --appendonly no
+      --save ""
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ──────────────────────────────────────────────
+  # Phase 10 启用(占位注释)
+  # ──────────────────────────────────────────────
+  # backend:
+  #   build: ./garment-server-nest
+  #   container_name: garment-backend
+  #   restart: unless-stopped
+  #   env_file: ./garment-server-nest/.env
+  #   environment:
+  #     REDIS_URL: redis://redis:6379
+  #     DB_PATH: /app/data/data.sqlite
+  #   volumes:
+  #     - ./garment-server/data.sqlite:/app/data/data.sqlite:rw
+  #   ports:
+  #     - "3002:3002"
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+
+  # legacy:
+  #   build: ./garment-server
+  #   container_name: garment-legacy
+  #   restart: unless-stopped
+  #   env_file: ./garment-server/.env
+  #   environment:
+  #     REDIS_URL: redis://redis:6379
+  #     PORT: 3001
+  #   volumes:
+  #     - ./garment-server/data.sqlite:/app/data/data.sqlite:rw
+  #   ports:
+  #     - "3001:3001"
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+
+  # frontend:
+  #   build: ./garment-web
+  #   container_name: garment-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #   depends_on:
+  #     - backend
+  #     - legacy

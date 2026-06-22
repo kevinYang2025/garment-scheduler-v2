@@ -41,3 +41,16 @@ cookies.txt
 # docs/sop/_images/ 是 mermaid 渲染与截图,不入库
 docs/scripts/
 docs/sop/_images/
+
+# NestJS 重构项目(2026-06-22 加入):Phase 1 起新建 garment-server-nest/
+# dist/: nest build 输出
+# node_modules/: 装依赖,不入库
+# .env: 实际环境变量,不入库(用 .env.example)
+garment-server-nest/dist/
+garment-server-nest/node_modules/
+garment-server-nest/.env
+garment-server-nest/.env.local
+garment-server-nest/coverage/
+garment-server-nest/.tsbuildinfo
+# 但 .env.example 必须入库(避免被上面 .env.* 通配误杀)
+!garment-server-nest/.env.example
