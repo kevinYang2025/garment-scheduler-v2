@@ -1,5 +1,12 @@
 # 制衣工厂生产排程系统 — garment-scheduler-v2
 
+> **重构进行中(2026-06-20 ~)**:Express + SQLite 正在向 NestJS 双轨迁移,详情见 `架构与重构方案.md`(v1.1)。
+> 重构期间必须守住三条 P0 防线:
+> 1. **Session 共享** — Phase 1 起必须 Redis 共享 store(否则双进程鉴权崩溃)
+> 2. **SQLite 并发** — TypeORM `busy_timeout=5000` + WAL,Phase 5/6 必跑并发压测
+> 3. **Socket.IO 跨进程广播** — `@socket.io/redis-adapter` 必装,实时强相关模块同日切完
+> 违反任意一条会导致生产事故。
+
 ## 项目概要
 
 柬埔寨制衣工厂生产计划排程系统。工厂背景：50条缝制产线，5个车间，3名计划员，目前用Excel手排。目标是用系统替代手工排程。
