@@ -35,3 +35,9 @@ playwright-test*.json
 # 临时标记文件(2026-06-19 加入)
 mimo
 cookies.txt
+
+# SOP 配套的本地调试产物(2026-06-22 加入)
+# docs/scripts/ 是编写 docx 时的 Python 脚本
+# docs/sop/_images/ 是 mermaid 渲染与截图,不入库
+docs/scripts/
+docs/sop/_images/
