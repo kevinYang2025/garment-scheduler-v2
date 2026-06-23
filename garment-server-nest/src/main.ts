@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filter/http-exception.filter';
 import { buildValidationPipe } from './common/pipe/validation.pipe';
 import { LoggingInterceptor } from './common/interceptor/logging.interceptor';
+import { SnakeCaseResponseInterceptor } from './common/interceptor/snake-case.interceptor';
 import { buildSessionMiddleware } from './config/session.config';
 import { REDIS_CLIENT } from './config/redis.config';
 
@@ -59,6 +60,8 @@ async function bootstrap() {
 
   // ── 全局 Logging Interceptor(§3 Phase 2.3)──
   app.useGlobalInterceptors(new LoggingInterceptor());
+  // SnakeCaseResponseInterceptor 不全局挂,在需要的 controller 用 @UseInterceptors 启用
+  // (避免影响错误响应/health 端点等)
 
   // ── express-session + Redis store(§8 R2)──
   const redisClient = app.get<Redis>(REDIS_CLIENT);

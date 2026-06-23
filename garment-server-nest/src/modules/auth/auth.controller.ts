@@ -7,12 +7,14 @@ import {
   Post,
   Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto, LoginDto } from './auth.dto';
 import { AuthGuard } from '../../common/auth/auth.guard';
 import { OperationLoggerService } from '../../common/logger/operation-logger.service';
+import { SnakeCaseResponseInterceptor } from '../../common/interceptor/snake-case.interceptor';
 
 /**
  * Phase 3 — AuthController
@@ -28,6 +30,7 @@ import { OperationLoggerService } from '../../common/logger/operation-logger.ser
  */
 
 @Controller('api/auth')
+@UseInterceptors(SnakeCaseResponseInterceptor)  // 响应字段 snake_case 与 Express 兼容
 export class AuthController {
   constructor(
     private readonly authService: AuthService,

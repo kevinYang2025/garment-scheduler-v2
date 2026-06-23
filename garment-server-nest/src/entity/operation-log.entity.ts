@@ -24,7 +24,7 @@ export class OperationLog {
   @Column({ type: 'text' })
   action: string;
 
-  @Column({ type: 'integer', nullable: true })
+  @Column({ type: 'integer', nullable: true, name: 'target_id' })
   targetId: number | null;
 
   @Column({ type: 'text', default: '' })

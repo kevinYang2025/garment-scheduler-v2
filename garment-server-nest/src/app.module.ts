@@ -7,6 +7,7 @@ import { HealthController } from './modules/health/health.controller';
 import { AppGateway } from './modules/gateway/socket.gateway';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BaseModule } from './modules/base/base.module';
 
 /**
  * Phase 1 — AppModule 骨架
@@ -33,6 +34,7 @@ import { AuthModule } from './modules/auth/auth.module';
     RedisModule,
     CommonModule,
     AuthModule,
+    BaseModule,
   ],
   controllers: [HealthController],
   providers: [AppGateway],
