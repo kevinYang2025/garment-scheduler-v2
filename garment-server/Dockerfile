@@ -15,7 +15,8 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     REDIS_URL=redis://redis:6379 \
     DB_PATH=/app/data/data.sqlite \
-    AUTH_ENABLED=true
+    AUTH_ENABLED=true \
+    CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173
 
 # 只装 prod deps
 COPY package*.json ./

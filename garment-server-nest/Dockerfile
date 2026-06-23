@@ -38,11 +38,9 @@ ENV NODE_ENV=production \
     REDIS_URL=redis://redis:6379 \
     DB_PATH=/app/data/data.sqlite
 
-# 只装运行时依赖
-COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-# 从 builder 阶段拷贝 dist + node_modules(prod only)
+# B8-2 修复:runtime 阶段不重装 deps,直接从 builder 拷贝已 prune 的 node_modules
+# builder 阶段 line 29 已 npm prune --production,prod-only 了
+# 再 npm ci --omit=dev 是重复操作,增加镜像体积 + 构建时间
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 

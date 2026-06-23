@@ -26,6 +26,10 @@ const ROUTING_RULES = {
   '/api/warehouse':    'nest',       // Phase 7 (Phase 11 解冻)
   '/api/asn':          'express',    // 暂未迁
   '/api/dn':           'express',    // 暂未迁
+  // B7-2 修复:/system/users NestJS 无 UserController,走 Express
+  '/api/system/users': 'express',
+  // B7-3 修复:/logs NestJS 无 GET 端点(OperationLoggerService 只写不读),走 Express
+  '/api/logs':         'express',
 };
 
 // 后端地址映射

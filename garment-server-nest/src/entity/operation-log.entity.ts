@@ -33,9 +33,9 @@ export class OperationLog {
   @Column({ type: 'text', default: '' })
   detail: string;
 
-  /** 历史遗留字段,默认为 'YC',新代码用 userId */
-  @Column({ type: 'text', default: 'YC' })
-  operator: string;
+  /** 历史遗留字段,默认为 'YC',新代码用 userId。B2-4 修复:改为 nullable */
+  @Column({ type: 'text', default: 'YC', nullable: true })
+  operator: string | null;
 
   @Column({ type: 'integer', nullable: true, name: 'user_id' })
   userId: number | null;

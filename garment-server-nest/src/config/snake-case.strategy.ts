@@ -15,7 +15,8 @@ import { snakeCase } from 'typeorm/util/StringUtils';
 
 export class SnakeCaseNamingStrategy extends DefaultNamingStrategy implements NamingStrategyInterface {
   columnName(propertyName: string, customName: string, embeddedPrefixes: string[]): string {
-    return customName || snakeCase(embeddedPrefixes.join('_') + propertyName);
+    // B1-8 修复:?? 替代 ||(customName 空字符串仍用 snakeCase,|| 也会,但 ?? 语义更精确)
+    return customName ?? snakeCase(embeddedPrefixes.join('_') + propertyName);
   }
 
   joinColumnName(relationName: string, referencedColumnName: string): string {
@@ -58,8 +59,11 @@ export class SnakeCaseNamingStrategy extends DefaultNamingStrategy implements Na
     return 'CHK_' + snakeCase(tableOrName + '_' + expression);
   }
 
-  exclusionConstraintName(tableOrName: string | any, expression: string): string {
-    const name = typeof tableOrName === 'string' ? tableOrName : (tableOrName as any).name ?? '';
+  exclusionConstraintName(
+    tableOrName: string | { name?: string },
+    expression: string,
+  ): string {
+    const name = typeof tableOrName === 'string' ? tableOrName : (tableOrName.name ?? '');
     return 'XCL_' + snakeCase(name + '_' + expression);
   }
 }

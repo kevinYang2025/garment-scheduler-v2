@@ -393,14 +393,10 @@ export class WarehouseService {
             record.remark ?? '',
           );
       } catch (err: any) {
+        // B5-1 修复:用标准 err.code 而非字符串匹配(更稳定)
         // UNIQUE 冲突:并发另一个请求已 INSERT,改 UPDATE
-        if (String(err?.message || '').includes('UNIQUE')) {
-          this.sqliteDb
-            .prepare(
-              'SELECT id FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
-            )
-            .get(type, styleNo, color, sizeSpec, potNo) as { id: number } | undefined;
-          // 重新走 existing 分支(可能再次竞争,无限循环风险;生产环境应加 UNIQUE 索引)
+        if ((err as any)?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          // B5-2 修复:删死 SELECT,只做一次 retry 查询
           const retryExisting = this.sqliteDb
             .prepare(
               'SELECT id, current_qty FROM warehouse_inventory WHERE warehouse_type = ? AND style_no = ? AND color = ? AND size_spec = ? AND pot_no = ?',
@@ -440,7 +436,7 @@ export class WarehouseService {
    *   6. inbound_date 必填(面料库入库)
    *   7. inbound_date 格式 YYYY-MM-DD
    */
-  private validateWarehouseRecord(r: any, type: string): string[] {
+  private validateWarehouseRecord(r: CreateInboundDto | CreateOutboundDto, type: string): string[] {
     const errors: string[] = [];
 
     // 1. style_no 必填
@@ -462,11 +458,13 @@ export class WarehouseService {
     }
 
     // 6. inbound_date 必填(Express 对面料库强制要求)
-    if (type === 'fabric' && (!r.inbound_date || String(r.inbound_date).trim() === '')) {
+    // inbound_date 只存在于 CreateInboundDto,CreateOutboundDto 无此字段
+    const inboundDate = (r as any).inbound_date;
+    if (type === 'fabric' && (!inboundDate || String(inboundDate).trim() === '')) {
       errors.push('入库日期不能为空');
     }
     // 7. 日期格式校验
-    if (r.inbound_date && !/^\d{4}-\d{2}-\d{2}$/.test(String(r.inbound_date))) {
+    if (inboundDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(inboundDate))) {
       errors.push('入库日期格式必须为 YYYY-MM-DD');
     }
 

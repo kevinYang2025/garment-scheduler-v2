@@ -140,6 +140,10 @@ export class MainPlanService {
   /**
    * 自动排产(三行模型简化版)
    *
+   * 注意:本方法标 async 但核心事务是 better-sqlite3 同步 API。
+   * async 仅让 await this.repo.findOneByOrFail / this.opLog.log 可用,
+   * 事务块(同步)完成后才执行异步部分,不存在跨 await 的 data race。
+   *
    * 用 dataSource.transaction() 包裹,确保并发安全:
    *   - 多个 autoSchedule 同一 style_id:后到者会撞 unique 冲突(或主键冲突)被回滚
    *   - 不同 style_id:互不干扰,各自独立事务
@@ -206,11 +210,11 @@ export class MainPlanService {
     try {
       newId = txn();
     } catch (err) {
-      // Fix #3: UNIQUE 索引兜底(竞态下两个请求都过了 existing 检查,
-      // 后 INSERT 的那个抛 SqliteError UNIQUE)
+      // B3-1 修复:用 better-sqlite3 标准 err.code === 'SQLITE_CONSTRAINT_UNIQUE'
+      // 替代 String(message).includes('UNIQUE') 脆弱字符串匹配
       if (
         err instanceof BadRequestException ||
-        String((err as Error)?.message || '').includes('UNIQUE')
+        (err as any)?.code === 'SQLITE_CONSTRAINT_UNIQUE'
       ) {
         throw new BadRequestException({
           message: 'error.400.plan.already_scheduled',

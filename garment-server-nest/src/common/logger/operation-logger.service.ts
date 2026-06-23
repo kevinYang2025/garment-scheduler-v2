@@ -42,17 +42,20 @@ export class OperationLoggerService {
    */
   async log(input: OperationLogInput): Promise<number | null> {
     try {
+      // B2-4 修复:user 缺省时 operator 设为 null(不再写 'YC' 占位)
+      // 审计完整性:不知道是谁操作就明确留 null,不要假数据
+      const username = input.user?.username ?? null;
       const row = this.repo.create({
         module: input.module,
         action: input.action,
         targetId: input.targetId ?? null,
         targetName: input.targetName ?? '',
         detail: input.detail ?? '',
-        operator: input.user?.username ?? 'YC',
+        operator: username ?? undefined,
         userId: input.user?.id ?? null,
-      });
+      } as Partial<OperationLog>);
       const saved = await this.repo.save(row);
-      return saved.id;
+      return (saved as OperationLog).id ?? null;
     } catch (err) {
       this.logger.error(
         `log(${input.module}.${input.action}, target=${input.targetId}) 失败: ${(err as Error).message}`,

@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
+import RedisStore from 'connect-redis';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filter/http-exception.filter';
 import { buildValidationPipe } from './common/pipe/validation.pipe';
@@ -34,10 +35,8 @@ class RedisIoAdapter extends IoAdapter {
     this.adapterConstructor = createAdapter(pubClient, subClient);
 
     // 同时初始化 Redis session store(给 socket.io handshake 用)
-    const { default: IORedis } = await import('ioredis');
-    const { default: ConnRedis } = await import('connect-redis');
-    const sessionClient = new IORedis(url);
-    this.redisSessionStore = new ConnRedis({
+    const sessionClient = new Redis(url);
+    this.redisSessionStore = new RedisStore({
       client: sessionClient,
       prefix: 'sess:',
       ttl: 7 * 24 * 60 * 60,
@@ -86,7 +85,7 @@ async function bootstrap() {
   //   之前 origin: (origin, cb) => cb(null, true) 反射任何 Origin,配合 credentials:true
   //   等于允许 evil.com 跨源读取认证响应(CSRF + 数据外泄)。
   //   现在白名单从环境变量读,未设置则只允许 localhost(开发安全)。
-  const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001,http://localhost:80')
+  const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);

@@ -6,10 +6,11 @@ import {
   HttpStatus,
   Post,
   Req,
+  Res,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto, LoginDto } from './auth.dto';
 import { AuthGuard } from '../../common/auth/auth.guard';
@@ -111,10 +112,12 @@ export class AuthController {
    * 不需 AuthGuard(可选),session 有就返,没有就 401
    */
   @Get('me')
-  me(@Req() req: Request) {
+  me(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // B2-1 修复:未登录必须返 401 状态码(否则 axios 拦截器不触发跳转)
     const user = req.session?.user;
     if (!user) {
-      return { error: 'not_logged_in', statusCode: 401 };
+      res.status(HttpStatus.UNAUTHORIZED);
+      return { error: 'not_logged_in' };
     }
     return { user };
   }

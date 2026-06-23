@@ -32,7 +32,7 @@ import { MigrationModule } from './modules/system/migration/migration.module';
       envFilePath: ['.env.local', '.env'],
     }),
     TypeOrmModule.forRootAsync({
-      inject: [ConfigService],
+      // B1-5 修复:删无用 inject,useFactory 直接调用
       useFactory: () => databaseConfig(),
     }),
     RedisModule,

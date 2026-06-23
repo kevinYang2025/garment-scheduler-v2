@@ -45,7 +45,8 @@ const ALLOWED_SECTIONS = new Set([
   cors: {
     origin: (origin, cb) => {
       if (!origin) return cb(null, true); // 同源 / SSR / curl
-      const allowed = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:80')
+      // B6-1 修复:与 main.ts CORS 默认值统一(否则运维只设一处就漏放)
+const allowed = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001')
         .split(',')
         .map((s) => s.trim());
       if (allowed.includes(origin)) return cb(null, true);
