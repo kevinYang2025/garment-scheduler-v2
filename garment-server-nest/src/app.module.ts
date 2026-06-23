@@ -9,6 +9,7 @@ import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BaseModule } from './modules/base/base.module';
 import { PlanModule } from './modules/plan/plan.module';
+import { ReportModule } from './modules/report/report.module';
 
 /**
  * Phase 1 — AppModule 骨架
@@ -37,6 +38,7 @@ import { PlanModule } from './modules/plan/plan.module';
     AuthModule,
     BaseModule,
     PlanModule,
+    ReportModule,
   ],
   controllers: [HealthController],
   providers: [AppGateway],
