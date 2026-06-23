@@ -56,7 +56,7 @@ export class WarehouseController {
     @Body() dto: CreateInboundDto,
     @Req() req: Request,
   ) {
-    return this.warehouseService.createInbound(type, dto, req.session.user?.username ?? null);
+    return this.warehouseService.createInbound(type, dto, req.session.user?.username ?? null, req.session.user ?? null);
   }
 
   /** GET /api/warehouse/:type/outbound — 出库列表 */
@@ -74,7 +74,7 @@ export class WarehouseController {
     @Body() dto: CreateOutboundDto,
     @Req() req: Request,
   ) {
-    return this.warehouseService.createOutbound(type, dto, req.session.user?.username ?? null);
+    return this.warehouseService.createOutbound(type, dto, req.session.user?.username ?? null, req.session.user ?? null);
   }
 
   /** GET /api/warehouse/:type/inventory — 库存查询 */

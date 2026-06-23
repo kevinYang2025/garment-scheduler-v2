@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Server, Socket } from 'socket.io';
 import { SessionUser } from '../../common/auth/auth.guard';
+import { fmtLocalDateTime } from '../../common/utils/fmt-local.util';
 
 /**
  * Phase 8.1 — OnlineUsersService
@@ -23,7 +24,7 @@ export interface OnlineUserInfo {
   role: string;
   workshop: string | null;
   ip: string;
-  loginAt: string;  // ISO timestamp
+  loginAt: string;  // 本地时间(项目 CLAUDE.md 要求不用 toISOString)
 }
 
 @Injectable()
@@ -52,7 +53,7 @@ export class OnlineUsersService {
       role: user.role,
       workshop: user.workshop,
       ip: socket.handshake.address || '',
-      loginAt: new Date().toISOString(),
+      loginAt: fmtLocalDateTime(new Date()),
     };
     this.bySocket.set(socket.id, info);
 

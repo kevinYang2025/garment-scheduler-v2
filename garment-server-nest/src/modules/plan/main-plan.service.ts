@@ -13,6 +13,7 @@ import { CreateMainPlanDto, UpdateMainPlanDto, AutoScheduleDto } from './main-pl
 import { OperationLoggerService } from '../../common/logger/operation-logger.service';
 import { SessionUser } from '../../common/auth/auth.guard';
 import { fmtLocal } from '../../common/utils/fmt-local.util';
+import { createSqliteConnection } from '../../common/provider/sqlite.provider';
 
 /**
  * Phase 5 — MainPlanService
@@ -58,36 +59,25 @@ export class MainPlanService {
     @InjectRepository(Style) private readonly styleRepo: Repository<Style>,
     private readonly opLog: OperationLoggerService,
   ) {
-    // 直接打开 better-sqlite3 连接用于事务
-    // better-sqlite3 是同步驱动,自带 db.transaction() 同步 API
-    // TypeORM 的 dataSource.transaction() 走的是异步嵌套事务,跟同步驱动不兼容
-    //
-    // DB_PATH 优先(测试场景),否则:
-    //   - 容器内:NestJS cwd 通常是 /app(同容器内 garment-server 可能在 /app/server 或 /workspace)
-    //   - 开发:__dirname 是 dist/modules/plan/ 或 src/modules/plan/
-    // 我们用"往上找 sibling garment-server/data.sqlite"的策略
-    const dbPath = process.env.DB_PATH || this.resolveDbPath();
-    this.sqliteDb = new Database(dbPath);
-    this.sqliteDb.pragma('journal_mode = WAL');
-    this.sqliteDb.pragma('busy_timeout = 5000');
-  }
+    // Fix #7:用公共 createSqliteConnection(WAL + busy_timeout + FK 全自动)
+    this.sqliteDb = createSqliteConnection();
 
-  private resolveDbPath(): string {
-    const path = require('path');
-    const fs = require('fs');
-    // 尝试相对当前工作目录(garment-server-nest/)的 ../garment-server/data.sqlite
-    const candidates = [
-      path.resolve(process.cwd(), '../garment-server/data.sqlite'),
-      path.resolve(process.cwd(), 'garment-server/data.sqlite'),
-      // dist/compiled 路径向上找 sibling
-      path.resolve(__dirname, '../../../garment-server/data.sqlite'),
-      path.resolve(__dirname, '../../../../garment-server/data.sqlite'),
-    ];
-    for (const p of candidates) {
-      if (fs.existsSync(p)) return p;
+    // Fix #3(dev 分支代码审查 2026-06-23):
+    // main_plan 表缺 UNIQUE(style_id) 索引,导致并发 autoSchedule 同 style 会重复排
+    // entity 加 @Index({ unique: true }) 在 synchronize=false 时不生效(不会自动建)
+    // 这里用 raw SQL 保证索引存在(幂等)
+    // Express 时代没有这个 UNIQUE 约束,这里新增(向后兼容:已存在的重复数据无法加 UNIQUE)
+    try {
+      this.sqliteDb.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_main_plan_style_id_unique ON main_plan(style_id)',
+      );
+    } catch (err) {
+      // 已有重复 style_id 的 main_plan 行 → UNIQUE 创建失败
+      // 这种情况需要人工清理(SELECT style_id, COUNT(*) FROM main_plan GROUP BY style_id HAVING COUNT(*) > 1)
+      this.logger.warn(
+        `main_plan UNIQUE 索引创建失败(可能存在重复 style_id): ${(err as Error).message}`,
+      );
     }
-    // fallback 到第一个(cwd 相对)
-    return candidates[0];
   }
 
   private sqliteDb: Database.Database;
@@ -216,7 +206,16 @@ export class MainPlanService {
     try {
       newId = txn();
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      // Fix #3: UNIQUE 索引兜底(竞态下两个请求都过了 existing 检查,
+      // 后 INSERT 的那个抛 SqliteError UNIQUE)
+      if (
+        err instanceof BadRequestException ||
+        String((err as Error)?.message || '').includes('UNIQUE')
+      ) {
+        throw new BadRequestException({
+          message: 'error.400.plan.already_scheduled',
+        });
+      }
       throw err;
     }
 

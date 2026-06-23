@@ -101,5 +101,6 @@ export class CreateOutboundDto {
   @IsOptional() @IsString() fabric_name?: string;
   @IsOptional() @IsString() supplier?: string;
   @IsOptional() @IsString() customer?: string;
+  @IsOptional() @IsString() unit?: string;  // Fix #6:outbound 也记录单位(对齐 inbound)
   @IsOptional() @IsString() remark?: string;
 }

@@ -7,12 +7,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import Database from 'better-sqlite3';
-import * as path from 'path';
-import * as fs from 'fs';
 import { ActualProduction } from '../../entity/actual-production.entity';
 import { CreateActualDto, UpdateActualDto, BatchActualDto } from './actual.dto';
 import { OperationLoggerService } from '../../common/logger/operation-logger.service';
 import { SessionUser } from '../../common/auth/auth.guard';
+import { createSqliteConnection } from '../../common/provider/sqlite.provider';
 
 /**
  * Phase 6 — ActualService
@@ -38,24 +37,8 @@ export class ActualService {
     @InjectRepository(ActualProduction) private readonly repo: Repository<ActualProduction>,
     private readonly opLog: OperationLoggerService,
   ) {
-    // better-sqlite3 同步连接(同 Phase 5)
-    const dbPath = process.env.DB_PATH || this.resolveDbPath();
-    this.sqliteDb = new Database(dbPath);
-    this.sqliteDb.pragma('journal_mode = WAL');
-    this.sqliteDb.pragma('busy_timeout = 5000');
-  }
-
-  private resolveDbPath(): string {
-    const candidates = [
-      path.resolve(process.cwd(), '../garment-server/data.sqlite'),
-      path.resolve(process.cwd(), 'garment-server/data.sqlite'),
-      path.resolve(__dirname, '../../../garment-server/data.sqlite'),
-      path.resolve(__dirname, '../../../../garment-server/data.sqlite'),
-    ];
-    for (const p of candidates) {
-      if (fs.existsSync(p)) return p;
-    }
-    return candidates[0];
+    // Fix #7:用公共 createSqliteConnection(WAL + busy_timeout + FK 全自动)
+    this.sqliteDb = createSqliteConnection();
   }
 
   async findAll(opts: { styleId?: number; date?: string } = {}): Promise<ActualProduction[]> {
@@ -190,7 +173,11 @@ export class ActualService {
           r.end_time ?? '',
           r.is_second_inspection ?? 0,
         );
-        if (r.style_id) styleIdsSet.add(r.style_id);
+        // Fix #8:用显式 !== null 代替 falsy 检查,避免漏掉 style_id=0
+        // (虽然正常 style_id > 0,但 DTO @IsInt 不挡 0,要兜底)
+        if (r.style_id !== null && r.style_id !== undefined) {
+          styleIdsSet.add(r.style_id);
+        }
         inserted++;
       }
     });
