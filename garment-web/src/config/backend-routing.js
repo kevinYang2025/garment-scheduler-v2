@@ -13,6 +13,8 @@ import axios from 'axios';
  */
 
 // 模块迁移状态:启动时从后端拉取一次,失败降级全量 Express
+// Phase 11:warehouse 解冻 Scope Freeze,默认走 NestJS
+// 仅 asn/dn 仍未迁(Phase 11 范围外)
 const ROUTING_RULES = {
   '/api/auth':         'nest',       // Phase 2/3
   '/api/system':       'nest',       // Phase 3
@@ -21,9 +23,9 @@ const ROUTING_RULES = {
   '/api/schedule':     'nest',       // Phase 5
   '/api/report':       'nest',       // Phase 6
   '/api/actual':       'nest',       // Phase 6
-  '/api/warehouse':    'express',    // Phase 7 (Scope Freeze,最小迁移只到 NestJS 端口能通但默认走 Express)
-  '/api/asn':          'express',
-  '/api/dn':           'express',
+  '/api/warehouse':    'nest',       // Phase 7 (Phase 11 解冻)
+  '/api/asn':          'express',    // 暂未迁
+  '/api/dn':           'express',    // 暂未迁
 };
 
 // 后端地址映射

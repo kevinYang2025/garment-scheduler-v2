@@ -1,6 +1,8 @@
 ﻿const express = require('express');
 const { createServer } = require('http');
 const { Server: SocketIO } = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const Redis = require('ioredis');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
@@ -5631,6 +5633,15 @@ const io = new SocketIO(httpServer, {
   pingInterval: 25000,
   pingTimeout: 10000,
 });
+
+// [Phase 11] Socket.IO Redis Adapter — 让 Express 与 NestJS 端跨进程广播
+// 跟 garment-server-nest/src/main.ts 的 RedisIoAdapter 走同一 Redis 实例 + 同一 prefix
+if (process.env.REDIS_URL) {
+  const pubClient = new Redis(process.env.REDIS_URL);
+  const subClient = pubClient.duplicate();
+  io.adapter(createAdapter(pubClient, subClient));
+  console.log('[socket.io] Redis adapter mounted (cross-process with NestJS)');
+}
 
 // [2026-06-18] Socket.IO 鉴权: 共享 express-session 中间件,从 cookie 读 session
 // 之前用 Bearer token 校验,前端 useWebSocket 没传 token → 一直断

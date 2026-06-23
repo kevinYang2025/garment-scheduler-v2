@@ -29,13 +29,14 @@ export default defineConfig({
       '/api/schedule': 'http://localhost:3002',
       '/api/report': 'http://localhost:3002',
       '/api/actual': 'http://localhost:3002',
-      // warehouse/asn/dn 默认 Express
-      '/api/warehouse': 'http://localhost:3001',
+      // Phase 11:warehouse 解冻 Scope Freeze,默认走 NestJS
+      '/api/warehouse': 'http://localhost:3002',
+      // asn / dn 仍未迁
       '/api/asn': 'http://localhost:3001',
       '/api/dn': 'http://localhost:3001',
-      // Socket.IO 默认 Express(Phase 8 限制,Phase 11 改 NestJS)
+      // Phase 11:Socket.IO 也走 NestJS(Express 接了 Redis Adapter,双向互通)
       '/socket.io': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3002',
         ws: true,
       },
     },

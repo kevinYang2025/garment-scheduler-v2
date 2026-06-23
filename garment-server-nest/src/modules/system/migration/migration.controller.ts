@@ -27,7 +27,9 @@ const MIGRATION_STATUS = {
     '/api/schedule': 'nest',
     '/api/report': 'nest',
     '/api/actual': 'nest',
-    '/api/warehouse': 'express',
+    // Phase 11:warehouse 解冻 Scope Freeze,全量走 NestJS
+    '/api/warehouse': 'nest',
+    // asn / dn 仍未迁(Phase 11 范围外,后续单独排期)
     '/api/asn': 'express',
     '/api/dn': 'express',
   },
