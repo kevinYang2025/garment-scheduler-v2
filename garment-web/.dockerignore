@@ -1,0 +1,45 @@
+# Phase 10.4 — 前端 .dockerignore
+# 避免 dist 进 builder(重新 npm run build)
+
+.git
+.gitignore
+.github
+
+# dist(由 Dockerfile 重新 vite build)
+dist
+node_modules
+**/node_modules
+
+# 调试日志 / 缓存
+*.log
+dev-*.log
+frontend.log
+vite-dev.log
+.vite/
+
+# IDE / 编辑器
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 文档
+README.md
+*.md
+
+# 项目级
+.claude/
+.deveco/
+.harness/
+.mimocode/
+.context/
+.scratch/
+
+# Docker 自身
+Dockerfile
+.dockerignore
+nginx.conf

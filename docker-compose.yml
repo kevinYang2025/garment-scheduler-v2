@@ -1,17 +1,19 @@
-# Phase 1.4 — docker-compose(开发环境)
-# 用途:起 redis:7-alpine,Session store + Socket.IO adapter 共享
+# Phase 10.3 — 完整 docker-compose.yml(开发 + 准生产)
 #
-# Phase 10 起追加:
-#   - nginx (反代)
-#   - backend: garment-server-nest (NestJS,镜像构建)
-#   - legacy:  garment-server (Express 旧,Phase 11 下线)
-#   - frontend: garment-web (Vue 构建产物,Nginx 服务)
+# 服务:
+#   - redis      Session 共享 + Socket.IO Adapter
+#   - backend    NestJS(garment-server-nest 已迁模块)
+#   - legacy     Express 旧后端(Phase 11 下线前保留)
+#   - frontend   Vue 静态 + nginx 反代(5173→80)
 #
 # 数据:
 #   - SQLite 文件挂 volume(./garment-server/data.sqlite → /app/data/data.sqlite)
 #   - Redis 数据不持久化(缓存用途,重启即丢,符合 §8.1 配置)
 
 services:
+  # ──────────────────────────────────────────────
+  # Redis:Session 共享 + Socket.IO Adapter pub/sub
+  # ──────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: garment-redis
@@ -32,46 +34,80 @@ services:
       retries: 3
 
   # ──────────────────────────────────────────────
-  # Phase 10 启用(占位注释)
+  # Backend:NestJS(garment-server-nest)
   # ──────────────────────────────────────────────
-  # backend:
-  #   build: ./garment-server-nest
-  #   container_name: garment-backend
-  #   restart: unless-stopped
-  #   env_file: ./garment-server-nest/.env
-  #   environment:
-  #     REDIS_URL: redis://redis:6379
-  #     DB_PATH: /app/data/data.sqlite
-  #   volumes:
-  #     - ./garment-server/data.sqlite:/app/data/data.sqlite:rw
-  #   ports:
-  #     - "3002:3002"
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
+  backend:
+    build:
+      context: ./garment-server-nest
+      dockerfile: Dockerfile
+    container_name: garment-backend
+    restart: unless-stopped
+    env_file: ./garment-server-nest/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DB_PATH: /app/data/data.sqlite
+      NODE_ENV: production
+    volumes:
+      # SQLite 文件挂载(让 backend 和 legacy 共享)
+      - ./garment-server/data.sqlite:/app/data/data.sqlite:rw
+      - ./garment-server/data.sqlite-shm:/app/data/data.sqlite-shm:rw
+      - ./garment-server/data.sqlite-wal:/app/data/data.sqlite-wal:rw
+    ports:
+      - "3002:3002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # legacy:
-  #   build: ./garment-server
-  #   container_name: garment-legacy
-  #   restart: unless-stopped
-  #   env_file: ./garment-server/.env
-  #   environment:
-  #     REDIS_URL: redis://redis:6379
-  #     PORT: 3001
-  #   volumes:
-  #     - ./garment-server/data.sqlite:/app/data/data.sqlite:rw
-  #   ports:
-  #     - "3001:3001"
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
+  # ──────────────────────────────────────────────
+  # Legacy:Express 旧后端(Phase 11 下线前保留)
+  # ──────────────────────────────────────────────
+  legacy:
+    build:
+      context: ./garment-server
+      dockerfile: Dockerfile
+    container_name: garment-legacy
+    restart: unless-stopped
+    env_file: ./garment-server/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      AUTH_ENABLED: "true"
+    volumes:
+      - ./garment-server/data.sqlite:/app/data/data.sqlite:rw
+      - ./garment-server/data.sqlite-shm:/app/data/data.sqlite-shm:rw
+      - ./garment-server/data.sqlite-wal:/app/data/data.sqlite-wal:rw
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
 
-  # frontend:
-  #   build: ./garment-web
-  #   container_name: garment-frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "80:80"
-  #   depends_on:
-  #     - backend
-  #     - legacy
+  # ──────────────────────────────────────────────
+  # Frontend:Vue 静态 + nginx 反代
+  # ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./garment-web
+      dockerfile: Dockerfile
+    container_name: garment-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      legacy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

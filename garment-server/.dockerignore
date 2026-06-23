@@ -1,0 +1,62 @@
+# Phase 10.4 — Express 后端 .dockerignore
+# 避免 .git / node_modules / 调试日志 / sessions.db 进镜像
+
+.git
+.gitignore
+.github
+
+node_modules
+**/node_modules
+
+# SQLite 数据库与 sessions(运行时挂 volume)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.db
+*.db-shm
+*.db-wal
+data.sqlite.bak-*
+
+# 日志与调试产物
+*.log
+*.xlsx
+*.xlsx~
+cookies.txt
+backend-*.log
+frontend.log
+vite-dev.log
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+.env.example
+
+# IDE / 编辑器
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 文档
+README.md
+*.md
+docs/
+
+# 项目级调试产物
+.claude/
+.deveco/
+.harness/
+.mimocode/
+.vite/
+.context/
+.scratch/
+
+# Docker 自身
+Dockerfile
+.dockerignore

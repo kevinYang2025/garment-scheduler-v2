@@ -1,0 +1,56 @@
+# Phase 10.4 — NestJS 后端 .dockerignore
+# 避免 .git / node_modules / dist / .env 等进镜像
+
+# 版本控制
+.git
+.gitignore
+.github
+
+# 依赖(由 npm ci 重建)
+node_modules
+**/node_modules
+
+# 构建产物(由 Dockerfile 重新 npm run build)
+dist
+coverage
+*.tsbuildinfo
+
+# 环境变量(运行时通过 env_file / -e 注入)
+.env
+.env.local
+.env.*.local
+
+# IDE / 编辑器
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 测试 / 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage
+
+# 文档(不进运行时)
+README.md
+*.md
+docs/
+
+# 项目级调试产物
+.claude/
+.deveco/
+.harness/
+.mimocode/
+.vite/
+.context/
+.scratch/
+
+# Docker 自身
+Dockerfile
+.dockerignore
