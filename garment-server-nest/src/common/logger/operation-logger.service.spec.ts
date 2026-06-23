@@ -39,7 +39,7 @@ describe('OperationLoggerService', () => {
       targetId: 100,
       targetName: 'TS-001',
       detail: '新建款式',
-      user: { id: 7, username: 'planner', role: 'planner', workshop: null, display_name: 'P' },
+      user: { id: 7, username: 'planner', role: 'planner', workshop: null, displayName: 'P' },
     });
 
     expect(id).toBeGreaterThan(0);
@@ -65,7 +65,7 @@ describe('OperationLoggerService', () => {
 
   it('logFromReq 从 req.user 自动取 user', async () => {
     const id = await service.logFromReq(
-      { user: { id: 3, username: 'admin', role: 'admin', workshop: null, display_name: 'A' } },
+      { user: { id: 3, username: 'admin', role: 'admin', workshop: null, displayName: 'A' } },
       'user',
       'reset_password',
       5,
@@ -79,7 +79,7 @@ describe('OperationLoggerService', () => {
 
   it('logFromReq 从 req.session.user 取(无顶层 req.user)', async () => {
     const id = await service.logFromReq(
-      { session: { user: { id: 9, username: 'sup', role: 'supervisor', workshop: 'cutting', display_name: 'S' } } },
+      { session: { user: { id: 9, username: 'sup', role: 'supervisor', workshop: 'cutting', displayName: 'S' } } },
       'cutting',
       'dispatch',
     );

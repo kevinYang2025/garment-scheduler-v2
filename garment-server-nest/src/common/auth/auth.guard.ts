@@ -29,12 +29,12 @@ import type { Request } from 'express';
 export interface SessionUser {
   id: number;
   username: string;
-  username_km?: string | null;
-  display_name: string;
-  display_name_km?: string | null;
+  usernameKm?: string | null;
+  displayName: string;
+  displayNameKm?: string | null;
   role: string;
   workshop: string | null;
-  avatar_url?: string;
+  avatarUrl?: string;
 }
 
 declare module 'express-session' {
