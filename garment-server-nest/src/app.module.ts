@@ -4,13 +4,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig } from './config/database.config';
 import { RedisModule } from './config/redis.config';
 import { HealthController } from './modules/health/health.controller';
-import { AppGateway } from './modules/gateway/socket.gateway';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BaseModule } from './modules/base/base.module';
 import { PlanModule } from './modules/plan/plan.module';
 import { ReportModule } from './modules/report/report.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
+import { GatewayModule } from './modules/gateway/gateway.module';
 
 /**
  * Phase 1 — AppModule 骨架
@@ -41,8 +41,8 @@ import { WarehouseModule } from './modules/warehouse/warehouse.module';
     PlanModule,
     ReportModule,
     WarehouseModule,
+    GatewayModule,
   ],
   controllers: [HealthController],
-  providers: [AppGateway],
 })
 export class AppModule {}

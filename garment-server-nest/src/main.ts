@@ -24,15 +24,50 @@ import { REDIS_CLIENT } from './config/redis.config';
  */
 class RedisIoAdapter extends IoAdapter {
   private adapterConstructor: ReturnType<typeof createAdapter>;
+  private redisSessionStore: any;
+  private sessionSecret: string;
+
   async connectToRedis(): Promise<void> {
     const url = process.env.REDIS_URL || 'redis://localhost:6379';
     const pubClient = new Redis(url);
     const subClient = pubClient.duplicate();
     this.adapterConstructor = createAdapter(pubClient, subClient);
+
+    // 同时初始化 Redis session store(给 socket.io handshake 用)
+    const { default: IORedis } = await import('ioredis');
+    const { default: ConnRedis } = await import('connect-redis');
+    const sessionClient = new IORedis(url);
+    this.redisSessionStore = new ConnRedis({
+      client: sessionClient,
+      prefix: 'sess:',
+      ttl: 7 * 24 * 60 * 60,
+    });
+    this.sessionSecret = process.env.SESSION_SECRET || 'garment-session-dev-secret';
   }
 
   createIOServer(port: number, options?: any): any {
     const server = super.createIOServer(port, options);
+
+    // 让 socket.io handshake 也走 express-session(共享 Redis session)
+    // 否则 socket.handshake.session.user 是 undefined
+    // 与 garment-server/server.js io.engine.use(session(...)) 一致
+    const session = require('express-session');
+    server.engine.use(
+      session({
+        store: this.redisSessionStore,
+        secret: this.sessionSecret,
+        resave: false,
+        saveUninitialized: false,
+        rolling: true,
+        cookie: {
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: false,
+          maxAge: 7 * 24 * 60 * 60 * 1000,
+        },
+      }),
+    );
+
     server.adapter(this.adapterConstructor);
     return server;
   }
