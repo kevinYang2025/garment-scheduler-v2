@@ -1,6 +1,7 @@
 import { DataSourceOptions } from 'typeorm';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as path from 'path';
+import { OperationLog } from '../entity/operation-log.entity';
 
 /**
  * Phase 1.3 — TypeORM + SQLite WAL 配置
@@ -41,7 +42,7 @@ export const databaseConfig = (): TypeOrmModuleOptions => {
       }
     },
     // Phase 2 起按 entity 引入;Phase 1 先空数组(只验连接)
-    entities: [],
+    entities: [OperationLog],
     // Phase 5 起开 migrations
     migrations: [],
     migrationsRun: false,

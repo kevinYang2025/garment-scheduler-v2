@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filter/http-exception.filter';
+import { buildValidationPipe } from './common/pipe/validation.pipe';
+import { LoggingInterceptor } from './common/interceptor/logging.interceptor';
 import { buildSessionMiddleware } from './config/session.config';
 import { REDIS_CLIENT } from './config/redis.config';
 
@@ -50,17 +52,13 @@ async function bootstrap() {
   });
 
   // ── 全局 ValidationPipe(§3.4)──
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: false,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
+  app.useGlobalPipes(buildValidationPipe());
 
   // ── 全局 HttpException Filter(§3.5 占位)──
   app.useGlobalFilters(new HttpExceptionFilter());
+
+  // ── 全局 Logging Interceptor(§3 Phase 2.3)──
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
   // ── express-session + Redis store(§8 R2)──
   const redisClient = app.get<Redis>(REDIS_CLIENT);

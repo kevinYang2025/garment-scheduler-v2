@@ -5,6 +5,7 @@ import { databaseConfig } from './config/database.config';
 import { RedisModule } from './config/redis.config';
 import { HealthController } from './modules/health/health.controller';
 import { AppGateway } from './modules/gateway/socket.gateway';
+import { CommonModule } from './common/common.module';
 
 /**
  * Phase 1 — AppModule 骨架
@@ -29,6 +30,7 @@ import { AppGateway } from './modules/gateway/socket.gateway';
       useFactory: () => databaseConfig(),
     }),
     RedisModule,
+    CommonModule,
   ],
   controllers: [HealthController],
   providers: [AppGateway],
