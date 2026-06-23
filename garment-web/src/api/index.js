@@ -1,19 +1,33 @@
 import axios from 'axios'
 import router from '@/router'
+import { installRoutingInterceptor } from '@/config/backend-routing'
+
+// Phase 9.3 拆分:业务方法按模块拆到 7 个文件
+// 引入各模块 factory(接受 api 实例,返回对应模块的方法集)
+import authFactory from './auth'
+import baseFactory from './base'
+import planFactory from './plan'
+import reportFactory from './report'
+import warehouseFactory from './warehouse'
+import workflowFactory from './workflow'
+import systemFactory from './system'
 
 // [2026-06-18] 用户系统:加 withCredentials 让 session cookie 跨请求保持
 // [2026-06-20 fix#前端-P3-2] 加 timeout 30s,避免请求 hang 死锁页面
+// Phase 9.1:不再写死 baseURL,/api 路径交给拦截器按模块动态指向 3001 或 3002
 const api = axios.create({
-  baseURL: '/api',
   withCredentials: true,
   timeout: 30000,
 })
+
+// Phase 9.1:挂载模块路由拦截器(根据 URL 自动选 NestJS 或 Express)
+installRoutingInterceptor(api)
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // 排除 auth 相关请求，避免重定向循环
+      // 排除 auth 相关请求,避免重定向循环
       const url = error.config?.url || ''
       if (url.includes('/auth/login') || url.includes('/auth/logout') || url.includes('/auth/me')) {
         return Promise.reject(error)
@@ -26,274 +40,84 @@ api.interceptors.response.use(
   }
 )
 
-export default {
-  // 通用 HTTP 方法（供直接调用）
+// 各模块方法合并(命名空间 prefix,避免冲突)
+const apiObj = {
+  // 通用 HTTP 方法(供直接调用)
   get: (url, config) => api.get(url, config),
   post: (url, data, config) => api.post(url, data, config),
   put: (url, data, config) => api.put(url, data, config),
   delete: (url, config) => api.delete(url, config),
 
-  // [2026-06-18] 用户系统:auth 方法
-  login: (body) => api.post('/auth/login', body),
-  logout: () => api.post('/auth/logout'),
-  me: () => api.get('/auth/me'),
-  changePassword: (old_password, new_password) => api.post('/auth/change-password', { old_password, new_password }),
-
-  // 款式
-  getStyles: (keyword) => api.get('/styles', { params: { keyword } }),
-  getDistinctStyles: () => api.get('/styles/distinct'),
-  getStyle: (id) => api.get(`/styles/${id}`),
-  saveStyle: (style) => api.post('/styles', style),
-  updateStyle: (id, style) => api.put(`/styles/${id}`, style),
-  deleteStyle: (id) => api.delete(`/styles/${id}`),
-  exportStyles: () => api.get('/styles/export', { responseType: 'blob' }),
-  importStyles: (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1]
-        api.post('/styles/import', { file: base64 }).then(resolve).catch(reject)
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-  },
-
-  // 车间 & 产线
-  getWorkshops: () => api.get('/workshops'),
-  getWorkshopLines: (id) => api.get(`/workshops/${id}/lines`),
-  getProductionLines: () => api.get('/production-lines'),
-  updateProductionLine: (id, data) => api.put(`/production-lines/${id}`, data),
-
-  // 缝制车间管理（三层树）
-  getSewingWorkshopTree: () => api.get('/sewing-workshop-tree'),
-  addSewingWorkshopNode: (data) => api.post('/sewing-workshop-tree', data),
-  updateSewingWorkshopNode: (id, data) => api.put(`/sewing-workshop-tree/${id}`, data),
-  deleteSewingWorkshopNode: (id, type) => api.delete(`/sewing-workshop-tree/${id}`, { params: { type } }),
-  batchAddCategories: (items) => api.post('/sewing-workshop-tree/batch', { type: 'category', items }),
-  batchUpdateNodes: (items) => api.put('/sewing-workshop-tree/batch', { items }),
-  exportSewingWorkshopTree: () => api.get('/sewing-workshop-tree/export', { responseType: 'blob' }),
-  importSewingWorkshopTree: (file, mode) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1]
-        api.post('/sewing-workshop-tree/import', { file: base64, mode: mode || 'append' }).then(resolve).catch(reject)
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-  },
-
-  // 预排总计划
-  getMainPlan: () => api.get('/main-plan'),
-  getMainPlanStyles: (keyword) => api.get('/main-plan/styles', { params: { keyword: keyword || '' } }),
-  getMainPlanGantt: () => api.get('/main-plan/gantt'),
-  getStyleColorSize: (keyword) => api.get('/style-color-size', { params: { keyword: keyword || '' } }),
-  saveMainPlan: (plan) => api.post('/main-plan', plan),
-  updateMainPlan: (id, data) => api.put(`/main-plan/${id}`, data),
-  deleteMainPlan: (id) => api.delete(`/main-plan/${id}`),
-  autoSchedule: () => api.post('/main-plan/auto-schedule'),
-  exportMainPlan: () => api.get('/main-plan/export', { responseType: 'blob' }),
-  importMainPlan: (file) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    return api.post('/main-plan/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-  },
-  // 排程（统一三行模型）
-  getSchedule: (scheduleType, secondaryType) => api.get(`/schedule/${scheduleType}`, { params: { secondary_type: secondaryType || '' } }),
-  getScheduleDaily: (scheduleType, masterId) => api.get(`/schedule/${scheduleType}/${masterId}/daily`),
-  createSchedule: (scheduleType, data) => api.post(`/schedule/${scheduleType}`, data),
-  updateSchedule: (scheduleType, id, data) => api.put(`/schedule/${scheduleType}/${id}`, data),
-  deleteSchedule: (scheduleType, id) => api.delete(`/schedule/${scheduleType}/${id}`),
-
-  // 印花排程
-  getPrintingPlanData: () => api.get('/printing-plan-data'),
-  getPrintingDailyPlan: () => api.get('/schedule/printing-daily-plan'),
-  getEmbroideryDailyPlan: () => api.get('/schedule/embroidery-daily-plan'),
-  getTemplateDailyPlan: () => api.get('/schedule/template-daily-plan'),
-  getIroningDailyPlan: () => api.get('/schedule/ironing-daily-plan'),
-  savePrintingActual: (data) => api.post('/schedule/sewing-daily-plan/actual', data),
-  confirmPrintingPlan: (data) => api.post('/printing-plan-data/confirm', data),
-  confirmTemplatePlan: (data) => api.post('/template-plan-data/confirm', data),
-
-  // 实际生产数据
-  getActual: (scheduleType, keyword, is_second_inspection, secondary_type) => api.get('/actual', { params: { scheduleType, keyword: keyword || '', is_second_inspection, secondary_type } }),
-  getActualById: (id) => api.get(`/actual/${id}`),
-  saveActual: (data) => api.post('/actual', data),
-  updateActual: (id, data) => api.put(`/actual/${id}`, data),
-  deleteActual: (id) => api.delete(`/actual/${id}`),
-  batchImportActual: (records) => api.post('/actual/batch', { records }),
-  saveSewing: (data) => api.post('/schedule/sewing', data),
-  deleteSewing: (id) => api.delete(`/schedule/sewing/${id}`),
-  saveCutting: (data) => api.post('/schedule/cutting', data),
-  deleteCutting: (id) => api.delete(`/schedule/cutting/${id}`),
-  getCuttingSchedule: () => api.get('/schedule/cutting'),
-  exportCuttingSchedule: () => api.get('/schedule/cutting/export', { responseType: 'blob' }),
-  getCuttingDailyActual: (params) => api.get('/schedule/cutting/daily', { params }),
-  updateMainPlanCutting: (id, data) => api.put(`/main-plan/${id}/cutting`, data),
-  saveSecondary: (data) => api.post('/schedule/secondary', data),
-  deleteSecondary: (id) => api.delete(`/schedule/secondary/${id}`),
-  getDaily: () => api.get('/daily'),
-  saveDaily: (data) => api.post('/daily', data),
-  getInventory: () => api.get('/inventory'),
-  saveInventory: (data) => api.post('/inventory', data),
-
-  // 排程汇总
-  getSecondarySummary: () => api.get('/schedule/secondary/summary'),
-  getSewingSummary: () => api.get('/schedule/sewing/summary'),
-  getAchievementRate: () => api.get('/dashboard/achievement-rate'),
-  getLineStatus: () => api.get('/dashboard/line-status'),
-  getSecondaryStatus: () => api.get('/dashboard/secondary-status'),
-  getOrderStats: (mode) => api.get('/dashboard/order-stats', { params: { mode: mode || 'week' } }),
-  exportSchedule: (scheduleType, secondaryType) => api.get(`/schedule/${scheduleType}/export`, { params: { secondary_type: secondaryType || '' } }),
-  importSchedule: (scheduleType, records, mode) => api.post(`/schedule/${scheduleType}/import`, { records, mode }),
-
-  // 仓库
-  getWarehouseInbound: (type) => api.get(`/warehouse/${type}/inbound`),
-  addWarehouseInbound: (type, data) => api.post(`/warehouse/${type}/inbound`, data),
-  getWarehouseOutbound: (type) => api.get(`/warehouse/${type}/outbound`),
-  addWarehouseOutbound: (type, data) => api.post(`/warehouse/${type}/outbound`, data),
-  getWarehouseInventory: (type, params) => api.get(`/warehouse/${type}/inventory`, { params: params || {} }),
-  importWarehouse: (type, records) => api.post(`/warehouse/${type}/import`, { records }),
-
-  // 目视化排程
-  getVisualGantt: () => api.get('/visual-schedule/gantt'),
-  getVisualDateRange: () => api.get('/visual-schedule/date-range'),
-  assignVisual: (data) => api.post('/visual-schedule/assign', data),
-  unassignVisual: (data) => api.post('/visual-schedule/unassign', data),
-  moveVisual: (data) => api.post('/visual-schedule/move', data),
-
-  // 配置
-  getCapacityConfig: () => api.get('/config/capacity'),
-  updateCapacityConfig: (id, data) => api.put(`/config/capacity/${id}`, data),
-
-  // 甘特图字段配置
-  getGanttConfig: () => api.get('/config/gantt'),
-  updateGanttConfig: (type, data) => api.put(`/config/gantt/${type}`, data),
-
-  // 工作日历
-  getWorkModes: () => api.get('/work-modes'),
-  createWorkMode: (data) => api.post('/work-modes', data),
-  deleteWorkMode: (id) => api.delete(`/work-modes/${id}`),
-  getWorkCalendars: () => api.get('/work-calendars'),
-  createWorkCalendar: (data) => api.post('/work-calendars', data),
-  updateWorkCalendar: (id, data) => api.put(`/work-calendars/${id}`, data),
-  deleteWorkCalendar: (id) => api.delete(`/work-calendars/${id}`),
-  getCalendarExceptions: (calId) => api.get(`/work-calendars/${calId}/exceptions`),
-  addCalendarException: (calId, data) => api.post(`/work-calendars/${calId}/exceptions`, data),
-  deleteCalendarException: (calId, exId) => api.delete(`/work-calendars/${calId}/exceptions/${exId}`),
-  checkWorkday: (date) => api.get('/workday-check', { params: { date } }),
-  getCurrentWorkCalendar: () => api.get('/work-calendar/current'),
-
-  // 报工汇总
-  getDispatchSummary: (params) => api.get('/dispatch-summary', { params }),
-  getDispatchDailyTrend: (params) => api.get('/dispatch-daily-trend', { params }),
-  getDispatchPlanVsActual: (params) => api.get('/dispatch-plan-vs-actual', { params }),
-  getDispatchAlerts: () => api.get('/dispatch-alerts'),
-  exportDispatchReport: (params) => api.get('/dispatch-export', { params, responseType: 'blob' }),
-  getDispatchByLine: (params) => api.get('/dispatch-by-line', { params }),
-  getDispatchByWorkshop: (params) => api.get('/dispatch-by-workshop', { params }),
-  getDispatchByWorker: (params) => api.get('/dispatch-by-worker', { params }),
-
-  // 出货计划
-  getShippingPlans: () => api.get('/shipping-plans'),
-  createShippingPlan: (data) => api.post('/shipping-plans', data),
-  updateShippingPlan: (id, data) => api.put(`/shipping-plans/${id}`, data),
-  deleteShippingPlan: (id) => api.delete(`/shipping-plans/${id}`),
-  generateShippingPlans: () => api.post('/shipping-plans/generate'),
-
-  // 系统参数
-  getSystemConfig: () => api.get('/system-config'),
-  updateSystemConfig: (key, value) => api.put(`/system-config/${key}`, { config_value: value }),
-  getSystemParams: () => api.get('/system-params'),
-  updateSystemParam: (key, value, remark) => api.put(`/system-params/${key}`, { value, remark }),
-
-  // 排产策略
-  getStrategies: () => api.get('/strategies'),
-  createStrategy: (data) => api.post('/strategies', data),
-  updateStrategy: (id, data) => api.put(`/strategies/${id}`, data),
-  deleteStrategy: (id) => api.delete(`/strategies/${id}`),
-
-  // 自动排产 & 产能预排
-  autoScheduleWithStrategy: (strategyId) => api.post('/auto-schedule', { strategy_id: strategyId }),
-  capacityPrecheck: () => api.get('/capacity-precheck'),
-
-  // ASN 到货通知单
-  getAsnList: (params) => api.get('/asn', { params }),
-  getAsnDetail: (id) => api.get(`/asn/${id}`),
-  createAsn: (data) => api.post('/asn', data),
-  updateAsnStatus: (id, data) => api.put(`/asn/${id}/status`, data),
-  addAsnDetail: (id, data) => api.post(`/asn/${id}/details`, data),
-  deleteAsn: (id) => api.delete(`/asn/${id}`),
-
-  // DN 发货通知单
-  getDnList: (params) => api.get('/dn', { params }),
-  getDnDetail: (id) => api.get(`/dn/${id}`),
-  createDn: (data) => api.post('/dn', data),
-  updateDnStatus: (id, data) => api.put(`/dn/${id}/status`, data),
-  addDnDetail: (id, data) => api.post(`/dn/${id}/details`, data),
-  deleteDn: (id) => api.delete(`/dn/${id}`),
-
-  // 批量入库
-  batchInbound: (ids) => api.post('/fabric-loading/batch-inbound', { ids }),
-
-  // 操作日志
-  getLogs: (params) => api.get('/logs', { params }),
+  // 模块方法(用命名空间)
+  auth: authFactory(api),
+  base: baseFactory(api),
+  plan: planFactory(api),
+  report: reportFactory(api),
+  warehouse: warehouseFactory(api),
+  workflow: workflowFactory(api),
+  system: systemFactory(api),
 
   // [2026-06-20 fix#前端-P2-5] 统一下载 helper,axios 带 cookie + 处理 401 + 触发 blob 下载
   downloadFile: async (url, params, defaultFilename = 'download.xlsx') => {
-    const res = await api.get(url, { params, responseType: 'blob' });
-    // 从响应头取 filename(后端 setContentDisposition)
-    const cd = res.headers?.['content-disposition'] || '';
-    const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/);
-    const filename = m ? decodeURIComponent(m[1]) : defaultFilename;
-    const blobUrl = URL.createObjectURL(res.data);
-    const a = document.createElement('a');
-    a.href = blobUrl; a.download = filename;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(blobUrl); a.remove(); }, 0);
+    const res = await api.get(url, { params, responseType: 'blob' })
+    const cd = res.headers?.['content-disposition'] || ''
+    const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/)
+    const filename = m ? decodeURIComponent(m[1]) : defaultFilename
+    const blobUrl = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl)
+      a.remove()
+    }, 0)
   },
 
   // [2026-06-20 fix#业务-P2-4] ETag/If-Match 乐观锁 helper
-  // 用法:
-  //   await api.etagPut('/production-lines/123', { status: '生产中' })
-  // 自动:
-  //   1. 先 GET 拿 ETag
-  //   2. PUT 时发 If-Match
-  //   3. 收到 412 → 自动重试一次 (重新 GET 拿新 ETag 后再 PUT)
-  //   4. 第二次 412 → 抛出冲突错误让 UI 处理
   etagPut: async (url, data, opts = {}) => {
-    const maxRetries = opts.maxRetries ?? 1;
-    let attempt = 0;
+    const maxRetries = opts.maxRetries ?? 1
+    let attempt = 0
     while (true) {
-      attempt++;
-      let etag;
+      attempt++
+      let etag
       try {
-        const getRes = await api.get(url);
-        etag = getRes.headers?.etag;
+        const getRes = await api.get(url)
+        etag = getRes.headers?.etag
       } catch (e) {
-        // GET 失败 (如 404),不强制要求 If-Match,直接 PUT
-        etag = null;
+        etag = null
       }
       try {
-        const config = etag ? { headers: { 'If-Match': etag } } : {};
-        return await api.put(url, data, config);
+        const config = etag ? { headers: { 'If-Match': etag } } : {}
+        return await api.put(url, data, config)
       } catch (err) {
-        const status = err.response?.status;
-        if (status === 412 && attempt <= maxRetries) {
-          // 冲突,重试一次 (重新 GET 拿最新 ETag)
-          continue;
-        }
+        const status = err.response?.status
+        if (status === 412 && attempt <= maxRetries) continue
         if (status === 412) {
-          // 重试后仍冲突,抛出语义化错误
-          const e = new Error('资源已被其他用户修改,请刷新页面后重试');
-          e.code = 'ETAG_CONFLICT';
-          e.attempts = attempt;
-          throw e;
+          const e = new Error('资源已被其他用户修改,请刷新页面后重试')
+          e.code = 'ETAG_CONFLICT'
+          e.attempts = attempt
+          throw e
         }
-        throw err;
+        throw err
       }
     }
   },
 }
+
+// 同时保留平铺方式(向后兼容 — 老代码用 `api.getStyles()` 也仍能用)
+// 把各模块的方法平铺到顶层
+for (const mod of [
+  apiObj.auth,
+  apiObj.base,
+  apiObj.plan,
+  apiObj.report,
+  apiObj.warehouse,
+  apiObj.workflow,
+  apiObj.system,
+]) {
+  Object.assign(apiObj, mod)
+}
+
+export default apiObj

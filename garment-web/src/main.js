@@ -7,6 +7,7 @@ import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
+import { initBackendRouting } from '@/config/backend-routing'
 
 const app = createApp(App)
 app.use(createPinia())
@@ -27,4 +28,7 @@ app.config.errorHandler = (err, instance, info) => {
   } catch { /* ignore */ }
 }
 
-app.mount('#app')
+// Phase 9.1:异步初始化后端路由(降级逻辑保证不会阻塞首屏,见 §6.3.1)
+initBackendRouting().finally(() => {
+  app.mount('#app')
+})

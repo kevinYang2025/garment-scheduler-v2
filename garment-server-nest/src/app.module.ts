@@ -11,6 +11,7 @@ import { PlanModule } from './modules/plan/plan.module';
 import { ReportModule } from './modules/report/report.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
+import { MigrationModule } from './modules/system/migration/migration.module';
 
 /**
  * Phase 1 — AppModule 骨架
@@ -42,6 +43,7 @@ import { GatewayModule } from './modules/gateway/gateway.module';
     ReportModule,
     WarehouseModule,
     GatewayModule,
+    MigrationModule,
   ],
   controllers: [HealthController],
 })
