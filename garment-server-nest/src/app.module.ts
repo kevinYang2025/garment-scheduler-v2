@@ -8,6 +8,7 @@ import { AppGateway } from './modules/gateway/socket.gateway';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BaseModule } from './modules/base/base.module';
+import { PlanModule } from './modules/plan/plan.module';
 
 /**
  * Phase 1 — AppModule 骨架
@@ -35,6 +36,7 @@ import { BaseModule } from './modules/base/base.module';
     CommonModule,
     AuthModule,
     BaseModule,
+    PlanModule,
   ],
   controllers: [HealthController],
   providers: [AppGateway],

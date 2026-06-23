@@ -4,6 +4,7 @@ import * as path from 'path';
 import { OperationLog } from '../entity/operation-log.entity';
 import { User } from '../entity/user.entity';
 import { Style } from '../entity/style.entity';
+import { MainPlan } from '../entity/main-plan.entity';
 import { SnakeCaseNamingStrategy } from './snake-case.strategy';
 
 /**
@@ -45,7 +46,7 @@ export const databaseConfig = (): TypeOrmModuleOptions => {
       }
     },
     // Phase 2 起按 entity 引入;Phase 1 先空数组(只验连接)
-    entities: [OperationLog, User, Style],
+    entities: [OperationLog, User, Style, MainPlan],
     // 强制 snake_case 列名,与 garment-server/db.js schema 严格一致
     namingStrategy: new SnakeCaseNamingStrategy(),
     // Phase 5 起开 migrations
