@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BaseModule } from './modules/base/base.module';
 import { PlanModule } from './modules/plan/plan.module';
 import { ReportModule } from './modules/report/report.module';
+import { WarehouseModule } from './modules/warehouse/warehouse.module';
 
 /**
  * Phase 1 — AppModule 骨架
@@ -39,6 +40,7 @@ import { ReportModule } from './modules/report/report.module';
     BaseModule,
     PlanModule,
     ReportModule,
+    WarehouseModule,
   ],
   controllers: [HealthController],
   providers: [AppGateway],
