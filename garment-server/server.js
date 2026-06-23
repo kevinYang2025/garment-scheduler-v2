@@ -202,8 +202,29 @@ const achievementCache = new Map();
 
 // ============================================================
 // [2026-06-18] 用户系统:session + 鉴权中间件
+// [2026-06-23] 重构 Phase 1:支持 REDIS_URL 时切到 Redis store(共享 NestJS session)
+// 否则保留 SqliteStore(向后兼容)
 // ============================================================
-const sessionStore = new SqliteStore(db.getDb());
+let sessionStore;
+if (process.env.REDIS_URL) {
+  const Redis = require('ioredis');
+  const RedisStore = require('connect-redis').default;
+  const redisClient = new Redis(process.env.REDIS_URL, {
+    retryStrategy: (times) => Math.min(times * 100, 3000),
+    maxRetriesPerRequest: 3,
+  });
+  redisClient.on('error', (err) => console.error('[session-redis] error:', err.message));
+  redisClient.on('connect', () => console.log('[session-redis] connected:', process.env.REDIS_URL));
+  sessionStore = new RedisStore({
+    client: redisClient,
+    prefix: 'sess:',
+    ttl: 7 * 24 * 60 * 60, // 7 天
+  });
+  console.log('[session] using Redis store (cross-process with NestJS)');
+} else {
+  sessionStore = new SqliteStore(db.getDb());
+  console.log('[session] using SqliteStore (single-process)');
+}
 const SESSION_SECRET = process.env.SESSION_SECRET || 'garment-session-dev-secret';
 app.use(session({
   store: sessionStore,
@@ -309,16 +330,20 @@ function userCanAccessWorkshop(user, targetWorkshop) {
 
 // [2026-06-20 段15 LOW 清理] requireWorkshopMatch 死代码删除(全文件无引用,角色校验已 inline 在各端点)
 
-// 启动时清一次过期 session
-const _cleanedCount = sessionStore.cleanup();
-if (_cleanedCount > 0) console.log(`✅ 清理 ${_cleanedCount} 个过期 session`);
+// 启动时清一次过期 session(SqliteStore 特有,Redis store 不需要)
+if (typeof sessionStore.cleanup === 'function') {
+  const cleanedCount = sessionStore.cleanup();
+  if (cleanedCount > 0) console.log(`✅ 清理 ${cleanedCount} 个过期 session`);
+}
 
-// 每小时清一次过期 session,防内存增长
+// 每小时清一次过期 session,防内存增长(SqliteStore 特有,Redis 用 TTL 自动清理)
 // [2026-06-20 fix#后端-P1-1] .unref() 防止阻塞 Node 优雅退出
-setInterval(() => {
-  const n = sessionStore.cleanup();
-  if (n > 0) console.log(`🧹 定时清理 ${n} 个过期 session`);
-}, 3600 * 1000).unref();
+if (typeof sessionStore.cleanup === 'function') {
+  setInterval(() => {
+    const n = sessionStore.cleanup();
+    if (n > 0) console.log(`🧹 定时清理 ${n} 个过期 session`);
+  }, 3600 * 1000).unref();
+}
 
 // 每 5 分钟清理 loginAttempts 中超过 1 分钟窗口的空闲 IP,防内存无限增长
 // [2026-06-20 fix#后端-P1-1] .unref()

@@ -38,7 +38,9 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   handleConnection(client: Socket) {
-    this.logger.log(`client connected: ${client.id} (total: ${this.server.sockets.sockets.size})`);
+    // 防御性:handleConnection 可能在 server 完全初始化前调用
+    const total = this.server?.sockets?.sockets?.size ?? '?';
+    this.logger.log(`client connected: ${client.id} (total: ${total})`);
   }
 
   handleDisconnect(client: Socket) {
