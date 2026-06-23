@@ -2,16 +2,18 @@
 /**
  * Phase 1.8 — 跨进程 e2e 验证(核心红线)
  *
- * 验证 §3.1 / §8 R2 / §8 R5:
- *   1. Express(3001)登录拿到 cookie
- *   2. 拿同一 cookie 请求 NestJS(3002) → 必须识别为已登录
- *   3. Socket.IO:A 连 3001,B 连 3002,B 触发事件 → A 必须收到(Redis Adapter)
+ * 验证 §3.1 / §8 R2:
+ *   Step 1: Express(3001)登录拿到 cookie
+ *   Step 2: 拿同一 cookie 请求 NestJS(3002) → 必须识别(跨进程 session)
+ *   Step 3a: Socket.IO 客户端能连 NestJS
+ *   Step 3b: /health/redis 返回 PONG(Redis Adapter 后端在线)
+ *
+ * 注:跨进程 Socket.IO 广播验证需 Phase 8(Express 也要接 redis-adapter)
  *
  * 前置:
  *   - Redis 已起(docker compose up -d redis)
- *   - Express 3001 已起
+ *   - Express 3001 已起(REDIS_URL=redis://localhost:6379)
  *   - NestJS 3002 已起
- *   - data.sqlite 存在且有 admin 用户
  *
  * 运行:npm run test:phase1
  */

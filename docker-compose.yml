@@ -10,7 +10,6 @@
 # 数据:
 #   - SQLite 文件挂 volume(./garment-server/data.sqlite → /app/data/data.sqlite)
 #   - Redis 数据不持久化(缓存用途,重启即丢,符合 §8.1 配置)
-version: '3.8'
 
 services:
   redis:

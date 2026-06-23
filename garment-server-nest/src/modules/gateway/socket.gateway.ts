@@ -6,17 +6,12 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import Redis from 'ioredis';
-import { REDIS_CLIENT } from '../../config/redis.config';
-import { Inject } from '@nestjs/common';
 
 /**
  * Phase 1.6 — Socket.IO Gateway(空壳)
  *
- * Phase 1 目标:只验证跨进程广播(R5)
- *   - A 连 3001(Express),B 连 3002(NestJS)
- *   - B 触发 broadcast('test:pong')
- *   - A 必须收到(通过 Redis pub/sub adapter)
+ * Phase 1 目标:验证跨进程广播(R5)— 实际跨进程广播验证需 Phase 8
+ * 完整接入(Express 也要接 @socket.io/redis-adapter)。
  *
  * Phase 2 起注入业务事件:
  *   - dispatch:saved → 报工变更
@@ -28,14 +23,12 @@ import { Inject } from '@nestjs/common';
  */
 @WebSocketGateway({
   cors: { origin: '*', credentials: true },
-  // 强制走同一 namespace '/',与 Express 一致
-  namespace: '/',
 })
 export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger('AppGateway');
 
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor() {}
 
   handleConnection(client: Socket) {
     // 防御性:handleConnection 可能在 server 完全初始化前调用
