@@ -5,6 +5,7 @@ import {
   IsInt,
   Min,
   IsNumber,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -37,6 +38,9 @@ export class CreateMainPlanDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'error.400.plan.due_date_format',
+  })
   due_date?: string;
 
   @IsOptional()
@@ -82,4 +86,11 @@ export class AutoScheduleDto {
   @Type(() => Number)
   @Min(1, { message: 'error.400.plan.style_id_invalid' })
   style_id: number;
+}
+
+export class DateParamDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'error.400.common.date_format',
+  })
+  date: string;
 }

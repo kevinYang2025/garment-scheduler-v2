@@ -82,8 +82,22 @@ async function bootstrap() {
   const port = Number(process.env.PORT) || 3002;
 
   // ── CORS(必须 credentials: true,否则 cookie 跨端口丢)──
+  // Fix #A(2026-06-23,独立安全审查):
+  //   之前 origin: (origin, cb) => cb(null, true) 反射任何 Origin,配合 credentials:true
+  //   等于允许 evil.com 跨源读取认证响应(CSRF + 数据外泄)。
+  //   现在白名单从环境变量读,未设置则只允许 localhost(开发安全)。
+  const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3001,http://localhost:80')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: (origin, cb) => cb(null, true), // 迁移期全开;生产再收敛
+    origin: (origin, cb) => {
+      // 同源请求(origin === undefined)直接通过(curl/Postman/SSR)
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      // 拒绝未在白名单的 origin(NestJS 会回 403 + 不带 CORS 头)
+      cb(new Error(`CORS blocked: origin ${origin} not in whitelist`), false);
+    },
     credentials: true,
   });
 
@@ -99,10 +113,25 @@ async function bootstrap() {
   // (避免影响错误响应/health 端点等)
 
   // ── express-session + Redis store(§8 R2)──
+  // Fix #B(2026-06-23,独立安全审查):
+  //   之前硬编码 fallback 'garment-session-dev-secret' → 运维忘设 env 时被已知 secret 签名
+  //   现在强制要求 NODE_ENV=production 时 SESSION_SECRET 必须设(否则启动失败)
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[FATAL] SESSION_SECRET 必须设置(NODE_ENV=production)。已知 default 会让攻击者伪造任意 session。',
+    );
+  }
+  if (!sessionSecret) {
+    logger.warn('[SECURITY] SESSION_SECRET 未设置,使用开发默认值(仅 NODE_ENV=development 允许)');
+  }
   const redisClient = app.get<Redis>(REDIS_CLIENT);
-  const sessionSecret =
-    process.env.SESSION_SECRET || 'garment-session-dev-secret';
-  app.use(buildSessionMiddleware({ secret: sessionSecret, redisClient }));
+  app.use(
+    buildSessionMiddleware({
+      secret: sessionSecret || 'garment-session-dev-secret',
+      redisClient,
+    }),
+  );
   logger.log('session middleware mounted (Redis store)');
 
   // ── Socket.IO Redis Adapter(§8 R5)──

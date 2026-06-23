@@ -40,7 +40,19 @@ const ALLOWED_SECTIONS = new Set([
 ]);
 
 @WebSocketGateway({
-  cors: { origin: '*', credentials: true },
+  // Fix #E(2026-06-23):cors.origin '*' 配合 credentials 让任何站点可连接 + 发请求
+  // 现在从环境变量读白名单,默认只允许同源 + localhost
+  cors: {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // 同源 / SSR / curl
+      const allowed = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:80')
+        .split(',')
+        .map((s) => s.trim());
+      if (allowed.includes(origin)) return cb(null, true);
+      cb(new Error(`Socket.IO CORS blocked: ${origin}`), false);
+    },
+    credentials: true,
+  },
 })
 export class AppGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

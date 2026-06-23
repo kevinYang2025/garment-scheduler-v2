@@ -37,18 +37,21 @@ import { SnakeCaseResponseInterceptor } from '../../common/interceptor/snake-cas
  */
 
 @Controller('api/styles')
+@UseGuards(AuthGuard, RoleGuard)  // Fix #D:class-level 守卫,GET 也必须登录
 @UseInterceptors(SnakeCaseResponseInterceptor)  // 响应字段 snake_case 与 Express 兼容
 export class StyleController {
   constructor(private readonly styleService: StyleService) {}
 
-  /** GET /api/styles — 列表(无需登录,与 Express 一致) */
+  /** GET /api/styles — 列表(任意登录用户可看) */
   @Get()
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
   list(@Query('q') q?: string) {
     return this.styleService.findAll({ q });
   }
 
   /** GET /api/styles/:id */
   @Get(':id')
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
   async getOne(@Param('id', ParseIntPipe) id: number) {
     return this.styleService.findById(id);
   }

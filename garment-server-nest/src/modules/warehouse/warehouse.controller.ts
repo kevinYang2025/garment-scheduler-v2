@@ -17,6 +17,7 @@ import { CreateInboundDto, CreateOutboundDto } from './warehouse.dto';
 import { AuthGuard } from '../../common/auth/auth.guard';
 import { Roles } from '../../common/auth/role.decorator';
 import { RoleGuard } from '../../common/auth/role.guard';
+import { WorkshopGuard } from '../../common/auth/workshop.guard';
 import { SnakeCaseResponseInterceptor } from '../../common/interceptor/snake-case.interceptor';
 
 /**
@@ -36,14 +37,18 @@ import { SnakeCaseResponseInterceptor } from '../../common/interceptor/snake-cas
  */
 
 @Controller('api/warehouse/:type')
-@UseGuards(AuthGuard, RoleGuard)
+@UseGuards(AuthGuard, RoleGuard, WorkshopGuard)
 @UseInterceptors(SnakeCaseResponseInterceptor)
 export class WarehouseController {
   constructor(private readonly warehouseService: WarehouseService) {}
 
   /** GET /api/warehouse/:type/inbound — 入库列表 */
+  // Fix #D(2026-06-23):GET 端点之前无 @Roles,任何登录用户都能访问
   @Get('inbound')
-  inboundList(@Param('type') type: string) {
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
+  inboundList(@Param('type') type: string, @Req() req: Request) {
+    // Fix #C:WorkshopGuard 已经从 body/query 取 workshop 校验
+    // inbound 列表本身无 workshop 字段,Guard 已通过(默认放行)
     return this.warehouseService.findInbound(type);
   }
 
@@ -61,7 +66,8 @@ export class WarehouseController {
 
   /** GET /api/warehouse/:type/outbound — 出库列表 */
   @Get('outbound')
-  outboundList(@Param('type') type: string) {
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
+  outboundList(@Param('type') type: string, @Req() req: Request) {
     return this.warehouseService.findOutbound(type);
   }
 
@@ -79,7 +85,9 @@ export class WarehouseController {
 
   /** GET /api/warehouse/:type/inventory — 库存查询 */
   @Get('inventory')
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
   inventory(
+    @Req() req: Request,
     @Param('type') type: string,
     @Query('keyword') keyword?: string,
     @Query('in_stock') inStock?: string,

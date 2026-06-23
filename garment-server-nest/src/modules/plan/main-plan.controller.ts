@@ -35,12 +35,14 @@ import { SnakeCaseResponseInterceptor } from '../../common/interceptor/snake-cas
  */
 
 @Controller('api/main-plan')
+@UseGuards(AuthGuard, RoleGuard) // Fix #D:所有端点强制鉴权(class-level,GET 之前漏)
 @UseInterceptors(SnakeCaseResponseInterceptor)
 export class MainPlanController {
   constructor(private readonly mainPlanService: MainPlanService) {}
 
   /** GET /api/main-plan — 列表 */
   @Get()
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
   list(@Query('style_id') styleIdStr?: string) {
     const styleId = styleIdStr ? Number(styleIdStr) : undefined;
     return this.mainPlanService.findAll({ styleId });
@@ -48,13 +50,13 @@ export class MainPlanController {
 
   /** GET /api/main-plan/:id */
   @Get(':id')
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
   async getOne(@Param('id', ParseIntPipe) id: number) {
     return this.mainPlanService.findById(id);
   }
 
   /** POST /api/main-plan — 创建 */
   @Post()
-  @UseGuards(AuthGuard, RoleGuard)
   @Roles('admin', 'planning_manager', 'planner')
   @HttpCode(HttpStatus.OK)
   async create(@Body() dto: CreateMainPlanDto, @Req() req: Request) {
@@ -63,7 +65,6 @@ export class MainPlanController {
 
   /** PUT /api/main-plan/:id */
   @Put(':id')
-  @UseGuards(AuthGuard, RoleGuard)
   @Roles('admin', 'planning_manager', 'planner')
   @HttpCode(HttpStatus.OK)
   async update(
@@ -76,7 +77,6 @@ export class MainPlanController {
 
   /** DELETE /api/main-plan/:id */
   @Delete(':id')
-  @UseGuards(AuthGuard, RoleGuard)
   @Roles('admin', 'planning_manager', 'planner')
   @HttpCode(HttpStatus.OK)
   async remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
@@ -89,7 +89,6 @@ export class MainPlanController {
    * 三行模型自动排产,§3 验收红线
    */
   @Post('auto-schedule')
-  @UseGuards(AuthGuard, RoleGuard)
   @Roles('admin', 'planning_manager', 'planner')
   @HttpCode(HttpStatus.OK)
   async autoSchedule(@Body() dto: AutoScheduleDto, @Req() req: Request) {

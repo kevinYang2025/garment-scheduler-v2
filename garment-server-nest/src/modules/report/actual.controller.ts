@@ -35,12 +35,14 @@ import { SnakeCaseResponseInterceptor } from '../../common/interceptor/snake-cas
  */
 
 @Controller('api/actual')
+@UseGuards(AuthGuard, RoleGuard)  // Fix #D:class-level 守卫
 @UseInterceptors(SnakeCaseResponseInterceptor)
 export class ActualController {
   constructor(private readonly actualService: ActualService) {}
 
   /** GET /api/actual — 列表 */
   @Get()
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
   list(
     @Query('style_id') styleIdStr?: string,
     @Query('date') date?: string,
@@ -51,6 +53,7 @@ export class ActualController {
 
   /** GET /api/actual/:id */
   @Get(':id')
+  @Roles('admin', 'planning_manager', 'planner', 'supervisor', 'dispatcher')
   async getOne(@Param('id', ParseIntPipe) id: number) {
     return this.actualService.findById(id);
   }
